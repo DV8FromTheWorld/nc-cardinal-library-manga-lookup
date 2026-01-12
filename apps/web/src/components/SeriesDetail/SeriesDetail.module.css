@@ -1,0 +1,406 @@
+/* =============================================================================
+   SeriesDetail Styles
+   ============================================================================= */
+
+.container {
+  min-height: 100vh;
+  padding: var(--spacing-lg);
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.backButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: var(--spacing-lg);
+}
+
+.backButton:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+/* -----------------------------------------------------------------------------
+   Loading & Error States
+   ----------------------------------------------------------------------------- */
+
+.loadingState {
+  text-align: center;
+  padding: var(--spacing-xl);
+  color: var(--color-text-secondary);
+}
+
+.loadingSpinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto var(--spacing-md);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.error {
+  padding: var(--spacing-lg);
+  background: rgba(211, 47, 47, 0.1);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-md);
+  color: var(--color-error);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.errorIcon {
+  font-size: 1.25rem;
+}
+
+/* -----------------------------------------------------------------------------
+   Header
+   ----------------------------------------------------------------------------- */
+
+.header {
+  display: flex;
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-xl);
+  padding-bottom: var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.headerCover {
+  flex-shrink: 0;
+  width: 120px;
+}
+
+.headerCover img {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.headerContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 2.25rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-xs);
+  line-height: 1.2;
+}
+
+.author {
+  font-size: 1.125rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--spacing-md);
+}
+
+.seriesId {
+  font-family: 'SF Mono', 'Monaco', monospace;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin: var(--spacing-md) 0 0;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.completeBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: rgba(46, 125, 50, 0.1);
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-full);
+  color: var(--color-success);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.volumeBadge {
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+/* -----------------------------------------------------------------------------
+   Availability Section
+   ----------------------------------------------------------------------------- */
+
+.availabilitySection {
+  margin-bottom: var(--spacing-xl);
+}
+
+.sectionTitle {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-md);
+}
+
+.availabilityCard {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+}
+
+.availabilityStats {
+  margin-bottom: var(--spacing-md);
+}
+
+.statLarge {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.statNumber {
+  font-size: 3rem;
+  font-weight: 700;
+  color: var(--color-accent);
+  line-height: 1;
+}
+
+.statLabel {
+  font-size: 1.125rem;
+  color: var(--color-text-secondary);
+}
+
+.availabilityBar {
+  height: 12px;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  margin-bottom: var(--spacing-sm);
+}
+
+.availabilityFill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-success) 0%, var(--color-accent) 100%);
+  border-radius: var(--radius-full);
+  transition: width 0.5s ease;
+}
+
+.availabilityPercent {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.missingVolumes {
+  margin-top: var(--spacing-lg);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--color-border);
+}
+
+.missingTitle {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--spacing-sm);
+}
+
+.missingList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+.missingVolume {
+  padding: 2px var(--spacing-sm);
+  background: rgba(211, 47, 47, 0.1);
+  border-radius: var(--radius-sm);
+  color: var(--color-error);
+  font-size: 0.8125rem;
+}
+
+.missingNote {
+  margin: var(--spacing-md) 0 0;
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--color-border);
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+/* -----------------------------------------------------------------------------
+   Volumes Grid
+   ----------------------------------------------------------------------------- */
+
+.volumesSection {
+  margin-bottom: var(--spacing-xl);
+}
+
+.volumeGrid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.volumeRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-bg-secondary);
+}
+
+.volumeCover {
+  flex-shrink: 0;
+  width: 40px;
+}
+
+.volumeCover img {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.volumeRow:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+.volumeRow:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.volumeRow.available {
+  border-left: 3px solid var(--color-success);
+}
+
+.volumeRow.unavailable {
+  border-left: 3px solid var(--color-text-muted);
+}
+
+.volumeNumber {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 48px;
+}
+
+.volLabel {
+  font-size: 0.625rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.volNum {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  line-height: 1;
+}
+
+.volumeInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.volumeTitle {
+  font-size: 0.9375rem;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.volumeIsbn {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-family: monospace;
+}
+
+.volumeStatus {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-width: 100px;
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.statusAvailable {
+  background: var(--color-success);
+}
+
+.statusUnavailable {
+  background: var(--color-text-muted);
+}
+
+.statusText {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.viewButton {
+  font-size: 0.8125rem;
+  color: var(--color-accent);
+  font-weight: 500;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.volumeRow:hover .viewButton {
+  opacity: 1;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .volumeRow {
+    flex-wrap: wrap;
+  }
+
+  .volumeStatus {
+    order: 3;
+    width: 100%;
+    margin-top: var(--spacing-xs);
+    padding-top: var(--spacing-xs);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .viewButton {
+    display: none;
+  }
+}

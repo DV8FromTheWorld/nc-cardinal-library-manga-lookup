@@ -2,7 +2,11 @@
   "name": "nc-cardinal-manga",
   "private": true,
   "scripts": {
-    "dev": "turbo dev",
+    "api": "pnpm --filter @repo/api dev",
+    "web": "pnpm --filter @repo/web dev",
+    "native": "pnpm --filter @repo/native dev",
+    "ios": "pnpm --filter @repo/native ios",
+    "android": "pnpm --filter @repo/native android",
     "build": "turbo build",
     "typecheck": "turbo typecheck",
     "lint": "turbo lint",

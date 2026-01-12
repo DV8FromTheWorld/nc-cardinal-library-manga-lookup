@@ -1,0 +1,50 @@
+# Cursor Rules for NC Cardinal Manga
+
+## Project Context
+This is a manga library search app using Wikipedia for series data and NC Cardinal (Evergreen ILS) for library availability. Read `llm-context/PROJECT-CONTEXT.md` for full context.
+
+## Code Style
+- TypeScript with strict mode and `exactOptionalPropertyTypes: true`
+- Optional properties: `field?: T | undefined` (not just `field?: T`)
+- Fastify + Zod for API validation
+- React + CSS Modules for frontend
+- Use existing patterns from similar files
+
+## File Organization
+- API routes: `apps/api/src/routes/`
+- Data clients: `apps/api/src/scripts/`
+- React components: `apps/web/src/components/{ComponentName}/`
+- Each component folder has: `index.ts`, `{Name}.tsx`, `{Name}.module.css`
+
+## API Conventions
+- All responses use Zod schemas for validation
+- Books not in library: return data with `notInCatalog: true`, NOT 404
+- Include detailed availability: `availableCopies`, `checkedOutCopies`, `inTransitCopies`, etc.
+- Use two-tier caching for NC Cardinal (ISBN→RecordID permanent, full records 1h TTL)
+
+## Wikipedia Parsing
+- Always include `redirects=1` in API calls
+- Handle transcluded subpages (One Piece style)
+- Convert ISBN-10 to ISBN-13
+- Detect media type from section headers (manga vs light novel)
+- Filter out spin-offs based on title patterns
+
+## Testing
+```bash
+# Quick API test
+curl "http://localhost:3001/manga/search?q=demon+slayer" | jq
+
+# Clear cache for fresh data
+rm -rf apps/api/.cache/*
+```
+
+## Common Imports
+```typescript
+// API routes
+import { z } from 'zod';
+import type { FastifyPluginAsync } from 'fastify';
+
+// Data clients
+import { getMangaSeries } from './wikipedia-client.js';
+import { searchByISBN, getAvailabilityByISBNs } from './opensearch-client.js';
+```

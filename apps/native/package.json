@@ -1,0 +1,30 @@
+{
+  "name": "@repo/native",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "dev": "expo start --dev-client",
+    "dev:ios": "expo start --dev-client --ios",
+    "dev:android": "expo start --dev-client --android",
+    "prebuild": "expo prebuild",
+    "prebuild:clean": "expo prebuild --clean",
+    "build:ios": "expo run:ios",
+    "build:android": "expo run:android",
+    "typecheck": "tsc --noEmit",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
+  },
+  "dependencies": {
+    "@babel/runtime": "^7.28.4",
+    "expo": "~52.0.0",
+    "expo-status-bar": "~2.0.0",
+    "react": "18.3.1",
+    "react-native": "0.76.9"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.0",
+    "@types/react": "^18",
+    "typescript": "^5"
+  }
+}

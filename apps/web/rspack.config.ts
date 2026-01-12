@@ -7,6 +7,7 @@ export default defineConfig({
   output: {
     path: resolve(__dirname, 'dist'),
     filename: 'bundle.js',
+    publicPath: '/', // Required for client-side routing
   },
   resolve: {
     // Platform-specific extensions first, then generic
@@ -70,5 +71,6 @@ export default defineConfig({
   devServer: {
     port: 3000,
     hot: true,
+    historyApiFallback: true, // Serve index.html for all routes (HTML5 routing)
   },
 });

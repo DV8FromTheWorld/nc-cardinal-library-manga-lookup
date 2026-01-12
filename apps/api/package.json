@@ -7,10 +7,26 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "script:opensearch": "tsx src/scripts/opensearch-client.ts",
+    "script:evergreen": "tsx src/scripts/evergreen-client.ts",
+    "script:librarything": "tsx src/scripts/librarything-client.ts",
+    "script:opac": "tsx src/scripts/opac-scraper.ts",
+    "script:manga-search-old": "tsx src/scripts/manga-search-test.ts",
+    "script:analyze": "tsx src/scripts/analyze-series.ts",
+    "script:anilist": "tsx src/scripts/anilist-client.ts",
+    "script:search": "tsx src/scripts/manga-search-service.ts",
+    "script:wikipedia": "tsx src/scripts/wikipedia-client.ts",
+    "script:google-books": "tsx src/scripts/google-books-client.ts",
+    "script:manga": "tsx src/scripts/manga-search.ts",
+    "script:test-manga": "tsx src/scripts/manga-search-test.ts"
   },
   "dependencies": {
+    "@fastify/cors": "^11.2.0",
     "@repo/shared": "workspace:*",
+    "cheerio": "^1",
     "fastify": "^5",
     "fastify-type-provider-zod": "^4",
     "zod": "^3"
@@ -18,6 +34,7 @@
   "devDependencies": {
     "@types/node": "^22",
     "tsx": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3"
   }
 }
