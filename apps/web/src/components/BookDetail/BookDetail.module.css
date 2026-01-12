@@ -1,0 +1,422 @@
+/* =============================================================================
+   BookDetail Styles
+   ============================================================================= */
+
+.container {
+  min-height: 100vh;
+  padding: var(--spacing-lg);
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.backButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: var(--spacing-lg);
+}
+
+.backButton:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+/* -----------------------------------------------------------------------------
+   Loading & Error States
+   ----------------------------------------------------------------------------- */
+
+.loadingState {
+  text-align: center;
+  padding: var(--spacing-xl);
+  color: var(--color-text-secondary);
+}
+
+.loadingSpinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto var(--spacing-md);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.error {
+  padding: var(--spacing-lg);
+  background: rgba(211, 47, 47, 0.1);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-md);
+  color: var(--color-error);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.errorIcon {
+  font-size: 1.25rem;
+}
+
+/* -----------------------------------------------------------------------------
+   Book Layout
+   ----------------------------------------------------------------------------- */
+
+.bookLayout {
+  display: flex;
+  gap: var(--spacing-xl);
+}
+
+.bookCover {
+  flex-shrink: 0;
+  width: 160px;
+}
+
+.bookCover img {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.bookMain {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .bookLayout {
+    flex-direction: column;
+  }
+  
+  .bookCover {
+    width: 120px;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   Header
+   ----------------------------------------------------------------------------- */
+
+.header {
+  margin-bottom: var(--spacing-xl);
+  padding-bottom: var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.title {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-sm);
+  line-height: 1.2;
+}
+
+.authors {
+  font-size: 1rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--spacing-md);
+}
+
+.bookId {
+  font-family: 'SF Mono', 'Monaco', monospace;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin: var(--spacing-md) 0 0;
+}
+
+.seriesLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-accent);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.seriesLink:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: white;
+}
+
+/* -----------------------------------------------------------------------------
+   Availability Section
+   ----------------------------------------------------------------------------- */
+
+.availabilitySection {
+  margin-bottom: var(--spacing-xl);
+}
+
+.sectionTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-md);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.availabilityCard {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.availabilitySummary {
+  padding: var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.availabilityStatus {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: var(--spacing-sm);
+}
+
+.availabilityStatus.available {
+  color: var(--color-success);
+}
+
+.availabilityStatus.unavailable {
+  color: var(--color-text-muted);
+}
+
+.statusIndicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.copyCount {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-xs);
+}
+
+.copyNumber {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.copyLabel {
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+}
+
+.localRemote {
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--color-border);
+}
+
+.localStatus {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 0.9375rem;
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.localDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.localDot.available {
+  background: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(196, 30, 58, 0.2);
+}
+
+.localDot.unavailable {
+  background: var(--color-text-muted);
+}
+
+.remoteStatus {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  padding-left: calc(10px + var(--spacing-sm));
+}
+
+.catalogLink {
+  display: block;
+  padding: var(--spacing-md);
+  text-align: center;
+  background: var(--color-accent);
+  color: white;
+  text-decoration: none;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+}
+
+.catalogLink:hover {
+  background: var(--color-accent-hover);
+}
+
+/* -----------------------------------------------------------------------------
+   Library List
+   ----------------------------------------------------------------------------- */
+
+.libraryList {
+  padding: var(--spacing-md);
+}
+
+.libraryListTitle {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--spacing-md);
+}
+
+.libraryItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.libraryItem:last-of-type {
+  border-bottom: none;
+}
+
+.libraryInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.libraryName {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.libraryLocation {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.libraryCopies {
+  flex-shrink: 0;
+}
+
+.copyBadge {
+  display: inline-block;
+  padding: 2px var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.copyBadge.available {
+  background: rgba(46, 125, 50, 0.1);
+  color: var(--color-success);
+}
+
+.copyBadge.unavailable {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-muted);
+}
+
+.expandButton {
+  display: block;
+  width: 100%;
+  padding: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+  background: transparent;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.expandButton:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+/* -----------------------------------------------------------------------------
+   Meta Sections
+   ----------------------------------------------------------------------------- */
+
+.metaSection {
+  margin-bottom: var(--spacing-lg);
+}
+
+.subjectTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+.subjectTag {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.identifiers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.identifier {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm);
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-sm);
+}
+
+.identifierLabel {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  min-width: 100px;
+}
+
+.identifierValue {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+  font-size: 0.875rem;
+  color: var(--color-text-primary);
+}

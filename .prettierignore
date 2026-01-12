@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+.turbo/
+
+# Lock files
+pnpm-lock.yaml
+
+# Generated
+*.min.js
