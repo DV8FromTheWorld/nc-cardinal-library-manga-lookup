@@ -148,3 +148,11 @@ field?: string;              // ✗ Will cause errors
 ```
 
 All TypeScript files use `.tsx` extension, even without JSX.
+
+## Git Commits
+
+When making changes:
+- **Suggest commits** at logical checkpoints (after completing a feature, fix, or refactor)
+- **Propose the commit message** with a clear, conventional format (e.g., `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`)
+- **Ask for confirmation** before actually creating the commit
+- Don't batch unrelated changes into a single commit

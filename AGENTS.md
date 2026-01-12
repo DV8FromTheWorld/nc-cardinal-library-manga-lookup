@@ -145,6 +145,14 @@ rm -rf apps/api/.cache/*
 5. **CORS**: API needs `@fastify/cors` configured for localhost:3000
 6. **Duplicate React**: Monorepo can have multiple React instances - use `resolve.alias` in bundler
 
+## Git Commits
+
+When making changes:
+- **Suggest commits** at logical checkpoints (after completing a feature, fix, or refactor)
+- **Propose the commit message** with a clear, conventional format (e.g., `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`)
+- **Ask for confirmation** before actually creating the commit
+- Don't batch unrelated changes into a single commit
+
 ## Do NOT
 
 - Don't scrape HTML when APIs exist (NC Cardinal has OpenSearch API)
