@@ -168,7 +168,7 @@ const BOOKCOVER_CACHE_DIR = path.join(process.cwd(), '.cache', 'bookcover');
  * Fetch cover URL from Bookcover API (aggregates Amazon, Google, OpenLibrary, etc.)
  * Results are cached to avoid repeated API calls
  */
-async function fetchBookcoverUrl(isbn: string): Promise<string | null> {
+export async function fetchBookcoverUrl(isbn: string): Promise<string | null> {
   // Ensure cache directory exists
   if (!fs.existsSync(BOOKCOVER_CACHE_DIR)) {
     fs.mkdirSync(BOOKCOVER_CACHE_DIR, { recursive: true });
@@ -223,18 +223,18 @@ async function fetchBookcoverUrls(isbns: string[]): Promise<Map<string, string>>
 }
 
 function getCoverImageUrl(isbn?: string, googleThumbnail?: string, bookcoverUrl?: string): string | undefined {
-  // Prefer Google Books thumbnail (higher quality, more reliable)
+  // Prefer Bookcover API - returns clean 404 when no image (no placeholder GIFs)
+  if (bookcoverUrl) {
+    return bookcoverUrl;
+  }
+  
+  // Fall back to Google Books thumbnail
   if (googleThumbnail) {
     // Upgrade to larger image and remove curl effect
     return googleThumbnail.replace('zoom=1', 'zoom=2').replace('&edge=curl', '');
   }
   
-  // Use Bookcover API result if available (aggregates Amazon, Goodreads, etc.)
-  if (bookcoverUrl) {
-    return bookcoverUrl;
-  }
-  
-  // Fall back to OpenLibrary (works for most ISBNs, UI handles broken ones)
+  // Last resort: OpenLibrary (may return placeholder images, UI handles via onError)
   if (isbn) {
     return `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`;
   }

@@ -15,6 +15,7 @@ import {
   search,
   getSeriesDetails,
   parseQuery,
+  fetchBookcoverUrl,
   type SearchResult,
   type SeriesDetails,
   type VolumeAvailability,
@@ -387,16 +388,17 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
       const cleanISBN = isbn.replace(/[-\s]/g, '');
 
       try {
-        // Fetch NC Cardinal record and Google Books cover in parallel
-        const [record, googleBook] = await Promise.all([
+        // Fetch NC Cardinal record, Google Books cover, and Bookcover API in parallel
+        const [record, googleBook, bookcoverUrl] = await Promise.all([
           searchByISBN(cleanISBN),
           searchGoogleBooksByISBN(cleanISBN).catch(() => null),
+          fetchBookcoverUrl(cleanISBN).catch(() => null),
         ]);
         
-        // Prefer Google Books cover, fall back to OpenLibrary
-        // (Bookcover API is used for series, but too slow for individual book lookups)
+        // Prefer Bookcover API (returns clean 404, no placeholder images)
+        // Fall back to Google Books, then OpenLibrary
         const googleCover = googleBook?.thumbnail?.replace('zoom=1', 'zoom=2').replace('&edge=curl', '');
-        const coverImage = googleCover ?? `https://covers.openlibrary.org/b/isbn/${cleanISBN}-M.jpg`;
+        const coverImage = bookcoverUrl ?? googleCover ?? `https://covers.openlibrary.org/b/isbn/${cleanISBN}-M.jpg`;
 
         if (!record) {
           // Book not in NC Cardinal catalog - return minimal info
@@ -486,16 +488,17 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
       const cleanISBN = isbn.replace(/[-\s]/g, '');
 
       try {
-        // Fetch NC Cardinal record and Google Books cover in parallel
-        const [record, googleBook] = await Promise.all([
+        // Fetch NC Cardinal record, Google Books cover, and Bookcover API in parallel
+        const [record, googleBook, bookcoverUrl] = await Promise.all([
           searchByISBN(cleanISBN),
           searchGoogleBooksByISBN(cleanISBN).catch(() => null),
+          fetchBookcoverUrl(cleanISBN).catch(() => null),
         ]);
         
-        // Prefer Google Books cover, fall back to OpenLibrary
-        // (Bookcover API is used for series, but too slow for individual book lookups)
+        // Prefer Bookcover API (returns clean 404, no placeholder images)
+        // Fall back to Google Books, then OpenLibrary
         const googleCover = googleBook?.thumbnail?.replace('zoom=1', 'zoom=2').replace('&edge=curl', '');
-        const coverImage = googleCover ?? `https://covers.openlibrary.org/b/isbn/${cleanISBN}-M.jpg`;
+        const coverImage = bookcoverUrl ?? googleCover ?? `https://covers.openlibrary.org/b/isbn/${cleanISBN}-M.jpg`;
 
         if (!record) {
           // Book not in NC Cardinal catalog - return minimal info
