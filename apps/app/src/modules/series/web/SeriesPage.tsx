@@ -6,6 +6,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useSeriesDetails } from '../hooks/useSeriesDetails';
 import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
 import { DebugPanel } from '../../debug/web/DebugPanel';
+import { getAvailabilityPercent } from '../../search/utils/availability';
 import type { VolumeInfo } from '../../search/types';
 import styles from './SeriesPage.module.css';
 
@@ -56,7 +57,7 @@ export function SeriesPage(): JSX.Element {
     );
   }
 
-  const availabilityPercent = Math.round((series.availableCount / series.totalVolumes) * 100);
+  const availabilityPercent = getAvailabilityPercent(series.availableCount, series.totalVolumes);
 
   return (
     <div className={styles.container}>

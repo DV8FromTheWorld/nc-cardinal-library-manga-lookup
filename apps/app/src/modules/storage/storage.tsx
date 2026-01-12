@@ -1,8 +1,8 @@
 /**
- * Storage interface for cross-platform persistent storage.
- * 
+ * Storage interface and web implementation.
+ *
  * Web uses localStorage (sync), Native uses AsyncStorage (async).
- * The interface supports both patterns.
+ * Metro resolves storage.native.tsx on React Native.
  */
 
 export interface Storage {
@@ -11,6 +11,23 @@ export interface Storage {
   removeItem(key: string): void | Promise<void>;
 }
 
-// Re-export the platform-specific implementation
-// Bundlers will resolve storage.web.tsx or storage.native.tsx
-export { storage } from './storage.web';
+/**
+ * Web storage implementation using localStorage.
+ * This is the default implementation used by web bundlers.
+ * Metro will use storage.native.tsx instead on React Native.
+ */
+class WebStorage implements Storage {
+  getItem(key: string): string | null {
+    return localStorage.getItem(key);
+  }
+
+  setItem(key: string, value: string): void {
+    localStorage.setItem(key, value);
+  }
+
+  removeItem(key: string): void {
+    localStorage.removeItem(key);
+  }
+}
+
+export const storage: Storage = new WebStorage();

@@ -1,15 +1,38 @@
 /**
  * Native router implementation using @react-navigation.
- * 
- * TODO: Implement when building native app.
  */
 
-import { Text, View } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { SearchScreen } from '../../search/native/SearchScreen';
+import { SeriesScreen } from '../../series/native/SeriesScreen';
+import { BookScreen } from '../../book/native/BookScreen';
+
+/**
+ * Type-safe route params for navigation.
+ */
+export type RootStackParamList = {
+  Search: { query?: string | undefined } | undefined;
+  Series: { slug: string };
+  Book: { isbn: string; slug?: string | undefined };
+};
+
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export function Router(): JSX.Element {
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <Text>Native router not yet implemented</Text>
-    </View>
+    <NavigationContainer>
+      <Stack.Navigator
+        initialRouteName="Search"
+        screenOptions={{
+          headerShown: false,
+          animation: 'slide_from_right',
+        }}
+      >
+        <Stack.Screen name="Search" component={SearchScreen} />
+        <Stack.Screen name="Series" component={SeriesScreen} />
+        <Stack.Screen name="Book" component={BookScreen} />
+      </Stack.Navigator>
+    </NavigationContainer>
   );
 }

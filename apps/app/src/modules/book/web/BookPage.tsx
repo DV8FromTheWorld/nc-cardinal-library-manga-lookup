@@ -6,7 +6,12 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useBookDetails } from '../hooks/useBookDetails';
 import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
-import type { Holding } from '../../search/types';
+import {
+  cleanDisplayTitle,
+  formatAuthorName,
+  generateSeriesSlug,
+} from '../../search/utils/formatters';
+import { groupHoldingsByLibrary, getAvailableCount } from '../../search/utils/availability';
 import styles from './BookPage.module.css';
 
 export function BookPage(): JSX.Element {
@@ -60,33 +65,16 @@ export function BookPage(): JSX.Element {
   }
 
   // Group holdings by library
-  const holdingsByLibrary = book.holdings.reduce<Record<string, Holding[]>>((acc, holding) => {
-    const key = holding.libraryName;
-    if (!acc[key]) {
-      acc[key] = [];
-    }
-    acc[key].push(holding);
-    return acc;
-  }, {});
-
+  const holdingsByLibrary = groupHoldingsByLibrary(book.holdings);
   const libraryNames = Object.keys(holdingsByLibrary).sort();
   const displayLibraries = expandedLibraries ? libraryNames : libraryNames.slice(0, 5);
 
-  // Clean up title for display
-  const displayTitle = book.title
-    .replace(/\[manga\]/gi, '')
-    .replace(/\s+\/\s*$/, '')
-    .trim();
-
-  // Clean up author names
-  const displayAuthors = book.authors.map(author => 
-    author.split(',').slice(0, 2).join(', ').replace(/\.$/, '')
-  );
+  // Clean up title and author names for display
+  const displayTitle = cleanDisplayTitle(book.title);
+  const displayAuthors = book.authors.map(formatAuthorName);
 
   // Generate a series slug from title
-  const seriesSlug = book.seriesInfo 
-    ? book.seriesInfo.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-    : null;
+  const seriesSlug = book.seriesInfo ? generateSeriesSlug(book.seriesInfo.title) : null;
 
   return (
     <div className={styles.container}>
@@ -188,8 +176,8 @@ export function BookPage(): JSX.Element {
                   const holdings = holdingsByLibrary[libraryName];
                   const firstHolding = holdings?.[0];
                   if (!holdings || !firstHolding) return null;
-                  
-                  const availableCount = holdings.filter(h => h.available).length;
+
+                  const availableCount = getAvailableCount(holdings);
                   
                   return (
                     <div key={libraryName} className={styles.libraryItem}>

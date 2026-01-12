@@ -7,6 +7,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useSearch } from '../hooks/useSearch';
 import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
 import { DebugPanel } from '../../debug/web/DebugPanel';
+import { getAvailabilityPercent, getAvailabilityDisplayInfo } from '../utils/availability';
 import type { SeriesResult, VolumeResult } from '../types';
 import styles from './SearchPage.module.css';
 
@@ -288,8 +289,8 @@ interface SeriesCardProps {
 }
 
 function SeriesCard({ series, onClick, highlighted }: SeriesCardProps): JSX.Element {
-  const availabilityPercent = Math.round((series.availableVolumes / series.totalVolumes) * 100);
-  
+  const availabilityPercent = getAvailabilityPercent(series.availableVolumes, series.totalVolumes);
+
   return (
     <button
       type="button"
@@ -356,11 +357,16 @@ interface VolumeCardProps {
 }
 
 function VolumeCard({ volume, onClick, highlighted }: VolumeCardProps): JSX.Element {
-  const isAvailable = volume.availability?.available ?? false;
-  const hasLocalCopies = (volume.availability?.localCopies ?? 0) > 0;
-  const localAvailable = volume.availability?.localAvailable ?? 0;
-  const remoteAvailable = volume.availability?.remoteAvailable ?? 0;
-  
+  const { statusType, statusText } = getAvailabilityDisplayInfo(volume.availability);
+
+  // Map status type to CSS class
+  const dotClass =
+    statusType === 'local'
+      ? styles.local
+      : statusType === 'available'
+        ? styles.available
+        : styles.unavailable;
+
   return (
     <button
       type="button"
@@ -370,8 +376,8 @@ function VolumeCard({ volume, onClick, highlighted }: VolumeCardProps): JSX.Elem
     >
       <div className={styles.volumeCover}>
         {volume.coverImage ? (
-          <img 
-            src={volume.coverImage} 
+          <img
+            src={volume.coverImage}
             alt={volume.title}
             loading="lazy"
             onError={(e) => {
@@ -382,38 +388,13 @@ function VolumeCard({ volume, onClick, highlighted }: VolumeCardProps): JSX.Elem
           <div className={styles.coverPlaceholder}>📖</div>
         )}
       </div>
-      <div className={styles.volumeNumber}>
-        {volume.volumeNumber ?? '?'}
-      </div>
+      <div className={styles.volumeNumber}>{volume.volumeNumber ?? '?'}</div>
       <div className={styles.volumeInfo}>
         <h4 className={styles.volumeTitle}>{volume.title}</h4>
-        {volume.seriesTitle && (
-          <p className={styles.volumeSeries}>{volume.seriesTitle}</p>
-        )}
+        {volume.seriesTitle && <p className={styles.volumeSeries}>{volume.seriesTitle}</p>}
         <div className={styles.volumeAvailability}>
-          {volume.availability?.notInCatalog ? (
-            <>
-              <span className={`${styles.availabilityDot} ${styles.unavailable}`} />
-              <span>Not in catalog</span>
-            </>
-          ) : isAvailable ? (
-            <>
-              <span className={`${styles.availabilityDot} ${hasLocalCopies && localAvailable > 0 ? styles.local : styles.available}`} />
-              {hasLocalCopies ? (
-                <span>
-                  {localAvailable > 0 ? `${localAvailable} local` : 'Local checked out'}
-                  {remoteAvailable > 0 && ` · ${remoteAvailable} remote`}
-                </span>
-              ) : (
-                <span>{remoteAvailable} remote</span>
-              )}
-            </>
-          ) : (
-            <>
-              <span className={`${styles.availabilityDot} ${styles.unavailable}`} />
-              <span>All checked out</span>
-            </>
-          )}
+          <span className={`${styles.availabilityDot} ${dotClass}`} />
+          <span>{statusText}</span>
         </div>
       </div>
     </button>

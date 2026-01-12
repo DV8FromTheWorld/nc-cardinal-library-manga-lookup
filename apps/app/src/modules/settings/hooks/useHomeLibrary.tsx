@@ -1,12 +1,14 @@
 /**
  * Home Library Hook
- * 
+ *
  * Manages the user's selected home library with persistent storage.
  * The home library is used to show local vs remote availability.
+ *
+ * Supports both sync (web localStorage) and async (native AsyncStorage).
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { storage } from '../../storage/storage.web';
+import { storage } from '../../storage/storage';
 import { getLibraries } from '../../search/services/mangaApi';
 import type { Library } from '../../search/types';
 
@@ -22,23 +24,42 @@ export interface UseHomeLibraryResult {
 }
 
 export function useHomeLibrary(): UseHomeLibraryResult {
-  const [homeLibrary, setHomeLibraryState] = useState<string>(() => {
-    // Initialize from storage or default
-    const stored = storage.getItem(STORAGE_KEY);
-    // Handle both sync and async storage (web is sync)
-    if (typeof stored === 'string') {
-      return stored;
-    }
-    return DEFAULT_LIBRARY;
-  });
-  
+  const [homeLibrary, setHomeLibraryState] = useState<string>(DEFAULT_LIBRARY);
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Load stored home library on mount (handles both sync and async storage)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadStoredLibrary() {
+      try {
+        const stored = await storage.getItem(STORAGE_KEY);
+        if (!cancelled && stored) {
+          setHomeLibraryState(stored);
+        }
+      } catch (error) {
+        console.error('Failed to load stored home library:', error);
+      }
+    }
+
+    // Handle both sync and async storage
+    const result = storage.getItem(STORAGE_KEY);
+    if (result instanceof Promise) {
+      loadStoredLibrary();
+    } else if (typeof result === 'string') {
+      setHomeLibraryState(result);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Fetch libraries on mount
   useEffect(() => {
     let cancelled = false;
-    
+
     async function fetchLibraries() {
       try {
         const data = await getLibraries();
@@ -53,9 +74,9 @@ export function useHomeLibrary(): UseHomeLibraryResult {
         }
       }
     }
-    
+
     fetchLibraries();
-    
+
     return () => {
       cancelled = true;
     };
@@ -63,11 +84,12 @@ export function useHomeLibrary(): UseHomeLibraryResult {
 
   const setHomeLibrary = useCallback((code: string) => {
     setHomeLibraryState(code);
-    storage.setItem(STORAGE_KEY, code);
+    // Fire and forget - storage.setItem may be async
+    void storage.setItem(STORAGE_KEY, code);
   }, []);
 
   // Get the library name for the current selection
-  const libraryName = libraries.find(l => l.code === homeLibrary)?.name;
+  const libraryName = libraries.find((l) => l.code === homeLibrary)?.name;
 
   return {
     homeLibrary,
