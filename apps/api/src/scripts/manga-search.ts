@@ -3,8 +3,11 @@
  *
  * Unified search orchestrator that combines:
  * - Wikipedia for canonical series data and ISBNs
- * - Google Books as fallback
- * - NC Cardinal for library availability
+ * - NC Cardinal for library availability (also fallback when Wikipedia fails)
+ * - Bookcover API for cover images
+ *
+ * NOTE: Google Books was previously used as a fallback but has been disabled.
+ * The code is commented out but preserved for potential future use.
  *
  * Features:
  * - Fuzzy search (handles typos, romanized names)
@@ -23,11 +26,12 @@ import {
   type WikiVolume,
 } from './wikipedia-client.js';
 
-import {
-  searchMangaVolumes as searchGoogleBooks,
-  type GoogleBooksSeries,
-  type GoogleBooksVolume,
-} from './google-books-client.js';
+// DISABLED: Google Books as a data source - relying on Wikipedia only
+// import {
+//   searchMangaVolumes as searchGoogleBooks,
+//   type GoogleBooksSeries,
+//   type GoogleBooksVolume,
+// } from './google-books-client.js';
 
 import {
   getAvailabilityByISBNs,
@@ -53,6 +57,33 @@ export interface DebugInfo {
   errors: string[];
   warnings: string[];
   cacheHits: string[];
+  /** Detailed log of what happened during the search */
+  log: string[];
+  /** Data quality issues detected */
+  dataIssues: string[];
+  /** Summary of what each source returned */
+  sourceSummary: {
+    wikipedia?: {
+      found: boolean;
+      volumeCount?: number | undefined;
+      seriesTitle?: string | undefined;
+      error?: string | undefined;
+    } | undefined;
+    googleBooks?: {
+      found: boolean;
+      totalItems?: number | undefined;
+      volumesReturned?: number | undefined;
+      volumesWithSeriesId?: number | undefined;
+      seriesCount?: number | undefined;
+      error?: string | undefined;
+    } | undefined;
+    ncCardinal?: {
+      found: boolean;
+      recordCount?: number | undefined;
+      volumesExtracted?: number | undefined;
+      error?: string | undefined;
+    } | undefined;
+  };
 }
 
 export interface SearchResult {
@@ -79,7 +110,7 @@ export interface SeriesResult {
   isComplete: boolean;
   author?: string | undefined;
   coverImage?: string | undefined;
-  source: 'wikipedia' | 'google-books';
+  source: 'wikipedia' | 'google-books' | 'nc-cardinal';
   volumes?: VolumeInfo[] | undefined;
 }
 
@@ -222,6 +253,267 @@ async function fetchBookcoverUrls(isbns: string[]): Promise<Map<string, string>>
   return results;
 }
 
+/**
+ * Build a series result from NC Cardinal catalog records when Wikipedia and Google Books fail
+ * This extracts volume information from the catalog titles and availability
+ */
+/**
+ * Detect media type from a catalog record title
+ */
+function detectMediaType(title: string): 'manga' | 'light-novel' | 'unknown' {
+  const titleLower = title.toLowerCase();
+  
+  // Check for explicit manga markers
+  if (titleLower.includes('(manga)') || 
+      titleLower.includes('[manga]') ||
+      titleLower.includes('manga version') ||
+      titleLower.includes('comic version')) {
+    return 'manga';
+  }
+  
+  // Check for explicit light novel markers
+  if (titleLower.includes('light novel') ||
+      titleLower.includes('(novel)') ||
+      titleLower.includes('[novel]') ||
+      titleLower.includes('(ln)')) {
+    return 'light-novel';
+  }
+  
+  return 'unknown';
+}
+
+/**
+ * Build a single series from a set of catalog records
+ * Internal helper used by buildMultipleSeriesFromNCCardinal
+ */
+function buildSingleSeriesFromRecords(
+  seriesTitle: string,
+  records: CatalogRecord[],
+  mediaType: 'manga' | 'light-novel' | 'mixed',
+  homeLibrary?: string | undefined
+): SeriesResult | null {
+  
+  // Clean up the series title
+  let cleanTitle = seriesTitle
+    .replace(/\[manga\]/gi, '')
+    .replace(/\(manga\)/gi, '')
+    .replace(/\s+\/\s*$/, '')
+    .replace(/\.$/, '')
+    .trim();
+  
+  // Title case the clean title (capitalize first letter of major words)
+  // Small words like "of", "a", "the", "and" stay lowercase unless first
+  const smallWords = new Set(['a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'in', 'nor', 'of', 'on', 'or', 'so', 'the', 'to', 'up', 'yet']);
+  cleanTitle = cleanTitle.split(' ')
+    .map((word, index) => {
+      const lower = word.toLowerCase();
+      if (index === 0 || !smallWords.has(lower)) {
+        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      }
+      return lower;
+    })
+    .join(' ');
+  
+  // Add media type suffix if not already present
+  if (mediaType === 'manga' && !cleanTitle.toLowerCase().includes('manga')) {
+    cleanTitle = `${cleanTitle} (Manga)`;
+  } else if (mediaType === 'light-novel' && !cleanTitle.toLowerCase().includes('novel')) {
+    cleanTitle = `${cleanTitle} (Light Novel)`;
+  }
+  
+  // First pass: Group records by volume number (if available)
+  const volumeRecords = new Map<number, CatalogRecord>();
+  const isbnToRecord = new Map<string, CatalogRecord>();
+  const recordsWithoutVolumeNumber: CatalogRecord[] = [];
+  
+  for (const record of records) {
+    const titleLower = record.title.toLowerCase();
+    
+    // Skip if this doesn't look like our series (check if it contains the first word of the query)
+    const firstWord = seriesTitle.toLowerCase().split(' ')[0];
+    if (!firstWord || !titleLower.includes(firstWord)) {
+      continue;
+    }
+    
+    // Extract volume number from title or volumeNumber field
+    const volMatch = record.volumeNumber 
+      || record.title.match(/(?:vol\.?|v\.?|#)\s*(\d+)/i)?.[1]
+      || record.title.match(/\.\s*(\d+)\s*$/)?.[1]
+      || record.title.match(/part\s*(\d+)/i)?.[1];
+    
+    const volNum = volMatch ? parseInt(String(volMatch), 10) : undefined;
+    
+    if (volNum && volNum > 0 && volNum < 1000) {
+      // If we don't have this volume yet, or this record has more ISBNs, use it
+      if (!volumeRecords.has(volNum) || record.isbns.length > (volumeRecords.get(volNum)?.isbns.length ?? 0)) {
+        volumeRecords.set(volNum, record);
+      }
+    } else {
+      // Track by ISBN for records without volume numbers
+      recordsWithoutVolumeNumber.push(record);
+      for (const isbn of record.isbns) {
+        if (!isbnToRecord.has(isbn)) {
+          isbnToRecord.set(isbn, record);
+        }
+      }
+    }
+  }
+  
+  // If no records have volume numbers, fall back to counting unique ISBNs
+  if (volumeRecords.size === 0 && isbnToRecord.size > 0) {
+    // Get unique records by ISBN (preferring ISBN-13)
+    const uniqueRecords: CatalogRecord[] = [];
+    const seenIsbns = new Set<string>();
+    
+    for (const record of recordsWithoutVolumeNumber) {
+      const isbn13 = record.isbns.find(i => i.startsWith('978'));
+      const isbn = isbn13 ?? record.isbns[0];
+      if (isbn && !seenIsbns.has(isbn)) {
+        seenIsbns.add(isbn);
+        uniqueRecords.push(record);
+      }
+    }
+    
+    // Assign volume numbers sequentially (1, 2, 3, ...)
+    for (let i = 0; i < uniqueRecords.length; i++) {
+      const record = uniqueRecords[i];
+      if (record) {
+        volumeRecords.set(i + 1, record);
+      }
+    }
+  }
+  
+  if (volumeRecords.size === 0) {
+    return null;
+  }
+  
+  // Build availability map
+  const availability = new Map<string, VolumeAvailability>();
+  for (const [, record] of volumeRecords) {
+    const isbn = record.isbns.find(i => i.startsWith('978')) ?? record.isbns[0];
+    if (isbn) {
+      const detailedSummary = getDetailedAvailabilitySummary(record, homeLibrary);
+      availability.set(isbn, detailedSummary);
+    }
+  }
+  
+  // Build volume info array
+  const volumeNums = Array.from(volumeRecords.keys()).sort((a, b) => a - b);
+  const volumes: VolumeInfo[] = [];
+  let availableCount = 0;
+  
+  for (const volNum of volumeNums) {
+    const record = volumeRecords.get(volNum);
+    if (!record) continue;
+    
+    const isbn = record.isbns.find(i => i.startsWith('978')) ?? record.isbns[0];
+    const volAvail = isbn ? availability.get(isbn) : undefined;
+    
+    if (volAvail?.available) {
+      availableCount++;
+    }
+    
+    volumes.push({
+      volumeNumber: volNum,
+      title: `${cleanTitle}, Vol. ${volNum}`,
+      isbn,
+      availability: volAvail,
+    });
+  }
+  
+  // Create the series result
+  const slug = cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  
+  return {
+    id: slug,
+    title: cleanTitle,
+    slug,
+    totalVolumes: volumes.length,
+    availableVolumes: availableCount,
+    isComplete: false, // Can't determine from catalog data
+    volumes,
+    source: 'nc-cardinal',
+  };
+}
+
+/**
+ * Build multiple series from NC Cardinal records (separates manga and light novels)
+ * Returns an array of series, one for each detected media type
+ */
+function buildMultipleSeriesFromNCCardinal(
+  seriesTitle: string,
+  records: CatalogRecord[],
+  homeLibrary?: string | undefined
+): SeriesResult[] {
+  // Separate records by media type
+  const mangaRecords: CatalogRecord[] = [];
+  const lightNovelRecords: CatalogRecord[] = [];
+  const unknownRecords: CatalogRecord[] = [];
+  
+  for (const record of records) {
+    const mediaType = detectMediaType(record.title);
+    if (mediaType === 'manga') {
+      mangaRecords.push(record);
+    } else if (mediaType === 'light-novel') {
+      lightNovelRecords.push(record);
+    } else {
+      unknownRecords.push(record);
+    }
+  }
+  
+  console.log(`[MangaSearch] Detected media types - Manga: ${mangaRecords.length}, Light Novel: ${lightNovelRecords.length}, Unknown: ${unknownRecords.length}`);
+  
+  const results: SeriesResult[] = [];
+  
+  // Build manga series if we have manga records
+  if (mangaRecords.length > 0) {
+    const mangaSeries = buildSingleSeriesFromRecords(seriesTitle, mangaRecords, 'manga', homeLibrary);
+    if (mangaSeries && mangaSeries.totalVolumes > 0) {
+      results.push(mangaSeries);
+    }
+  }
+  
+  // Build light novel series if we have light novel records
+  if (lightNovelRecords.length > 0) {
+    const lnSeries = buildSingleSeriesFromRecords(seriesTitle, lightNovelRecords, 'light-novel', homeLibrary);
+    if (lnSeries && lnSeries.totalVolumes > 0) {
+      results.push(lnSeries);
+    }
+  }
+  
+  // If we only have unknown records, build a single mixed series
+  if (results.length === 0 && unknownRecords.length > 0) {
+    const mixedSeries = buildSingleSeriesFromRecords(seriesTitle, unknownRecords, 'mixed', homeLibrary);
+    if (mixedSeries && mixedSeries.totalVolumes > 0) {
+      results.push(mixedSeries);
+    }
+  }
+  
+  // If we found explicit types, also add unknown records to the appropriate series
+  // by guessing based on typical patterns (if manga has more volumes in library, unknown is likely manga)
+  if (results.length > 0 && unknownRecords.length > 0) {
+    // Try to guess: if manga series exists and has multiple volumes, unknown is likely manga
+    // This is a heuristic - might need refinement
+    console.log(`[MangaSearch] ${unknownRecords.length} records without explicit media type detected`);
+  }
+  
+  return results;
+}
+
+/**
+ * Build a single series from NC Cardinal (backwards compatibility)
+ * Used when we only want one series (e.g., for simple cases)
+ */
+function buildSeriesFromNCCardinal(
+  seriesTitle: string,
+  records: CatalogRecord[],
+  homeLibrary?: string | undefined
+): SeriesResult | null {
+  const allSeries = buildMultipleSeriesFromNCCardinal(seriesTitle, records, homeLibrary);
+  // Return the first series (preferring manga if multiple)
+  return allSeries[0] ?? null;
+}
+
 function getCoverImageUrl(isbn?: string, googleThumbnail?: string, bookcoverUrl?: string): string | undefined {
   // Prefer Bookcover API - returns clean 404 when no image (no placeholder GIFs)
   if (bookcoverUrl) {
@@ -253,7 +545,16 @@ function createDebugInfo(): DebugInfo & { startTime: number } {
     errors: [],
     warnings: [],
     cacheHits: [],
+    log: [],
+    dataIssues: [],
+    sourceSummary: {},
   };
+}
+
+/** Add a log entry to debug info */
+function debugLog(debug: DebugInfo & { startTime: number }, message: string): void {
+  const elapsed = Date.now() - debug.startTime;
+  debug.log.push(`[${elapsed}ms] ${message}`);
 }
 
 /**
@@ -336,33 +637,130 @@ export async function search(
   };
 
   // Step 1: Try Wikipedia first (better structured data)
+  debugLog(debug, `Starting Wikipedia search for "${parsedQuery.title}"`);
   let wikiSeries: WikiMangaSeries | null = null;
   const wikiStart = Date.now();
   try {
     wikiSeries = await getWikipediaSeries(parsedQuery.title);
     if (wikiSeries) {
       debug.sources.push('wikipedia');
+      debug.sourceSummary.wikipedia = {
+        found: true,
+        volumeCount: wikiSeries.volumes.length,
+        seriesTitle: wikiSeries.title,
+      };
+      debugLog(debug, `Wikipedia found: "${wikiSeries.title}" with ${wikiSeries.volumes.length} volumes`);
+    } else {
+      debug.sourceSummary.wikipedia = { found: false };
+      debugLog(debug, 'Wikipedia: no series found');
     }
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
     console.warn('[MangaSearch] Wikipedia search failed:', error);
-    debug.errors.push(`Wikipedia: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    debug.errors.push(`Wikipedia: ${errorMsg}`);
+    debug.sourceSummary.wikipedia = { found: false, error: errorMsg };
+    
+    // Detect specific error types for better debugging
+    if (errorMsg.includes('429') || errorMsg.includes('rate limit')) {
+      debug.dataIssues.push('Wikipedia rate limited (429) - using fallback sources');
+      debugLog(debug, 'Wikipedia RATE LIMITED (429) - will try fallback sources');
+    } else {
+      debugLog(debug, `Wikipedia ERROR: ${errorMsg}`);
+    }
   }
   debug.timing.wikipedia = Date.now() - wikiStart;
 
-  // Step 2: If Wikipedia didn't find anything, try Google Books
-  let googleSeries: GoogleBooksSeries[] = [];
+  // DISABLED: Google Books as a fallback source - relying on Wikipedia + NC Cardinal only
+  // Step 2: If Wikipedia didn't find anything, try NC Cardinal directly
+  // let googleSeries: GoogleBooksSeries[] = [];
+  let ncCardinalFallbackSeries: SeriesResult[] = []; // Array to support multiple series (manga + light novel)
+  
   if (!wikiSeries || wikiSeries.volumes.length === 0) {
-    const gbStart = Date.now();
+    // DISABLED: Google Books fallback
+    // debugLog(debug, 'Wikipedia unavailable or empty, trying Google Books');
+    // const gbStart = Date.now();
+    // try {
+    //   googleSeries = await searchGoogleBooks(parsedQuery.title);
+    //   if (googleSeries.length > 0) {
+    //     debug.sources.push('google-books');
+    //     const firstSeries = googleSeries[0];
+    //     const totalVolumes = googleSeries.reduce((sum, s) => sum + s.volumes.length, 0);
+    //     
+    //     // Check for data quality issues
+    //     const volumesWithSeriesId = googleSeries.flatMap(s => s.volumes).filter(v => v.seriesId).length;
+    //     const volumesWithVolNum = googleSeries.flatMap(s => s.volumes).filter(v => v.volumeNumber !== undefined).length;
+    //     
+    //     debug.sourceSummary.googleBooks = {
+    //       found: true,
+    //       seriesCount: googleSeries.length,
+    //       volumesReturned: totalVolumes,
+    //       volumesWithSeriesId,
+    //     };
+    //     
+    //     debugLog(debug, `Google Books found ${googleSeries.length} series, ${totalVolumes} volumes (${volumesWithSeriesId} with seriesId, ${volumesWithVolNum} with volumeNumber)`);
+    //     
+    //     if (volumesWithSeriesId < totalVolumes * 0.5) {
+    //       debug.dataIssues.push(`Google Books: Only ${volumesWithSeriesId}/${totalVolumes} volumes have seriesId - data quality is poor`);
+    //     }
+    //     if (firstSeries && firstSeries.volumes.length < 5) {
+    //       debug.dataIssues.push(`Google Books: Only found ${firstSeries.volumes.length} volumes - likely incomplete`);
+    //     }
+    //   } else {
+    //     debug.sourceSummary.googleBooks = { found: false };
+    //     debugLog(debug, 'Google Books: no series found');
+    //   }
+    // } catch (error) {
+    //   const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    //   console.warn('[MangaSearch] Google Books search failed:', error);
+    //   debug.errors.push(`Google Books: ${errorMsg}`);
+    //   debug.sourceSummary.googleBooks = { found: false, error: errorMsg };
+    //   debugLog(debug, `Google Books ERROR: ${errorMsg}`);
+    // }
+    // debug.timing.googleBooks = Date.now() - gbStart;
+    
+    // Step 2b: Try NC Cardinal title search directly (was previously fallback after Google Books)
+    debugLog(debug, 'Wikipedia unavailable or empty, trying NC Cardinal title search');
     try {
-      googleSeries = await searchGoogleBooks(parsedQuery.title);
-      if (googleSeries.length > 0) {
-        debug.sources.push('google-books');
+      const fallbackResults = await searchCatalog(`${parsedQuery.title}`, {
+        searchClass: 'title',
+        count: 60, // Increased to capture both manga and light novel
+      });
+      
+      if (fallbackResults.records.length > 0) {
+        debugLog(debug, `NC Cardinal found ${fallbackResults.records.length} records`);
+        ncCardinalFallbackSeries = buildMultipleSeriesFromNCCardinal(
+          parsedQuery.title,
+          fallbackResults.records,
+          homeLibrary
+        );
+        if (ncCardinalFallbackSeries.length > 0) {
+          const totalVolumes = ncCardinalFallbackSeries.reduce((sum, s) => sum + s.totalVolumes, 0);
+          debug.sources.push('nc-cardinal-fallback');
+          debug.sourceSummary.ncCardinal = {
+            found: true,
+            recordCount: fallbackResults.records.length,
+            volumesExtracted: totalVolumes,
+          };
+          debugLog(debug, `NC Cardinal built ${ncCardinalFallbackSeries.length} series with ${totalVolumes} total volumes`);
+        } else {
+          debug.sourceSummary.ncCardinal = { 
+            found: false,
+            recordCount: fallbackResults.records.length,
+            volumesExtracted: 0,
+          };
+          debug.dataIssues.push(`NC Cardinal: Found ${fallbackResults.records.length} records but couldn't extract volumes`);
+          debugLog(debug, 'NC Cardinal: Could not extract volumes from records');
+        }
+      } else {
+        debug.sourceSummary.ncCardinal = { found: false, recordCount: 0 };
+        debugLog(debug, 'NC Cardinal: no records found');
       }
     } catch (error) {
-      console.warn('[MangaSearch] Google Books search failed:', error);
-      debug.errors.push(`Google Books: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      console.warn('[MangaSearch] NC Cardinal fallback search failed:', error);
+      debug.sourceSummary.ncCardinal = { found: false, error: errorMsg };
+      debugLog(debug, `NC Cardinal ERROR: ${errorMsg}`);
     }
-    debug.timing.googleBooks = Date.now() - gbStart;
   }
 
   // Step 3: Collect ISBNs for availability lookup
@@ -375,18 +773,20 @@ export async function search(
         isbnsToCheck.push(vol.englishISBN);
       }
     }
-  } else if (googleSeries.length > 0) {
-    // Add Google Books ISBNs
-    for (const series of googleSeries.slice(0, 2)) {
-      for (const vol of series.volumes) {
-        if (vol.isbn13) {
-          isbnsToCheck.push(vol.isbn13);
-        } else if (vol.isbn10) {
-          isbnsToCheck.push(vol.isbn10);
-        }
-      }
-    }
   }
+  // DISABLED: Google Books ISBNs - relying on Wikipedia + NC Cardinal only
+  // } else if (googleSeries.length > 0) {
+  //   // Add Google Books ISBNs
+  //   for (const series of googleSeries.slice(0, 2)) {
+  //     for (const vol of series.volumes) {
+  //       if (vol.isbn13) {
+  //         isbnsToCheck.push(vol.isbn13);
+  //       } else if (vol.isbn10) {
+  //         isbnsToCheck.push(vol.isbn10);
+  //       }
+  //     }
+  //   }
+  // }
 
   // Step 4: Check availability in NC Cardinal
   console.log(`[MangaSearch] Checking availability for ${isbnsToCheck.length} ISBNs...`);
@@ -397,68 +797,9 @@ export async function search(
       availability = await getAvailabilityByISBNs(isbnsToCheck, { org: 'CARDINAL', homeLibrary });
       debug.sources.push('nc-cardinal');
       
-      // Step 4b: If all ISBNs came back as "not in catalog", try a title search on NC Cardinal
-      // This handles the case where Google Books has different ISBNs than the library
-      const foundInCatalog = Array.from(availability.values()).some(a => !a.notInCatalog);
-      if (!foundInCatalog && googleSeries.length > 0) {
-        console.log(`[MangaSearch] ISBNs not found, trying direct title search on NC Cardinal...`);
-        const titleSearchResults = await searchCatalog(`${parsedQuery.title} manga`, {
-          searchClass: 'title',
-          count: 40,
-        });
-        
-        if (titleSearchResults.records.length > 0) {
-          console.log(`[MangaSearch] Found ${titleSearchResults.records.length} records via title search!`);
-          
-          // Build availability from the title search results
-          // Group records by extracted volume number
-          const volumeRecords = new Map<number, CatalogRecord>();
-          for (const record of titleSearchResults.records) {
-            // Try to extract volume number from title
-            const titleLower = record.title.toLowerCase();
-            // Skip if this doesn't look like our series
-            if (!titleLower.includes(parsedQuery.title.toLowerCase().split(' ')[0] || '')) {
-              continue;
-            }
-            
-            const volMatch = record.volumeNumber 
-              || record.title.match(/(?:vol\.?|v\.?|#)\s*(\d+)/i)?.[1]
-              || record.title.match(/\.\s*(\d+)\s*$/)?.[1];
-            const volNum = volMatch ? parseInt(String(volMatch), 10) : undefined;
-            
-            if (volNum && volNum > 0 && volNum < 1000) {
-              // If we don't have this volume yet, or this record has more ISBNs, use it
-              if (!volumeRecords.has(volNum) || record.isbns.length > (volumeRecords.get(volNum)?.isbns.length ?? 0)) {
-                volumeRecords.set(volNum, record);
-              }
-            }
-          }
-          
-          // Now update the Google Books series with the found ISBNs and availability
-          if (volumeRecords.size > 0 && googleSeries[0]) {
-            console.log(`[MangaSearch] Mapped ${volumeRecords.size} volumes from NC Cardinal title search`);
-            
-            // Update the volumes in the Google Books series with NC Cardinal ISBNs
-            for (const vol of googleSeries[0].volumes) {
-              if (vol.volumeNumber) {
-                const ncRecord = volumeRecords.get(vol.volumeNumber);
-                if (ncRecord) {
-                  // Replace Google Books ISBN with NC Cardinal ISBN
-                  const ncIsbn = ncRecord.isbns.find(i => i.startsWith('978')) ?? ncRecord.isbns[0];
-                  if (ncIsbn) {
-                    vol.isbn13 = ncIsbn;
-                    vol.isbn10 = undefined;
-                    
-                    // Build availability from this record with local/remote breakdown
-                    const detailedSummary = getDetailedAvailabilitySummary(ncRecord, homeLibrary);
-                    availability.set(ncIsbn, detailedSummary);
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+      // DISABLED: Google Books ISBN fallback logic - no longer using Google Books
+      // Step 4b was: If all ISBNs came back as "not in catalog", try a title search on NC Cardinal
+      // This is now handled directly in Step 2 above
     } catch (error) {
       console.warn('[MangaSearch] NC Cardinal availability check failed:', error);
       debug.errors.push(`NC Cardinal: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -491,29 +832,139 @@ export async function search(
         source: 'wikipedia',
       });
     }
-  } else if (googleSeries.length > 0) {
-    // Use Google Books results
-    for (const series of googleSeries.slice(0, 3)) {
-      const seriesResult = buildSeriesResultFromGoogle(series, availability, bookcoverUrls);
-      result.series.push(seriesResult);
-
-      // Build volume results
-      for (const vol of series.volumes) {
-        const isbn = vol.isbn13 ?? vol.isbn10;
-        const volAvail = isbn ? availability.get(isbn) : undefined;
-        const bookcoverCover = isbn ? bookcoverUrls.get(isbn) : undefined;
+    
+    // Step 5b: Check NC Cardinal for alternate media types (e.g., manga vs light novel)
+    // Wikipedia typically only returns one type, so we search for the other
+    try {
+      const wikiTitleLower = wikiSeries.title.toLowerCase();
+      const isWikiManga = wikiTitleLower.includes('manga');
+      
+      // If Wikipedia doesn't explicitly say "manga", assume it might be light novel 
+      // and search NC Cardinal for manga adaptation
+      const searchTerms = isWikiManga 
+        ? [`${parsedQuery.title}`] // If wiki found manga, search for any (might find LN)
+        : [`${parsedQuery.title} manga`, `${parsedQuery.title}`]; // Search for manga first, then general
+      
+      for (const alternateSearchTerm of searchTerms) {
+        console.log(`[MangaSearch] Checking for alternate media types: "${alternateSearchTerm}"`);
+        const alternateResults = await searchCatalog(alternateSearchTerm, {
+          searchClass: 'title',
+          count: 40,
+        });
+        
+        if (alternateResults.records.length > 0) {
+          const alternateSeries = buildMultipleSeriesFromNCCardinal(
+            parsedQuery.title,
+            alternateResults.records,
+            homeLibrary
+          );
+          
+          // Add any series that is explicitly a different media type
+          for (const altSeries of alternateSeries) {
+            const altTitleLower = altSeries.title.toLowerCase();
+            const isAltManga = altTitleLower.includes('manga');
+            
+            // Add if:
+            // 1. Wikipedia is manga and NC Cardinal found light novel, OR
+            // 2. Wikipedia is NOT explicitly manga and NC Cardinal found manga
+            const shouldAdd = (isWikiManga && !isAltManga) || 
+                              (!isWikiManga && isAltManga);
+            
+            // Also check we're not adding a duplicate
+            const isDuplicate = result.series.some(s => 
+              s.slug === altSeries.slug || 
+              s.title.toLowerCase() === altSeries.title.toLowerCase()
+            );
+            
+            if (shouldAdd && altSeries.totalVolumes > 0 && !isDuplicate) {
+              console.log(`[MangaSearch] Found alternate media type: ${altSeries.title} (${altSeries.totalVolumes} volumes)`);
+              
+              // Fetch cover images for alternate series
+              const altIsbns = altSeries.volumes?.map(v => v.isbn).filter((isbn): isbn is string => !!isbn) ?? [];
+              const altBookcovers = await fetchBookcoverUrls(altIsbns);
+              
+              result.series.push({
+                ...altSeries,
+                coverImage: altBookcovers.get(altSeries.volumes?.[0]?.isbn ?? ''),
+              });
+              
+              // Add volumes
+              for (const vol of altSeries.volumes ?? []) {
+                const bookcoverCover = vol.isbn ? altBookcovers.get(vol.isbn) : undefined;
+                result.volumes.push({
+                  title: vol.title ?? `${altSeries.title}, Vol. ${vol.volumeNumber}`,
+                  volumeNumber: vol.volumeNumber,
+                  seriesTitle: altSeries.title,
+                  isbn: vol.isbn,
+                  coverImage: getCoverImageUrl(vol.isbn, undefined, bookcoverCover),
+                  availability: vol.availability,
+                  source: 'nc-cardinal',
+                });
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('[MangaSearch] Failed to check for alternate media types:', error);
+    }
+  } else if (ncCardinalFallbackSeries.length > 0) {
+    // Use NC Cardinal fallback when Wikipedia and Google Books both failed
+    // This may include multiple series (e.g., manga + light novel variants)
+    console.log(`[MangaSearch] Using ${ncCardinalFallbackSeries.length} NC Cardinal fallback series`);
+    
+    // Collect all ISBNs from all series for cover image lookup
+    const allNcIsbns = ncCardinalFallbackSeries.flatMap(series => 
+      series.volumes?.map(v => v.isbn).filter((isbn): isbn is string => !!isbn) ?? []
+    );
+    const ncBookcovers = await fetchBookcoverUrls(allNcIsbns);
+    
+    // Add each series and its volumes
+    for (const ncSeries of ncCardinalFallbackSeries) {
+      result.series.push({
+        ...ncSeries,
+        coverImage: ncBookcovers.get(ncSeries.volumes?.[0]?.isbn ?? ''),
+      });
+      
+      // Build volume results for this series
+      for (const vol of ncSeries.volumes ?? []) {
+        const bookcoverCover = vol.isbn ? ncBookcovers.get(vol.isbn) : undefined;
         result.volumes.push({
-          title: vol.title,
+          title: vol.title ?? `${ncSeries.title}, Vol. ${vol.volumeNumber}`,
           volumeNumber: vol.volumeNumber,
-          seriesTitle: series.title,
-          isbn,
-          coverImage: getCoverImageUrl(isbn, vol.thumbnail, bookcoverCover),
-          availability: volAvail,
-          source: 'google-books',
+          seriesTitle: ncSeries.title,
+          isbn: vol.isbn,
+          coverImage: getCoverImageUrl(vol.isbn, undefined, bookcoverCover),
+          availability: vol.availability,
+          source: 'nc-cardinal',
         });
       }
     }
   }
+  // DISABLED: Google Books results - relying on Wikipedia + NC Cardinal only
+  // } else if (googleSeries.length > 0) {
+  //   // Use Google Books results
+  //   for (const series of googleSeries.slice(0, 3)) {
+  //     const seriesResult = buildSeriesResultFromGoogle(series, availability, bookcoverUrls);
+  //     result.series.push(seriesResult);
+  //
+  //     // Build volume results
+  //     for (const vol of series.volumes) {
+  //       const isbn = vol.isbn13 ?? vol.isbn10;
+  //       const volAvail = isbn ? availability.get(isbn) : undefined;
+  //       const bookcoverCover = isbn ? bookcoverUrls.get(isbn) : undefined;
+  //       result.volumes.push({
+  //         title: vol.title,
+  //         volumeNumber: vol.volumeNumber,
+  //         seriesTitle: series.title,
+  //         isbn,
+  //         coverImage: getCoverImageUrl(isbn, vol.thumbnail, bookcoverCover),
+  //         availability: volAvail,
+  //         source: 'google-books',
+  //       });
+  //     }
+  //   }
+  // }
 
   // Step 6: Determine best match
   if (parsedQuery.volumeNumber) {
@@ -563,41 +1014,41 @@ export async function getSeriesDetails(
     .map(v => v.englishISBN)
     .filter((isbn): isbn is string => isbn !== undefined);
 
-  // Fetch availability, Google Books covers, and Bookcover API in parallel
+  // Fetch availability and Bookcover API in parallel
+  // DISABLED: Google Books cover fetching - using Bookcover API only
   console.log(`[MangaSearch] Checking availability for ${isbns.length} volumes...`);
   const ncStart = Date.now();
-  const [availability, googleBooksSeries, bookcoverUrls] = await Promise.all([
+  const [availability, bookcoverUrls] = await Promise.all([
     getAvailabilityByISBNs(isbns, { org: 'CARDINAL', homeLibrary }),
-    searchGoogleBooks(wikiSeries.title).catch(() => [] as GoogleBooksSeries[]),
+    // DISABLED: Google Books for covers
+    // searchGoogleBooks(wikiSeries.title).catch(() => [] as GoogleBooksSeries[]),
     fetchBookcoverUrls(isbns),
   ]);
   debug.timing.ncCardinal = Date.now() - ncStart;
   debug.sources.push('nc-cardinal');
 
-  // Build maps for Google Books thumbnails:
-  // 1. ISBN -> thumbnail (for exact matches)
-  // 2. Volume number -> thumbnail (fallback when ISBNs differ between sources)
-  const googleThumbnails = new Map<string, string>();
-  const googleThumbnailsByVolume = new Map<number, string>();
-  for (const series of googleBooksSeries) {
-    for (const vol of series.volumes) {
-      const isbn = vol.isbn13 ?? vol.isbn10;
-      if (vol.thumbnail) {
-        if (isbn) {
-          googleThumbnails.set(isbn, vol.thumbnail);
-        }
-        if (vol.volumeNumber !== undefined) {
-          // Only set if we don't already have a thumbnail for this volume
-          if (!googleThumbnailsByVolume.has(vol.volumeNumber)) {
-            googleThumbnailsByVolume.set(vol.volumeNumber, vol.thumbnail);
-          }
-        }
-      }
-    }
-  }
-  if (googleThumbnails.size > 0 || googleThumbnailsByVolume.size > 0) {
-    debug.sources.push('google-books');
-  }
+  // DISABLED: Google Books thumbnail maps - using Bookcover API only
+  // const googleThumbnails = new Map<string, string>();
+  // const googleThumbnailsByVolume = new Map<number, string>();
+  // for (const series of googleBooksSeries) {
+  //   for (const vol of series.volumes) {
+  //     const isbn = vol.isbn13 ?? vol.isbn10;
+  //     if (vol.thumbnail) {
+  //       if (isbn) {
+  //         googleThumbnails.set(isbn, vol.thumbnail);
+  //       }
+  //       if (vol.volumeNumber !== undefined) {
+  //         // Only set if we don't already have a thumbnail for this volume
+  //         if (!googleThumbnailsByVolume.has(vol.volumeNumber)) {
+  //           googleThumbnailsByVolume.set(vol.volumeNumber, vol.thumbnail);
+  //         }
+  //       }
+  //     }
+  //   }
+  // }
+  // if (googleThumbnails.size > 0 || googleThumbnailsByVolume.size > 0) {
+  //   debug.sources.push('google-books');
+  // }
   if (bookcoverUrls.size > 0) {
     debug.sources.push('bookcover-api');
   }
@@ -605,19 +1056,15 @@ export async function getSeriesDetails(
   // Get first volume's ISBN for cover image
   const firstVolumeIsbn = wikiSeries.volumes[0]?.englishISBN;
 
-  // Build volume info with covers from multiple sources
-  // Priority: Google Books > Bookcover API > OpenLibrary
+  // Build volume info with covers from Bookcover API or OpenLibrary fallback
   const volumes: VolumeInfo[] = wikiSeries.volumes.map(vol => {
-    const isbnThumbnail = vol.englishISBN ? googleThumbnails.get(vol.englishISBN) : undefined;
-    const volumeThumbnail = googleThumbnailsByVolume.get(vol.volumeNumber);
-    const googleCover = isbnThumbnail ?? volumeThumbnail;
     const bookcoverCover = vol.englishISBN ? bookcoverUrls.get(vol.englishISBN) : undefined;
     
     return {
       volumeNumber: vol.volumeNumber,
       title: vol.title,
       isbn: vol.englishISBN,
-      coverImage: getCoverImageUrl(vol.englishISBN, googleCover, bookcoverCover),
+      coverImage: getCoverImageUrl(vol.englishISBN, undefined, bookcoverCover),
       availability: vol.englishISBN ? availability.get(vol.englishISBN) : undefined,
     };
   });
@@ -634,10 +1081,7 @@ export async function getSeriesDetails(
     }
   }
 
-  // Get series cover from first volume
-  const firstVolIsbnThumbnail = firstVolumeIsbn ? googleThumbnails.get(firstVolumeIsbn) : undefined;
-  const firstVolNumThumbnail = googleThumbnailsByVolume.get(1);
-  const seriesCoverThumbnail = firstVolIsbnThumbnail ?? firstVolNumThumbnail;
+  // Get series cover from first volume (Bookcover API or OpenLibrary fallback)
   const firstVolBookcover = firstVolumeIsbn ? bookcoverUrls.get(firstVolumeIsbn) : undefined;
 
   const result: SeriesDetails = {
@@ -647,7 +1091,7 @@ export async function getSeriesDetails(
     totalVolumes: wikiSeries.totalVolumes,
     isComplete: wikiSeries.isComplete,
     author: wikiSeries.author,
-    coverImage: getCoverImageUrl(firstVolumeIsbn, seriesCoverThumbnail, firstVolBookcover),
+    coverImage: getCoverImageUrl(firstVolumeIsbn, undefined, firstVolBookcover),
     volumes,
     availableCount,
     missingVolumes,
@@ -704,46 +1148,47 @@ function buildSeriesResultFromWikipedia(
   };
 }
 
-function buildSeriesResultFromGoogle(
-  series: GoogleBooksSeries,
-  availability: Map<string, VolumeAvailability>,
-  bookcoverUrls: Map<string, string> = new Map()
-): SeriesResult {
-  let availableVolumes = 0;
-  
-  // Get first volume for cover image
-  const firstVolume = series.volumes[0];
-  const firstIsbn = firstVolume?.isbn13 ?? firstVolume?.isbn10;
-  const firstVolBookcover = firstIsbn ? bookcoverUrls.get(firstIsbn) : undefined;
-
-  const volumes: VolumeInfo[] = series.volumes.map(vol => {
-    const isbn = vol.isbn13 ?? vol.isbn10;
-    const volAvail = isbn ? availability.get(isbn) : undefined;
-    if (volAvail?.available) {
-      availableVolumes++;
-    }
-    const bookcoverCover = isbn ? bookcoverUrls.get(isbn) : undefined;
-    return {
-      volumeNumber: vol.volumeNumber ?? 0,
-      title: vol.subtitle,
-      isbn,
-      coverImage: getCoverImageUrl(isbn, vol.thumbnail, bookcoverCover),
-      availability: volAvail,
-    };
-  });
-
-  return {
-    id: `gbooks-${series.seriesId}`,
-    slug: generateSlug(series.title),
-    title: series.title,
-    totalVolumes: series.totalVolumesFound,
-    availableVolumes,
-    isComplete: false, // Google Books doesn't tell us this
-    coverImage: getCoverImageUrl(firstIsbn, firstVolume?.thumbnail, firstVolBookcover),
-    source: 'google-books',
-    volumes,
-  };
-}
+// DISABLED: Google Books as a data source - function kept for potential future use
+// function buildSeriesResultFromGoogle(
+//   series: GoogleBooksSeries,
+//   availability: Map<string, VolumeAvailability>,
+//   bookcoverUrls: Map<string, string> = new Map()
+// ): SeriesResult {
+//   let availableVolumes = 0;
+//   
+//   // Get first volume for cover image
+//   const firstVolume = series.volumes[0];
+//   const firstIsbn = firstVolume?.isbn13 ?? firstVolume?.isbn10;
+//   const firstVolBookcover = firstIsbn ? bookcoverUrls.get(firstIsbn) : undefined;
+//
+//   const volumes: VolumeInfo[] = series.volumes.map(vol => {
+//     const isbn = vol.isbn13 ?? vol.isbn10;
+//     const volAvail = isbn ? availability.get(isbn) : undefined;
+//     if (volAvail?.available) {
+//       availableVolumes++;
+//     }
+//     const bookcoverCover = isbn ? bookcoverUrls.get(isbn) : undefined;
+//     return {
+//       volumeNumber: vol.volumeNumber ?? 0,
+//       title: vol.subtitle,
+//       isbn,
+//       coverImage: getCoverImageUrl(isbn, vol.thumbnail, bookcoverCover),
+//       availability: volAvail,
+//     };
+//   });
+//
+//   return {
+//     id: `gbooks-${series.seriesId}`,
+//     slug: generateSlug(series.title),
+//     title: series.title,
+//     totalVolumes: series.totalVolumesFound,
+//     availableVolumes,
+//     isComplete: false, // Google Books doesn't tell us this
+//     coverImage: getCoverImageUrl(firstIsbn, firstVolume?.thumbnail, firstVolBookcover),
+//     source: 'google-books',
+//     volumes,
+//   };
+// }
 
 // ============================================================================
 // Test/Demo execution

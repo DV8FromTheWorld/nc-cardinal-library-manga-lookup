@@ -29,9 +29,20 @@ import {
   type CatalogRecord,
 } from '../scripts/opensearch-client.js';
 
+// DISABLED: Google Books as a source - relying on Bookcover API + OpenLibrary for covers
+// import {
+//   searchByISBN as searchGoogleBooksByISBN,
+// } from '../scripts/google-books-client.js';
+
 import {
-  searchByISBN as searchGoogleBooksByISBN,
-} from '../scripts/google-books-client.js';
+  getAllCacheStats,
+  clearAllCaches,
+  clearCacheType,
+  clearCacheForISBN,
+  clearCacheForSeries,
+  clearCacheForSearch,
+  type CacheType,
+} from '../scripts/cache-utils.js';
 
 // ============================================================================
 // Zod Schemas
@@ -64,6 +75,29 @@ const VolumeInfoSchema = z.object({
   availability: VolumeAvailabilitySchema.optional(),
 });
 
+const SourceSummarySchema = z.object({
+  wikipedia: z.object({
+    found: z.boolean(),
+    volumeCount: z.number().optional(),
+    seriesTitle: z.string().optional(),
+    error: z.string().optional(),
+  }).optional(),
+  googleBooks: z.object({
+    found: z.boolean(),
+    totalItems: z.number().optional(),
+    volumesReturned: z.number().optional(),
+    volumesWithSeriesId: z.number().optional(),
+    seriesCount: z.number().optional(),
+    error: z.string().optional(),
+  }).optional(),
+  ncCardinal: z.object({
+    found: z.boolean(),
+    recordCount: z.number().optional(),
+    volumesExtracted: z.number().optional(),
+    error: z.string().optional(),
+  }).optional(),
+});
+
 const DebugInfoSchema = z.object({
   sources: z.array(z.string()),
   timing: z.object({
@@ -75,6 +109,9 @@ const DebugInfoSchema = z.object({
   errors: z.array(z.string()),
   warnings: z.array(z.string()),
   cacheHits: z.array(z.string()),
+  log: z.array(z.string()),
+  dataIssues: z.array(z.string()),
+  sourceSummary: SourceSummarySchema,
 });
 
 const SeriesResultSchema = z.object({
@@ -86,7 +123,7 @@ const SeriesResultSchema = z.object({
   isComplete: z.boolean(),
   author: z.string().optional(),
   coverImage: z.string().optional(),
-  source: z.enum(['wikipedia', 'google-books']),
+  source: z.enum(['wikipedia', 'google-books', 'nc-cardinal']),
   volumes: z.array(VolumeInfoSchema).optional(),
 });
 
@@ -215,6 +252,26 @@ const ErrorSchema = z.object({
   message: z.string().optional(),
 });
 
+// Cache-related schemas
+const CacheStatsSchema = z.object({
+  type: z.string(),
+  entryCount: z.number(),
+  totalSizeBytes: z.number(),
+});
+
+const AllCacheStatsSchema = z.object({
+  caches: z.array(CacheStatsSchema),
+  totalEntries: z.number(),
+  totalSizeBytes: z.number(),
+});
+
+const CacheClearResultSchema = z.object({
+  success: z.boolean(),
+  deletedCount: z.number(),
+  deletedFiles: z.array(z.string()).optional(),
+  message: z.string().optional(),
+});
+
 // ============================================================================
 // Routes
 // ============================================================================
@@ -243,6 +300,173 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
       };
     }
   );
+
+  // ==========================================================================
+  // Cache Management Routes
+  // ==========================================================================
+
+  /**
+   * GET /manga/cache/stats
+   *
+   * Get statistics about all cache types.
+   */
+  app.get(
+    '/cache/stats',
+    {
+      schema: {
+        response: {
+          200: AllCacheStatsSchema,
+        },
+      },
+    },
+    async () => {
+      return getAllCacheStats();
+    }
+  );
+
+  /**
+   * DELETE /manga/cache
+   *
+   * Clear all caches.
+   */
+  app.delete(
+    '/cache',
+    {
+      schema: {
+        response: {
+          200: CacheClearResultSchema,
+        },
+      },
+    },
+    async () => {
+      const result = clearAllCaches();
+      return {
+        success: true,
+        deletedCount: result.deletedCount,
+        message: `Cleared ${result.deletedCount} cache entries`,
+      };
+    }
+  );
+
+  /**
+   * DELETE /manga/cache/type/:type
+   *
+   * Clear a specific cache type.
+   */
+  app.delete(
+    '/cache/type/:type',
+    {
+      schema: {
+        params: z.object({
+          type: z.enum(['wikipedia', 'google-books', 'bookcover', 'nc-cardinal']),
+        }),
+        response: {
+          200: CacheClearResultSchema,
+          400: ErrorSchema,
+        },
+      },
+    },
+    async (request) => {
+      const { type } = request.params;
+      const result = clearCacheType(type as CacheType);
+      return {
+        success: true,
+        deletedCount: result.deletedCount,
+        message: `Cleared ${result.deletedCount} entries from ${type} cache`,
+      };
+    }
+  );
+
+  /**
+   * DELETE /manga/cache/book/:isbn
+   *
+   * Clear all cache entries related to a specific ISBN.
+   */
+  app.delete(
+    '/cache/book/:isbn',
+    {
+      schema: {
+        params: z.object({
+          isbn: z.string().min(10).max(17),
+        }),
+        response: {
+          200: CacheClearResultSchema,
+        },
+      },
+    },
+    async (request) => {
+      const { isbn } = request.params;
+      const result = clearCacheForISBN(isbn);
+      return {
+        success: true,
+        deletedCount: result.deletedCount,
+        deletedFiles: result.deletedFiles,
+        message: `Cleared ${result.deletedCount} cache entries for ISBN ${isbn}`,
+      };
+    }
+  );
+
+  /**
+   * DELETE /manga/cache/series/:slug
+   *
+   * Clear Wikipedia cache entries for a specific series.
+   */
+  app.delete(
+    '/cache/series/:slug',
+    {
+      schema: {
+        params: z.object({
+          slug: z.string().min(1),
+        }),
+        response: {
+          200: CacheClearResultSchema,
+        },
+      },
+    },
+    async (request) => {
+      const { slug } = request.params;
+      const result = clearCacheForSeries(slug);
+      return {
+        success: true,
+        deletedCount: result.deletedCount,
+        deletedFiles: result.deletedFiles,
+        message: `Cleared ${result.deletedCount} cache entries for series "${slug}"`,
+      };
+    }
+  );
+
+  /**
+   * DELETE /manga/cache/search/:query
+   *
+   * Clear Wikipedia search cache for a specific query.
+   */
+  app.delete(
+    '/cache/search/:query',
+    {
+      schema: {
+        params: z.object({
+          query: z.string().min(1),
+        }),
+        response: {
+          200: CacheClearResultSchema,
+        },
+      },
+    },
+    async (request) => {
+      const { query } = request.params;
+      const result = clearCacheForSearch(query);
+      return {
+        success: true,
+        deletedCount: result.deletedCount,
+        deletedFiles: result.deletedFiles,
+        message: `Cleared ${result.deletedCount} cache entries for search "${query}"`,
+      };
+    }
+  );
+
+  // ==========================================================================
+  // Search Routes
+  // ==========================================================================
 
   /**
    * GET /manga/search?q=query&debug=true&homeLibrary=HIGH_POINT_MAIN
@@ -388,17 +612,18 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
       const cleanISBN = isbn.replace(/[-\s]/g, '');
 
       try {
-        // Fetch NC Cardinal record, Google Books cover, and Bookcover API in parallel
-        const [record, googleBook, bookcoverUrl] = await Promise.all([
+        // Fetch NC Cardinal record and Bookcover API in parallel
+        // DISABLED: Google Books cover fetching
+        const [record, bookcoverUrl] = await Promise.all([
           searchByISBN(cleanISBN),
-          searchGoogleBooksByISBN(cleanISBN).catch(() => null),
+          // DISABLED: Google Books
+          // searchGoogleBooksByISBN(cleanISBN).catch(() => null),
           fetchBookcoverUrl(cleanISBN).catch(() => null),
         ]);
         
         // Prefer Bookcover API (returns clean 404, no placeholder images)
-        // Fall back to Google Books, then OpenLibrary
-        const googleCover = googleBook?.thumbnail?.replace('zoom=1', 'zoom=2').replace('&edge=curl', '');
-        const coverImage = bookcoverUrl ?? googleCover ?? `https://covers.openlibrary.org/b/isbn/${cleanISBN}-M.jpg`;
+        // Fall back to OpenLibrary
+        const coverImage = bookcoverUrl ?? `https://covers.openlibrary.org/b/isbn/${cleanISBN}-M.jpg`;
 
         if (!record) {
           // Book not in NC Cardinal catalog - return minimal info
@@ -488,17 +713,18 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
       const cleanISBN = isbn.replace(/[-\s]/g, '');
 
       try {
-        // Fetch NC Cardinal record, Google Books cover, and Bookcover API in parallel
-        const [record, googleBook, bookcoverUrl] = await Promise.all([
+        // Fetch NC Cardinal record and Bookcover API in parallel
+        // DISABLED: Google Books cover fetching
+        const [record, bookcoverUrl] = await Promise.all([
           searchByISBN(cleanISBN),
-          searchGoogleBooksByISBN(cleanISBN).catch(() => null),
+          // DISABLED: Google Books
+          // searchGoogleBooksByISBN(cleanISBN).catch(() => null),
           fetchBookcoverUrl(cleanISBN).catch(() => null),
         ]);
         
         // Prefer Bookcover API (returns clean 404, no placeholder images)
-        // Fall back to Google Books, then OpenLibrary
-        const googleCover = googleBook?.thumbnail?.replace('zoom=1', 'zoom=2').replace('&edge=curl', '');
-        const coverImage = bookcoverUrl ?? googleCover ?? `https://covers.openlibrary.org/b/isbn/${cleanISBN}-M.jpg`;
+        // Fall back to OpenLibrary
+        const coverImage = bookcoverUrl ?? `https://covers.openlibrary.org/b/isbn/${cleanISBN}-M.jpg`;
 
         if (!record) {
           // Book not in NC Cardinal catalog - return minimal info
@@ -631,7 +857,7 @@ function extractSeriesInfo(title: string): { title: string; volumeNumber?: numbe
       const volumeNumber = parseInt(match[2], 10);
       if (volumeNumber > 0 && volumeNumber < 1000) {
         return {
-          title: match[1].trim().replace(/[.,:]$/, '').trim(),
+          title: cleanSeriesTitle(match[1]),
           volumeNumber,
         };
       }
@@ -639,10 +865,23 @@ function extractSeriesInfo(title: string): { title: string; volumeNumber?: numbe
   }
 
   // No volume number found, return just the title cleaned up
-  const cleanTitle = title.replace(/\[manga\]/gi, '').replace(/\s+/g, ' ').trim();
+  const cleanTitle = cleanSeriesTitle(title);
   if (cleanTitle.length > 0) {
     return { title: cleanTitle };
   }
 
   return undefined;
+}
+
+/**
+ * Clean up series title by removing common artifacts from library catalog titles
+ * Removes: [manga] tags, trailing slashes, trailing periods/colons, extra whitespace
+ */
+function cleanSeriesTitle(title: string): string {
+  return title
+    .replace(/\[manga\]/gi, '')      // Remove [manga] tags
+    .replace(/\s*\/\s*$/, '')         // Remove trailing slashes
+    .replace(/[.,:;/\\]+$/, '')       // Remove trailing punctuation
+    .replace(/\s+/g, ' ')             // Normalize whitespace
+    .trim();
 }

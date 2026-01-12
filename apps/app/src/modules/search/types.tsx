@@ -26,6 +26,29 @@ export interface VolumeInfo {
   availability?: VolumeAvailability | undefined;
 }
 
+export interface SourceSummary {
+  wikipedia?: {
+    found: boolean;
+    volumeCount?: number | undefined;
+    seriesTitle?: string | undefined;
+    error?: string | undefined;
+  } | undefined;
+  googleBooks?: {
+    found: boolean;
+    totalItems?: number | undefined;
+    volumesReturned?: number | undefined;
+    volumesWithSeriesId?: number | undefined;
+    seriesCount?: number | undefined;
+    error?: string | undefined;
+  } | undefined;
+  ncCardinal?: {
+    found: boolean;
+    recordCount?: number | undefined;
+    volumesExtracted?: number | undefined;
+    error?: string | undefined;
+  } | undefined;
+}
+
 export interface DebugInfo {
   sources: string[];
   timing: {
@@ -37,6 +60,9 @@ export interface DebugInfo {
   errors: string[];
   warnings: string[];
   cacheHits: string[];
+  log: string[];
+  dataIssues: string[];
+  sourceSummary: SourceSummary;
 }
 
 export interface SeriesResult {
@@ -48,7 +74,7 @@ export interface SeriesResult {
   isComplete: boolean;
   author?: string | undefined;
   coverImage?: string | undefined;
-  source: 'wikipedia' | 'google-books';
+  source: 'wikipedia' | 'google-books' | 'nc-cardinal';
   volumes?: VolumeInfo[] | undefined;
 }
 

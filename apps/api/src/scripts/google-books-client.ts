@@ -208,6 +208,50 @@ function parseVolume(item: GoogleBooksAPIItem): GoogleBooksVolume | null {
 }
 
 /**
+ * Extract a normalized series title from a volume title
+ * "Ascendance of a Bookworm (Manga) Part 2 Volume 1" → "Ascendance of a Bookworm (Manga)"
+ */
+function extractSeriesTitle(volumeTitle: string): string {
+  return volumeTitle
+    // Remove volume number patterns
+    .replace(/,?\s*Vol(?:ume)?\.?\s*\d+.*$/i, '')
+    .replace(/\s*Volume\s*\d+.*$/i, '')
+    // Remove part indicators but keep them for grouping
+    .replace(/\s*Part\s*\d+\s*Volume.*$/i, match => {
+      const partMatch = match.match(/Part\s*(\d+)/i);
+      return partMatch ? ` Part ${partMatch[1]}` : '';
+    })
+    // Remove trailing parenthetical info that's volume-specific
+    .replace(/\s*\([^)]*\d+[^)]*\)\s*$/, '')
+    .trim();
+}
+
+/**
+ * Extract volume number from a title
+ * "Ascendance of a Bookworm (Manga) Part 2 Volume 1" → 1
+ * "Demon Slayer, Vol. 5" → 5
+ */
+function extractVolumeNumber(title: string): number | undefined {
+  // Try various patterns
+  const patterns = [
+    /Vol(?:ume)?\.?\s*(\d+)/i,
+    /Volume\s*(\d+)/i,
+    /Part\s*\d+\s*Volume\s*(\d+)/i,
+    /#\s*(\d+)/,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = title.match(pattern);
+    if (match?.[1]) {
+      const num = parseInt(match[1], 10);
+      if (num > 0 && num < 1000) return num;
+    }
+  }
+  
+  return undefined;
+}
+
+/**
  * Search for manga volumes and group by series
  */
 export async function searchMangaVolumes(
@@ -222,9 +266,10 @@ export async function searchMangaVolumes(
     : `${seriesTitle} manga`;
   const searchResult = await searchVolumes(query, { maxResults });
   
-  // Group volumes by series ID
+  console.log(`[GoogleBooks] Search returned ${searchResult.totalItems} total, ${searchResult.volumes.length} volumes`);
+  
+  // Group volumes by series ID OR by normalized title pattern
   const seriesMap = new Map<string, GoogleBooksVolume[]>();
-  const noSeriesVolumes: GoogleBooksVolume[] = [];
   
   for (const volume of searchResult.volumes) {
     // Filter out non-manga items (coloring books, notebooks, etc.)
@@ -237,43 +282,67 @@ export async function searchMangaVolumes(
       continue;
     }
     
+    // Determine grouping key: prefer seriesId, fall back to title pattern
+    let groupKey: string;
     if (volume.seriesId) {
-      const existing = seriesMap.get(volume.seriesId) ?? [];
-      existing.push(volume);
-      seriesMap.set(volume.seriesId, existing);
+      groupKey = `id:${volume.seriesId}`;
     } else {
-      noSeriesVolumes.push(volume);
+      // Use normalized title as grouping key
+      const normalizedTitle = extractSeriesTitle(volume.title).toLowerCase();
+      groupKey = `title:${normalizedTitle}`;
     }
+    
+    // If volume doesn't have a volume number, try to extract it from title
+    if (volume.volumeNumber === undefined) {
+      volume.volumeNumber = extractVolumeNumber(volume.title);
+    }
+    
+    const existing = seriesMap.get(groupKey) ?? [];
+    existing.push(volume);
+    seriesMap.set(groupKey, existing);
   }
+
+  console.log(`[GoogleBooks] Grouped into ${seriesMap.size} potential series`);
 
   // Convert map to array of series
   const series: GoogleBooksSeries[] = [];
   
-  for (const [seriesId, volumes] of seriesMap) {
+  for (const [groupKey, volumes] of seriesMap) {
+    // Deduplicate volumes by ISBN (prefer volumes with more metadata)
+    const uniqueVolumes = new Map<string, GoogleBooksVolume>();
+    for (const vol of volumes) {
+      const isbn = vol.isbn13 ?? vol.isbn10 ?? vol.id;
+      const existing = uniqueVolumes.get(isbn);
+      if (!existing || (vol.volumeNumber !== undefined && existing.volumeNumber === undefined)) {
+        uniqueVolumes.set(isbn, vol);
+      }
+    }
+    const dedupedVolumes = Array.from(uniqueVolumes.values());
+    
     // Sort volumes by volume number
-    volumes.sort((a, b) => (a.volumeNumber ?? 999) - (b.volumeNumber ?? 999));
+    dedupedVolumes.sort((a, b) => (a.volumeNumber ?? 999) - (b.volumeNumber ?? 999));
     
     // Derive series title from the first volume's title
-    const firstVolume = volumes[0];
-    let title = firstVolume?.title ?? seriesTitle;
+    const firstVolume = dedupedVolumes[0];
+    let title = firstVolume ? extractSeriesTitle(firstVolume.title) : seriesTitle;
     
-    // Clean up volume-specific parts from title
-    // "Demon Slayer: Kimetsu no Yaiba, Vol. 1" → "Demon Slayer: Kimetsu no Yaiba"
-    title = title
-      .replace(/,?\s*Vol\.?\s*\d+.*$/i, '')
-      .replace(/\s*\(.*?\)\s*$/, '')
-      .trim();
+    // Use actual seriesId if available, otherwise generate one from title
+    const seriesId = groupKey.startsWith('id:') 
+      ? groupKey.slice(3) 
+      : `title-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
     
     series.push({
       seriesId,
       title,
-      volumes,
-      totalVolumesFound: volumes.length,
+      volumes: dedupedVolumes,
+      totalVolumesFound: dedupedVolumes.length,
     });
   }
 
   // Sort series by number of volumes found (most complete first)
   series.sort((a, b) => b.totalVolumesFound - a.totalVolumesFound);
+
+  console.log(`[GoogleBooks] Returning ${series.length} series, best has ${series[0]?.totalVolumesFound ?? 0} volumes`);
 
   return series;
 }

@@ -19,6 +19,52 @@ if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 }
 
+// Rate limiting configuration
+const RATE_LIMIT_DELAY_MS = 500; // Minimum delay between requests
+const MAX_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 1000;
+let lastRequestTime = 0;
+
+/**
+ * Throttle requests to avoid rate limiting
+ */
+async function throttleRequest(): Promise<void> {
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastRequestTime;
+  if (timeSinceLastRequest < RATE_LIMIT_DELAY_MS) {
+    await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY_MS - timeSinceLastRequest));
+  }
+  lastRequestTime = Date.now();
+}
+
+/**
+ * Fetch with retry logic for rate limiting
+ */
+async function fetchWithRetry(url: string, label: string): Promise<Response> {
+  await throttleRequest();
+  
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const response = await fetch(url);
+    
+    if (response.status === 429) {
+      // Rate limited - wait and retry with exponential backoff
+      const retryDelay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
+      console.log(`[Wikipedia] Rate limited (429) on ${label}, retrying in ${retryDelay}ms (attempt ${attempt}/${MAX_RETRIES})`);
+      
+      if (attempt < MAX_RETRIES) {
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        lastRequestTime = Date.now();
+        continue;
+      }
+    }
+    
+    return response;
+  }
+  
+  // This shouldn't be reached but TypeScript needs it
+  throw new Error(`Failed to fetch ${label} after ${MAX_RETRIES} attempts`);
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -118,7 +164,7 @@ export async function searchManga(query: string, limit: number = 10): Promise<Wi
   const url = `${WIKIPEDIA_API}?${params}`;
   console.log(`[Wikipedia] OpenSearch: ${query}`);
 
-  const response = await fetch(url);
+  const response = await fetchWithRetry(url, `search "${query}"`);
   if (!response.ok) {
     throw new Error(`Wikipedia API error: ${response.status}`);
   }
@@ -166,7 +212,7 @@ export async function searchMangaChapterList(seriesTitle: string): Promise<WikiS
     });
 
     const url = `${WIKIPEDIA_API}?${params}`;
-    const response = await fetch(url);
+    const response = await fetchWithRetry(url, `chapter list search "${pattern}"`);
     if (!response.ok) continue;
 
     const data = await response.json() as { query?: { search?: Array<{ title: string; pageid: number }> } };
@@ -211,7 +257,7 @@ async function getPageContent(pageid: number): Promise<WikiPageContent | null> {
   const url = `${WIKIPEDIA_API}?${params}`;
   console.log(`[Wikipedia] Fetching page: ${pageid}`);
 
-  const response = await fetch(url);
+  const response = await fetchWithRetry(url, `page ${pageid}`);
   if (!response.ok) {
     throw new Error(`Wikipedia API error: ${response.status}`);
   }
@@ -265,7 +311,7 @@ async function getPageContentByTitle(title: string): Promise<WikiPageContent | n
   const url = `${WIKIPEDIA_API}?${params}`;
   console.log(`[Wikipedia] Fetching page by title: "${title}"`);
 
-  const response = await fetch(url);
+  const response = await fetchWithRetry(url, `page title "${title}"`);
   if (!response.ok) {
     throw new Error(`Wikipedia API error: ${response.status}`);
   }

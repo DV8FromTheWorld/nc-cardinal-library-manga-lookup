@@ -84,3 +84,98 @@ export async function getBookDetails(
   const queryString = params.toString();
   return fetchApi<BookDetails>(`${path}${queryString ? `?${queryString}` : ''}`);
 }
+
+// ============================================================================
+// Cache Management
+// ============================================================================
+
+export interface CacheStats {
+  type: string;
+  entryCount: number;
+  totalSizeBytes: number;
+}
+
+export interface AllCacheStats {
+  caches: CacheStats[];
+  totalEntries: number;
+  totalSizeBytes: number;
+}
+
+export interface CacheClearResult {
+  success: boolean;
+  deletedCount: number;
+  deletedFiles?: string[] | undefined;
+  message?: string | undefined;
+}
+
+/**
+ * Get cache statistics
+ */
+export async function getCacheStats(): Promise<AllCacheStats> {
+  return fetchApi<AllCacheStats>('/manga/cache/stats');
+}
+
+/**
+ * Clear all caches
+ */
+export async function clearAllCache(): Promise<CacheClearResult> {
+  const url = `${env.apiUrl}/manga/cache`;
+  const response = await fetch(url, { method: 'DELETE' });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new MangaApiError(response.status, data as ApiError);
+  }
+  return data as CacheClearResult;
+}
+
+/**
+ * Clear cache for a specific type
+ */
+export async function clearCacheByType(type: 'wikipedia' | 'google-books' | 'bookcover' | 'nc-cardinal'): Promise<CacheClearResult> {
+  const url = `${env.apiUrl}/manga/cache/type/${type}`;
+  const response = await fetch(url, { method: 'DELETE' });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new MangaApiError(response.status, data as ApiError);
+  }
+  return data as CacheClearResult;
+}
+
+/**
+ * Clear cache for a specific book (ISBN)
+ */
+export async function clearCacheForBook(isbn: string): Promise<CacheClearResult> {
+  const url = `${env.apiUrl}/manga/cache/book/${isbn}`;
+  const response = await fetch(url, { method: 'DELETE' });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new MangaApiError(response.status, data as ApiError);
+  }
+  return data as CacheClearResult;
+}
+
+/**
+ * Clear cache for a specific series
+ */
+export async function clearCacheForSeries(slug: string): Promise<CacheClearResult> {
+  const url = `${env.apiUrl}/manga/cache/series/${encodeURIComponent(slug)}`;
+  const response = await fetch(url, { method: 'DELETE' });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new MangaApiError(response.status, data as ApiError);
+  }
+  return data as CacheClearResult;
+}
+
+/**
+ * Clear cache for a specific search query
+ */
+export async function clearCacheForSearch(query: string): Promise<CacheClearResult> {
+  const url = `${env.apiUrl}/manga/cache/search/${encodeURIComponent(query)}`;
+  const response = await fetch(url, { method: 'DELETE' });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new MangaApiError(response.status, data as ApiError);
+  }
+  return data as CacheClearResult;
+}

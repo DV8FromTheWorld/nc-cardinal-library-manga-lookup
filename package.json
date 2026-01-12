@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "api": "pnpm --filter @repo/api dev",
-    "web": "pnpm --filter @repo/web dev",
+    "app": "pnpm --filter @repo/app dev",
     "native": "pnpm --filter @repo/native dev",
     "ios": "pnpm --filter @repo/native ios",
     "android": "pnpm --filter @repo/native android",
