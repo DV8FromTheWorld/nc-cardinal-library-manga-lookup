@@ -2,12 +2,15 @@
  * Search page component for web.
  */
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useSearch } from '../hooks/useSearch';
 import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
 import { DebugPanel } from '../../debug/web/DebugPanel';
+import { clearCacheForSearch } from '../services/mangaApi';
 import { getAvailabilityPercent, getAvailabilityDisplayInfo } from '../utils/availability';
+import { Text } from '../../../design/components/Text/web/Text';
+import { Heading } from '../../../design/components/Heading/web/Heading';
 import type { SeriesResult, VolumeResult } from '../types';
 import styles from './SearchPage.module.css';
 
@@ -16,6 +19,7 @@ export function SearchPage(): JSX.Element {
   const navigate = useNavigate();
   const initialQuery = searchParams.get('q') ?? undefined;
   const inputRef = useRef<HTMLInputElement>(null);
+  const [showAllVolumes, setShowAllVolumes] = useState(false);
 
   // Home library for local/remote availability
   const { homeLibrary, setHomeLibrary, libraries } = useHomeLibrary();
@@ -74,6 +78,14 @@ export function SearchPage(): JSX.Element {
     inputRef.current?.focus();
   }, [clearResults]);
 
+  const handleClearCache = useCallback(async () => {
+    if (results?.query) {
+      await clearCacheForSearch(results.query);
+      // Re-run the search to get fresh data
+      search(results.query);
+    }
+  }, [results?.query, search]);
+
   return (
     <div className={styles.container}>
       <header className={styles.header}>
@@ -83,16 +95,16 @@ export function SearchPage(): JSX.Element {
           onClick={handleGoHome}
           title="Back to search home"
         >
-          <span className={styles.titleIcon}>📚</span>
-          <span className={styles.titleText}>NC Cardinal Manga</span>
+          <Text variant="header-md/bold" className={styles.titleIcon}>📚</Text>
+          <Text variant="header-lg/bold" className={styles.titleText}>NC Cardinal Manga</Text>
         </button>
-        <p className={styles.subtitle}>
+        <Text variant="text-md/normal" color="text-secondary" tag="p" className={styles.subtitle}>
           Find manga series at your local NC library
-        </p>
+        </Text>
         <div className={styles.librarySelector}>
-          <label htmlFor="home-library" className={styles.librarySelectorLabel}>
+          <Text variant="text-sm/medium" color="text-secondary" tag="label" htmlFor="home-library" className={styles.librarySelectorLabel}>
             📍 My Library:
-          </label>
+          </Text>
           <select
             id="home-library"
             className={styles.librarySelect}
@@ -138,23 +150,23 @@ export function SearchPage(): JSX.Element {
           </button>
         </div>
         {results?.parsedQuery.volumeNumber && (
-          <p className={styles.parsedHint}>
-            Searching for <strong>{results.parsedQuery.title}</strong> volume <strong>{results.parsedQuery.volumeNumber}</strong>
-          </p>
+          <Text variant="text-sm/normal" color="text-secondary" tag="p" className={styles.parsedHint}>
+            Searching for <Text variant="text-sm/semibold" tag="strong">{results.parsedQuery.title}</Text> volume <Text variant="text-sm/semibold" tag="strong">{results.parsedQuery.volumeNumber}</Text>
+          </Text>
         )}
       </form>
 
       {error && (
         <div className={styles.error}>
-          <span className={styles.errorIcon}>⚠</span>
-          {error}
+          <Text variant="text-lg/medium" className={styles.errorIcon}>⚠</Text>
+          <Text variant="text-md/normal" color="error">{error}</Text>
         </div>
       )}
 
       {isLoading && (
         <div className={styles.loadingState}>
           <div className={styles.loadingSpinner} />
-          <p>Searching libraries...</p>
+          <Text variant="text-md/normal" color="text-secondary" tag="p">Searching libraries...</Text>
         </div>
       )}
 
@@ -163,7 +175,7 @@ export function SearchPage(): JSX.Element {
           {/* Best Match Highlight */}
           {results.bestMatch && (
             <section className={styles.bestMatchSection}>
-              <h2 className={styles.sectionTitle}>Best Match</h2>
+              <Heading level={2} className={styles.sectionTitle}>Best Match</Heading>
               {results.bestMatch.type === 'series' && results.bestMatch.series && (
                 <SeriesCard
                   series={results.bestMatch.series}
@@ -188,10 +200,10 @@ export function SearchPage(): JSX.Element {
           {/* Series Results */}
           {results.series.length > 0 && (
             <section className={styles.section}>
-              <h2 className={styles.sectionTitle}>
+              <Heading level={2} className={styles.sectionTitle}>
                 Series
-                <span className={styles.count}>{results.series.length}</span>
-              </h2>
+                <Text variant="text-sm/medium" color="text-muted" className={styles.count}>{results.series.length}</Text>
+              </Heading>
               <div className={styles.seriesGrid}>
                 {results.series.map((series) => (
                   <SeriesCard
@@ -207,12 +219,12 @@ export function SearchPage(): JSX.Element {
           {/* Volume Results */}
           {results.volumes.length > 0 && results.bestMatch?.type !== 'volume' && (
             <section className={styles.section}>
-              <h2 className={styles.sectionTitle}>
+              <Heading level={2} className={styles.sectionTitle}>
                 Volumes
-                <span className={styles.count}>{results.volumes.length}</span>
-              </h2>
+                <Text variant="text-sm/medium" color="text-muted" className={styles.count}>{results.volumes.length}</Text>
+              </Heading>
               <div className={styles.volumeGrid}>
-                {results.volumes.slice(0, 12).map((volume, idx) => (
+                {(showAllVolumes ? results.volumes : results.volumes.slice(0, 12)).map((volume, idx) => (
                   <VolumeCard
                     key={`${volume.isbn ?? idx}`}
                     volume={volume}
@@ -225,9 +237,17 @@ export function SearchPage(): JSX.Element {
                 ))}
               </div>
               {results.volumes.length > 12 && (
-                <p className={styles.moreResults}>
-                  +{results.volumes.length - 12} more volumes
-                </p>
+                <button
+                  type="button"
+                  className={styles.showMoreButton}
+                  onClick={() => setShowAllVolumes(!showAllVolumes)}
+                >
+                  <Text variant="text-sm/medium">
+                    {showAllVolumes
+                      ? 'Show less'
+                      : `Show all ${results.volumes.length} volumes`}
+                  </Text>
+                </button>
               )}
             </section>
           )}
@@ -235,11 +255,11 @@ export function SearchPage(): JSX.Element {
           {/* No Results */}
           {results.series.length === 0 && results.volumes.length === 0 && (
             <div className={styles.noResults}>
-              <span className={styles.noResultsIcon}>🔍</span>
-              <p>No results found for "{results.query}"</p>
-              <p className={styles.noResultsHint}>
+              <Text variant="header-xl/normal" className={styles.noResultsIcon}>🔍</Text>
+              <Text variant="text-md/normal" tag="p">No results found for "{results.query}"</Text>
+              <Text variant="text-sm/normal" color="text-muted" tag="p" className={styles.noResultsHint}>
                 Try a different search term or check spelling
-              </p>
+              </Text>
             </div>
           )}
         </div>
@@ -249,7 +269,7 @@ export function SearchPage(): JSX.Element {
       {!results && !isLoading && !error && (
         <div className={styles.emptyState}>
           <div className={styles.suggestions}>
-            <p className={styles.suggestionsTitle}>Try searching for:</p>
+            <Text variant="text-md/medium" color="text-secondary" tag="p" className={styles.suggestionsTitle}>Try searching for:</Text>
             <div className={styles.suggestionChips}>
               {['Demon Slayer', 'One Piece', 'My Hero Academia', 'Spy x Family'].map((suggestion) => (
                 <button
@@ -261,7 +281,7 @@ export function SearchPage(): JSX.Element {
                     search(suggestion);
                   }}
                 >
-                  {suggestion}
+                  <Text variant="text-sm/medium">{suggestion}</Text>
                 </button>
               ))}
             </div>
@@ -273,6 +293,8 @@ export function SearchPage(): JSX.Element {
       <DebugPanel
         debug={results?._debug}
         onRefreshWithDebug={results && !results._debug ? refreshWithDebug : undefined}
+        cacheContext={results?.query ? { type: 'search', identifier: results.query } : undefined}
+        onClearCache={handleClearCache}
       />
     </div>
   );
@@ -314,24 +336,24 @@ function SeriesCard({ series, onClick, highlighted }: SeriesCardProps): JSX.Elem
         </div>
         <div className={styles.seriesInfo}>
           <div className={styles.seriesHeader}>
-            <h3 className={styles.seriesTitle}>{series.title}</h3>
+            <Text variant="header-sm/bold" tag="div" className={styles.seriesTitle}>{series.title}</Text>
             {series.isComplete && (
-              <span className={styles.completeBadge}>Complete</span>
+              <Text variant="text-xs/semibold" className={styles.completeBadge}>Complete</Text>
             )}
           </div>
           
           {series.author && (
-            <p className={styles.seriesAuthor}>{series.author}</p>
+            <Text variant="text-sm/normal" color="text-secondary" tag="p" className={styles.seriesAuthor}>{series.author}</Text>
           )}
           
           <div className={styles.seriesStats}>
             <div className={styles.statItem}>
-              <span className={styles.statValue}>{series.totalVolumes}</span>
-              <span className={styles.statLabel}>volumes</span>
+              <Text variant="text-lg/bold" className={styles.statValue}>{series.totalVolumes}</Text>
+              <Text variant="text-xs/normal" color="text-muted" className={styles.statLabel}>volumes</Text>
             </div>
             <div className={styles.statItem}>
-              <span className={styles.statValue}>{series.availableVolumes}</span>
-              <span className={styles.statLabel}>in library</span>
+              <Text variant="text-lg/bold" className={styles.statValue}>{series.availableVolumes}</Text>
+              <Text variant="text-xs/normal" color="text-muted" className={styles.statLabel}>in library</Text>
             </div>
           </div>
           
@@ -341,9 +363,9 @@ function SeriesCard({ series, onClick, highlighted }: SeriesCardProps): JSX.Elem
               style={{ width: `${availabilityPercent}%` }}
             />
           </div>
-          <p className={styles.availabilityText}>
+          <Text variant="text-xs/normal" color="text-secondary" tag="p" className={styles.availabilityText}>
             {availabilityPercent}% available in NC Cardinal
-          </p>
+          </Text>
         </div>
       </div>
     </button>
@@ -388,13 +410,13 @@ function VolumeCard({ volume, onClick, highlighted }: VolumeCardProps): JSX.Elem
           <div className={styles.coverPlaceholder}>📖</div>
         )}
       </div>
-      <div className={styles.volumeNumber}>{volume.volumeNumber ?? '?'}</div>
+      <Text variant="text-sm/bold" tag="div" className={styles.volumeNumber}>{volume.volumeNumber ?? '?'}</Text>
       <div className={styles.volumeInfo}>
-        <h4 className={styles.volumeTitle}>{volume.title}</h4>
-        {volume.seriesTitle && <p className={styles.volumeSeries}>{volume.seriesTitle}</p>}
+        <Text variant="text-sm/semibold" tag="div" className={styles.volumeTitle}>{volume.title}</Text>
+        {volume.seriesTitle && <Text variant="text-xs/normal" color="text-secondary" tag="p" className={styles.volumeSeries}>{volume.seriesTitle}</Text>}
         <div className={styles.volumeAvailability}>
           <span className={`${styles.availabilityDot} ${dotClass}`} />
-          <span>{statusText}</span>
+          <Text variant="text-xs/normal">{statusText}</Text>
         </div>
       </div>
     </button>

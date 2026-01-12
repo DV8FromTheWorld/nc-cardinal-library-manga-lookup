@@ -1,0 +1,102 @@
+/* =============================================================================
+   Heading Component Styles
+   ============================================================================= */
+
+/* Base heading styles */
+.heading {
+  font-family: 'Crimson Pro', Georgia, serif;
+  margin: 0;
+  line-height: 1.2;
+}
+
+/* Level-based default sizes (when no variant provided) */
+.h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+}
+
+.h2 {
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.h4 {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.h5 {
+  font-size: 1rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.h6 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* =============================================================================
+   Size Classes (from variant)
+   ============================================================================= */
+
+/* Text sizes */
+.text-xs { font-size: 0.75rem; }
+.text-sm { font-size: 0.875rem; }
+.text-md { font-size: 1rem; }
+.text-lg { font-size: 1.125rem; }
+.text-xl { font-size: 1.25rem; }
+
+/* Header sizes */
+.header-sm { font-size: 1.125rem; }
+.header-md { font-size: 1.375rem; }
+.header-lg { font-size: 1.75rem; }
+.header-xl { font-size: 2.25rem; }
+.header-2xl { font-size: 3rem; }
+
+/* Code */
+.code {
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.8125rem;
+}
+
+/* =============================================================================
+   Weight Classes
+   ============================================================================= */
+
+.weight-normal { font-weight: 400; }
+.weight-medium { font-weight: 500; }
+.weight-semibold { font-weight: 600; }
+.weight-bold { font-weight: 700; }
+
+/* =============================================================================
+   Color Classes
+   ============================================================================= */
+
+/* Semantic text colors */
+.color-text-primary { color: var(--color-text-primary); }
+.color-text-secondary { color: var(--color-text-secondary); }
+.color-text-muted { color: var(--color-text-muted); }
+
+/* Interactive colors */
+.color-interactive-primary { color: var(--color-accent); }
+.color-interactive-hover { color: var(--color-accent-hover); }
+.color-interactive-active { color: var(--color-interactive-active); }
+
+/* Accent and status colors */
+.color-accent { color: var(--color-accent); }
+.color-success { color: var(--color-success); }
+.color-warning { color: var(--color-warning); }
+.color-error { color: var(--color-error); }
+
+/* Special colors */
+.color-currentColor { color: currentColor; }
+.color-none { color: inherit; }

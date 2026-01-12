@@ -1,0 +1,153 @@
+/* =============================================================================
+   Text Component Styles
+   ============================================================================= */
+
+.text {
+  margin: 0;
+  padding: 0;
+}
+
+/* -----------------------------------------------------------------------------
+   Font Sizes - Body Text
+   ----------------------------------------------------------------------------- */
+
+.text-xs {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.text-sm {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.text-md {
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.text-lg {
+  font-size: 18px;
+  line-height: 1.5;
+}
+
+.text-xl {
+  font-size: 20px;
+  line-height: 1.5;
+}
+
+/* -----------------------------------------------------------------------------
+   Font Sizes - Headers
+   ----------------------------------------------------------------------------- */
+
+.header-sm {
+  font-size: 18px;
+  line-height: 1.25;
+  font-family: 'Crimson Pro', Georgia, serif;
+}
+
+.header-md {
+  font-size: 22px;
+  line-height: 1.25;
+  font-family: 'Crimson Pro', Georgia, serif;
+}
+
+.header-lg {
+  font-size: 28px;
+  line-height: 1.25;
+  font-family: 'Crimson Pro', Georgia, serif;
+}
+
+.header-xl {
+  font-size: 36px;
+  line-height: 1.2;
+  font-family: 'Crimson Pro', Georgia, serif;
+}
+
+.header-2xl {
+  font-size: 48px;
+  line-height: 1.15;
+  font-family: 'Crimson Pro', Georgia, serif;
+}
+
+/* -----------------------------------------------------------------------------
+   Code
+   ----------------------------------------------------------------------------- */
+
+.code {
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* -----------------------------------------------------------------------------
+   Font Weights
+   ----------------------------------------------------------------------------- */
+
+.weight-normal {
+  font-weight: 400;
+}
+
+.weight-medium {
+  font-weight: 500;
+}
+
+.weight-semibold {
+  font-weight: 600;
+}
+
+.weight-bold {
+  font-weight: 700;
+}
+
+/* -----------------------------------------------------------------------------
+   Text Colors
+   ----------------------------------------------------------------------------- */
+
+.color-text-primary {
+  color: var(--color-text-primary);
+}
+
+.color-text-secondary {
+  color: var(--color-text-secondary);
+}
+
+.color-text-muted {
+  color: var(--color-text-muted);
+}
+
+.color-interactive-primary {
+  color: var(--color-accent);
+}
+
+.color-interactive-hover {
+  color: var(--color-accent-hover);
+}
+
+.color-interactive-active {
+  color: var(--color-interactive-active);
+}
+
+.color-accent {
+  color: var(--color-accent);
+}
+
+.color-success {
+  color: var(--color-success);
+}
+
+.color-warning {
+  color: var(--color-warning);
+}
+
+.color-error {
+  color: var(--color-error);
+}
+
+.color-currentColor {
+  color: currentColor;
+}
+
+.color-none {
+  color: inherit;
+}

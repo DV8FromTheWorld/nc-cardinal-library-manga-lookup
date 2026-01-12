@@ -3,10 +3,14 @@
  */
 
 import { useParams, useNavigate } from 'react-router-dom';
+import { useCallback } from 'react';
 import { useSeriesDetails } from '../hooks/useSeriesDetails';
 import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
 import { DebugPanel } from '../../debug/web/DebugPanel';
+import { clearCacheForSeries } from '../../search/services/mangaApi';
 import { getAvailabilityPercent } from '../../search/utils/availability';
+import { Text } from '../../../design/components/Text/web/Text';
+import { Heading } from '../../../design/components/Heading/web/Heading';
 import type { VolumeInfo } from '../../search/types';
 import styles from './SeriesPage.module.css';
 
@@ -32,12 +36,20 @@ export function SeriesPage(): JSX.Element {
     }
   };
 
+  const handleClearCache = useCallback(async () => {
+    if (slug) {
+      await clearCacheForSeries(slug);
+      // Reload to show fresh data
+      window.location.reload();
+    }
+  }, [slug]);
+
   if (isLoading) {
     return (
       <div className={styles.container}>
         <div className={styles.loadingState}>
           <div className={styles.loadingSpinner} />
-          <p>Loading series details...</p>
+          <Text variant="text-md/normal" color="text-secondary" tag="p">Loading series details...</Text>
         </div>
       </div>
     );
@@ -47,11 +59,11 @@ export function SeriesPage(): JSX.Element {
     return (
       <div className={styles.container}>
         <button type="button" className={styles.backButton} onClick={handleBack}>
-          ← Back to search
+          <Text variant="text-sm/medium">← Back to search</Text>
         </button>
         <div className={styles.error}>
-          <span className={styles.errorIcon}>⚠</span>
-          {error ?? 'Series not found'}
+          <Text variant="text-lg/medium" className={styles.errorIcon}>⚠</Text>
+          <Text variant="text-md/normal" color="error">{error ?? 'Series not found'}</Text>
         </div>
       </div>
     );
@@ -62,7 +74,7 @@ export function SeriesPage(): JSX.Element {
   return (
     <div className={styles.container}>
       <button type="button" className={styles.backButton} onClick={handleBack}>
-        ← Back to search
+        <Text variant="text-sm/medium">← Back to search</Text>
       </button>
 
       <header className={styles.header}>
@@ -78,27 +90,45 @@ export function SeriesPage(): JSX.Element {
           </div>
         )}
         <div className={styles.headerContent}>
-          <h1 className={styles.title}>{series.title}</h1>
+          <Heading level={1} className={styles.title}>{series.title}</Heading>
           {series.author && (
-            <p className={styles.author}>by {series.author}</p>
+            <Text variant="text-md/normal" color="text-secondary" tag="p" className={styles.author}>by {series.author}</Text>
           )}
           <div className={styles.badges}>
             {series.isComplete && (
-              <span className={styles.completeBadge}>✓ Complete Series</span>
+              <Text variant="text-xs/semibold" className={styles.completeBadge}>✓ Complete Series</Text>
             )}
-            <span className={styles.volumeBadge}>{series.totalVolumes} volumes</span>
+            <Text variant="text-xs/medium" className={styles.volumeBadge}>{series.totalVolumes} volumes</Text>
           </div>
-          <p className={styles.seriesId}>ID: {series.id}</p>
+          <div className={styles.externalLinks}>
+            <a 
+              href={`https://myanimelist.net/manga.php?q=${encodeURIComponent(series.title)}`} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className={styles.externalLink}
+            >
+              <Text variant="text-sm/medium">📊 MyAnimeList</Text>
+            </a>
+            <a 
+              href={`https://www.amazon.com/s?k=${encodeURIComponent(series.title + ' manga')}`} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className={styles.externalLink}
+            >
+              <Text variant="text-sm/medium">🛒 Amazon</Text>
+            </a>
+          </div>
+          <Text variant="code" color="text-muted" tag="p" className={styles.seriesId}>ID: {series.id}</Text>
         </div>
       </header>
 
       <section className={styles.availabilitySection}>
-        <h2 className={styles.sectionTitle}>Library Availability</h2>
+        <Heading level={2} className={styles.sectionTitle}>Library Availability</Heading>
         <div className={styles.availabilityCard}>
           <div className={styles.availabilityStats}>
             <div className={styles.statLarge}>
-              <span className={styles.statNumber}>{series.availableCount}</span>
-              <span className={styles.statLabel}>of {series.totalVolumes} available</span>
+              <Text variant="header-2xl/bold" className={styles.statNumber}>{series.availableCount}</Text>
+              <Text variant="text-md/normal" color="text-secondary" className={styles.statLabel}>of {series.totalVolumes} available</Text>
             </div>
             <div className={styles.availabilityBar}>
               <div 
@@ -106,30 +136,30 @@ export function SeriesPage(): JSX.Element {
                 style={{ width: `${availabilityPercent}%` }}
               />
             </div>
-            <p className={styles.availabilityPercent}>{availabilityPercent}% in NC Cardinal</p>
+            <Text variant="text-sm/normal" color="text-secondary" tag="p" className={styles.availabilityPercent}>{availabilityPercent}% in NC Cardinal</Text>
           </div>
 
           {series.missingVolumes.length > 0 && series.missingVolumes.length <= 10 && (
             <div className={styles.missingVolumes}>
-              <h3 className={styles.missingTitle}>Missing from library:</h3>
+              <Heading level={3} className={styles.missingTitle}>Missing from library:</Heading>
               <div className={styles.missingList}>
                 {series.missingVolumes.map((vol) => (
-                  <span key={vol} className={styles.missingVolume}>Vol. {vol}</span>
+                  <Text key={vol} variant="text-xs/medium" className={styles.missingVolume}>Vol. {vol}</Text>
                 ))}
               </div>
             </div>
           )}
 
           {series.missingVolumes.length > 10 && (
-            <p className={styles.missingNote}>
+            <Text variant="text-sm/normal" color="text-muted" tag="p" className={styles.missingNote}>
               {series.missingVolumes.length} volumes not available in the library
-            </p>
+            </Text>
           )}
         </div>
       </section>
 
       <section className={styles.volumesSection}>
-        <h2 className={styles.sectionTitle}>All Volumes</h2>
+        <Heading level={2} className={styles.sectionTitle}>All Volumes</Heading>
         <div className={styles.volumeGrid}>
           {series.volumes.map((volume) => (
             <VolumeRow
@@ -151,6 +181,8 @@ export function SeriesPage(): JSX.Element {
       <DebugPanel
         debug={series._debug}
         onRefreshWithDebug={!series._debug ? refreshWithDebug : undefined}
+        cacheContext={slug ? { type: 'series', identifier: slug } : undefined}
+        onClearCache={handleClearCache}
       />
     </div>
   );
@@ -188,16 +220,16 @@ function VolumeRow({ volume, seriesTitle, onClick }: VolumeRowProps): JSX.Elemen
         )}
       </div>
       <div className={styles.volumeNumber}>
-        <span className={styles.volLabel}>Vol.</span>
-        <span className={styles.volNum}>{volume.volumeNumber}</span>
+        <Text variant="text-xs/normal" color="text-muted" className={styles.volLabel}>Vol.</Text>
+        <Text variant="text-lg/bold" className={styles.volNum}>{volume.volumeNumber}</Text>
       </div>
       
       <div className={styles.volumeInfo}>
         {volume.title && (
-          <span className={styles.volumeTitle}>{volume.title}</span>
+          <Text variant="text-sm/medium" className={styles.volumeTitle}>{volume.title}</Text>
         )}
         {volume.isbn && (
-          <span className={styles.volumeIsbn}>ISBN: {volume.isbn}</span>
+          <Text variant="code" color="text-muted" className={styles.volumeIsbn}>ISBN: {volume.isbn}</Text>
         )}
       </div>
 
@@ -205,20 +237,20 @@ function VolumeRow({ volume, seriesTitle, onClick }: VolumeRowProps): JSX.Elemen
         {isAvailable ? (
           <>
             <span className={styles.statusDot + ' ' + styles.statusAvailable} />
-            <span className={styles.statusText}>
+            <Text variant="text-sm/normal" className={styles.statusText}>
               {volume.availability?.totalCopies} {volume.availability?.totalCopies === 1 ? 'copy' : 'copies'}
-            </span>
+            </Text>
           </>
         ) : (
           <>
             <span className={styles.statusDot + ' ' + styles.statusUnavailable} />
-            <span className={styles.statusText}>Not available</span>
+            <Text variant="text-sm/normal" color="text-muted" className={styles.statusText}>Not available</Text>
           </>
         )}
       </div>
 
       {hasISBN && (
-        <span className={styles.viewButton}>View →</span>
+        <Text variant="text-sm/medium" color="interactive-primary" className={styles.viewButton}>View →</Text>
       )}
     </button>
   );

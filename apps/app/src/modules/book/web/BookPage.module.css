@@ -276,7 +276,16 @@
   padding-left: calc(10px + var(--spacing-sm));
 }
 
+.externalLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
 .catalogLink {
+  flex: 1;
+  min-width: 150px;
   display: block;
   padding: var(--spacing-md);
   text-align: center;
@@ -289,6 +298,26 @@
 
 .catalogLink:hover {
   background: var(--color-accent-hover);
+}
+
+.externalLink {
+  flex: 1;
+  min-width: 100px;
+  display: block;
+  padding: var(--spacing-md);
+  text-align: center;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  border-left: 1px solid var(--color-border);
+}
+
+.externalLink:hover {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
 }
 
 /* -----------------------------------------------------------------------------

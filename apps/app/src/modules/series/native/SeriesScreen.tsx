@@ -2,10 +2,10 @@
  * Series detail screen component for React Native.
  */
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   View,
-  Text,
+  Text as RNText,
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
@@ -18,8 +18,12 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../routing/native/Router';
 import { useSeriesDetails } from '../hooks/useSeriesDetails';
 import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
+import { DebugPanel } from '../../debug/native/DebugPanel';
+import { clearCacheForSeries } from '../../search/services/mangaApi';
 import { getAvailabilityPercent } from '../../search/utils/availability';
 import type { VolumeInfo } from '../../search/types';
+import { Text } from '../../../design/components/Text/native/Text';
+import { Heading } from '../../../design/components/Heading/native/Heading';
 import { colors, spacing, type ThemeColors } from '../../search/native/theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Series'>;
@@ -32,7 +36,7 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
   const { slug } = route.params;
   const { homeLibrary } = useHomeLibrary();
 
-  const { series, isLoading, error } = useSeriesDetails({
+  const { series, isLoading, error, refreshWithDebug } = useSeriesDetails({
     seriesSlug: slug,
     homeLibrary,
   });
@@ -45,13 +49,21 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
     navigation.navigate('Book', { isbn });
   };
 
+  const handleClearCache = useCallback(async () => {
+    if (slug) {
+      await clearCacheForSeries(slug);
+      // Reload the screen with fresh data
+      navigation.replace('Series', { slug });
+    }
+  }, [slug, navigation]);
+
   // Loading State
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.accent} />
-          <Text style={[styles.loadingText, { color: theme.textSecondary }]}>
+          <Text variant="text-md/normal" color="text-secondary" style={styles.loadingText}>
             Loading series details...
           </Text>
         </View>
@@ -64,10 +76,10 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Text style={[styles.backButtonText, { color: theme.accent }]}>← Back to search</Text>
+          <Text variant="text-md/medium" color="accent">← Back to search</Text>
         </TouchableOpacity>
         <View style={[styles.errorContainer, { backgroundColor: theme.errorBg }]}>
-          <Text style={[styles.errorText, { color: theme.error }]}>⚠ {error ?? 'Series not found'}</Text>
+          <Text variant="text-sm/normal" color="error">⚠ {error ?? 'Series not found'}</Text>
         </View>
       </SafeAreaView>
     );
@@ -80,7 +92,7 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Back Button */}
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Text style={[styles.backButtonText, { color: theme.accent }]}>← Back to search</Text>
+          <Text variant="text-md/medium" color="accent">← Back to search</Text>
         </TouchableOpacity>
 
         {/* Header */}
@@ -89,18 +101,18 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
             <SeriesCoverImage uri={series.coverImage} theme={theme} />
           )}
           <View style={styles.headerContent}>
-            <Text style={[styles.title, { color: theme.textPrimary }]}>{series.title}</Text>
+            <Heading level={1} variant="header-lg/bold" style={styles.title}>{series.title}</Heading>
             {series.author && (
-              <Text style={[styles.author, { color: theme.textSecondary }]}>by {series.author}</Text>
+              <Text variant="text-sm/normal" color="text-secondary" style={styles.author}>by {series.author}</Text>
             )}
             <View style={styles.badges}>
               {series.isComplete && (
                 <View style={[styles.badge, { backgroundColor: theme.successBg }]}>
-                  <Text style={[styles.badgeText, { color: theme.success }]}>✓ Complete Series</Text>
+                  <Text variant="text-xs/medium" color="success">✓ Complete Series</Text>
                 </View>
               )}
               <View style={[styles.badge, { backgroundColor: theme.bgSecondary }]}>
-                <Text style={[styles.badgeText, { color: theme.textSecondary }]}>
+                <Text variant="text-xs/medium" color="text-secondary">
                   {series.totalVolumes} volumes
                 </Text>
               </View>
@@ -110,12 +122,12 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
 
         {/* Availability Section */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Library Availability</Text>
+          <Heading level={2} variant="header-sm/semibold" style={styles.sectionTitle}>Library Availability</Heading>
           <View style={[styles.availabilityCard, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}>
             <View style={styles.availabilityStats}>
-              <Text style={[styles.statLarge, { color: theme.textPrimary }]}>
+              <Text variant="header-md/bold" color="text-primary">
                 {series.availableCount}
-                <Text style={styles.statSmall}> of {series.totalVolumes} available</Text>
+                <Text variant="text-sm/normal" color="text-primary"> of {series.totalVolumes} available</Text>
               </Text>
             </View>
             <View style={[styles.availabilityBar, { backgroundColor: theme.bgTertiary }]}>
@@ -126,20 +138,20 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
                 ]}
               />
             </View>
-            <Text style={[styles.availabilityPercent, { color: theme.textMuted }]}>
+            <Text variant="text-xs/normal" color="text-muted">
               {availabilityPercent}% in NC Cardinal
             </Text>
 
             {/* Missing Volumes */}
             {series.missingVolumes.length > 0 && series.missingVolumes.length <= 10 && (
               <View style={styles.missingVolumes}>
-                <Text style={[styles.missingTitle, { color: theme.textSecondary }]}>
+                <Text variant="text-sm/medium" color="text-secondary" style={styles.missingTitle}>
                   Missing from library:
                 </Text>
                 <View style={styles.missingList}>
                   {series.missingVolumes.map((vol) => (
                     <View key={vol} style={[styles.missingVolume, { backgroundColor: theme.bgTertiary }]}>
-                      <Text style={[styles.missingVolumeText, { color: theme.textMuted }]}>
+                      <Text variant="text-xs/normal" color="text-muted">
                         Vol. {vol}
                       </Text>
                     </View>
@@ -149,7 +161,7 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
             )}
 
             {series.missingVolumes.length > 10 && (
-              <Text style={[styles.missingNote, { color: theme.textMuted }]}>
+              <Text variant="text-sm/normal" color="text-muted" style={styles.missingNote}>
                 {series.missingVolumes.length} volumes not available in the library
               </Text>
             )}
@@ -158,7 +170,7 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
 
         {/* All Volumes Section */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>All Volumes</Text>
+          <Heading level={2} variant="header-sm/semibold" style={styles.sectionTitle}>All Volumes</Heading>
           {series.volumes.map((volume) => (
             <VolumeRow
               key={volume.volumeNumber}
@@ -170,6 +182,14 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
             />
           ))}
         </View>
+
+        {/* Debug Panel */}
+        <DebugPanel
+          debug={series._debug}
+          onRefreshWithDebug={!series._debug ? refreshWithDebug : undefined}
+          cacheContext={slug ? { type: 'series', identifier: slug } : undefined}
+          onClearCache={handleClearCache}
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -236,26 +256,26 @@ function VolumeRow({ volume, seriesTitle, seriesSlug, onPress, theme }: VolumeRo
           />
         ) : (
           <View style={[styles.volumeCoverPlaceholder, { backgroundColor: theme.bgTertiary }]}>
-            <Text>📖</Text>
+            <RNText>📖</RNText>
           </View>
         )}
       </View>
 
       {/* Volume Number */}
       <View style={styles.volumeNumberContainer}>
-        <Text style={[styles.volLabel, { color: theme.textMuted }]}>Vol.</Text>
-        <Text style={[styles.volNum, { color: theme.textPrimary }]}>{volume.volumeNumber}</Text>
+        <Text variant="text-xs/normal" color="text-muted">Vol.</Text>
+        <Text variant="header-sm/bold" color="text-primary">{volume.volumeNumber}</Text>
       </View>
 
       {/* Info */}
       <View style={styles.volumeInfo}>
         {volume.title && (
-          <Text style={[styles.volumeTitle, { color: theme.textPrimary }]} numberOfLines={1}>
+          <Text variant="text-sm/medium" color="text-primary" numberOfLines={1}>
             {volume.title}
           </Text>
         )}
         {volume.isbn && (
-          <Text style={[styles.volumeIsbn, { color: theme.textMuted }]}>ISBN: {volume.isbn}</Text>
+          <Text variant="text-xs/normal" color="text-muted" style={styles.volumeIsbn}>ISBN: {volume.isbn}</Text>
         )}
       </View>
 
@@ -267,7 +287,7 @@ function VolumeRow({ volume, seriesTitle, seriesSlug, onPress, theme }: VolumeRo
             { backgroundColor: isAvailable ? theme.success : theme.textMuted },
           ]}
         />
-        <Text style={[styles.statusText, { color: theme.textMuted }]}>
+        <Text variant="text-xs/normal" color="text-muted">
           {isAvailable
             ? `${volume.availability?.totalCopies} ${volume.availability?.totalCopies === 1 ? 'copy' : 'copies'}`
             : 'Not available'}
@@ -275,7 +295,7 @@ function VolumeRow({ volume, seriesTitle, seriesSlug, onPress, theme }: VolumeRo
       </View>
 
       {/* View Arrow */}
-      {hasISBN && <Text style={[styles.viewArrow, { color: theme.accent }]}>→</Text>}
+      {hasISBN && <Text variant="text-md/semibold" color="accent">→</Text>}
     </TouchableOpacity>
   );
 }
@@ -295,23 +315,15 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: spacing.md,
-    fontSize: 16,
   },
   backButton: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
-  backButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
   errorContainer: {
     marginHorizontal: spacing.lg,
     padding: spacing.md,
     borderRadius: 8,
-  },
-  errorText: {
-    fontSize: 14,
   },
   header: {
     flexDirection: 'row',
@@ -331,12 +343,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
     marginBottom: spacing.xs,
   },
   author: {
-    fontSize: 14,
     marginBottom: spacing.sm,
   },
   badges: {
@@ -349,17 +358,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderRadius: 999,
   },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
   section: {
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.lg,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
     marginBottom: spacing.md,
   },
   availabilityCard: {
@@ -370,14 +373,6 @@ const styles = StyleSheet.create({
   availabilityStats: {
     marginBottom: spacing.sm,
   },
-  statLarge: {
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  statSmall: {
-    fontSize: 14,
-    fontWeight: '400',
-  },
   availabilityBar: {
     height: 8,
     borderRadius: 4,
@@ -387,9 +382,6 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 4,
   },
-  availabilityPercent: {
-    fontSize: 12,
-  },
   missingVolumes: {
     marginTop: spacing.md,
     paddingTop: spacing.md,
@@ -397,8 +389,6 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(0,0,0,0.05)',
   },
   missingTitle: {
-    fontSize: 13,
-    fontWeight: '500',
     marginBottom: spacing.sm,
   },
   missingList: {
@@ -411,12 +401,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderRadius: 999,
   },
-  missingVolumeText: {
-    fontSize: 12,
-  },
   missingNote: {
     marginTop: spacing.md,
-    fontSize: 13,
   },
   volumeRow: {
     flexDirection: 'row',
@@ -449,22 +435,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: 40,
   },
-  volLabel: {
-    fontSize: 10,
-  },
-  volNum: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
   volumeInfo: {
     flex: 1,
   },
-  volumeTitle: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
   volumeIsbn: {
-    fontSize: 11,
     marginTop: 2,
   },
   volumeStatus: {
@@ -476,12 +450,5 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-  },
-  statusText: {
-    fontSize: 11,
-  },
-  viewArrow: {
-    fontSize: 16,
-    fontWeight: '600',
   },
 });

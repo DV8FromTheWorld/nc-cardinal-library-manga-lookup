@@ -14,10 +14,14 @@ export default defineConfig({
     // Prefer .tsx for all files (even non-JSX), .ts only for config/scripts
     // .js at end is required for node_modules (including rspack internals)
     extensions: ['.web.tsx', '.tsx', '.web.ts', '.ts', '.js'],
-    // Ensure single React instance in monorepo
+    // Module resolution paths - matches Metro config approach
+    // With pnpm hoisted mode, all deps are at root node_modules
+    modules: [
+      resolve(__dirname, '../../node_modules'),  // Root node_modules (where packages actually are)
+      'node_modules',                            // Fallback for standard resolution
+    ],
     alias: {
-      'react': resolve(__dirname, 'node_modules/react'),
-      'react-dom': resolve(__dirname, 'node_modules/react-dom'),
+      '@': resolve(__dirname, 'src'),
     },
   },
   module: {
