@@ -161,14 +161,80 @@ function generateSlug(title: string): string {
  * Get cover image URL from various sources
  * Priority: Google Books > Open Library > AniList
  */
-function getCoverImageUrl(isbn?: string, googleThumbnail?: string): string | undefined {
-  // Google Books thumbnail (if available)
+// Cache directory for bookcover API results
+const BOOKCOVER_CACHE_DIR = path.join(process.cwd(), '.cache', 'bookcover');
+
+/**
+ * Fetch cover URL from Bookcover API (aggregates Amazon, Google, OpenLibrary, etc.)
+ * Results are cached to avoid repeated API calls
+ */
+async function fetchBookcoverUrl(isbn: string): Promise<string | null> {
+  // Ensure cache directory exists
+  if (!fs.existsSync(BOOKCOVER_CACHE_DIR)) {
+    fs.mkdirSync(BOOKCOVER_CACHE_DIR, { recursive: true });
+  }
+
+  const cacheFile = path.join(BOOKCOVER_CACHE_DIR, `${isbn}.txt`);
+  
+  // Check cache first
+  if (fs.existsSync(cacheFile)) {
+    const cached = fs.readFileSync(cacheFile, 'utf-8').trim();
+    return cached || null;
+  }
+
+  try {
+    const response = await fetch(`https://bookcover.longitood.com/bookcover/${isbn}`);
+    if (!response.ok) {
+      fs.writeFileSync(cacheFile, ''); // Cache the miss
+      return null;
+    }
+    
+    const data = await response.json() as { url?: string };
+    const url = data.url ?? null;
+    
+    // Cache the result (empty string for misses)
+    fs.writeFileSync(cacheFile, url ?? '');
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Batch fetch cover URLs for multiple ISBNs
+ */
+async function fetchBookcoverUrls(isbns: string[]): Promise<Map<string, string>> {
+  const results = new Map<string, string>();
+  
+  // Fetch in parallel with concurrency limit
+  const CONCURRENCY = 5;
+  for (let i = 0; i < isbns.length; i += CONCURRENCY) {
+    const batch = isbns.slice(i, i + CONCURRENCY);
+    const promises = batch.map(async (isbn) => {
+      const url = await fetchBookcoverUrl(isbn);
+      if (url) {
+        results.set(isbn, url);
+      }
+    });
+    await Promise.all(promises);
+  }
+  
+  return results;
+}
+
+function getCoverImageUrl(isbn?: string, googleThumbnail?: string, bookcoverUrl?: string): string | undefined {
+  // Prefer Google Books thumbnail (higher quality, more reliable)
   if (googleThumbnail) {
-    // Upgrade to larger image
+    // Upgrade to larger image and remove curl effect
     return googleThumbnail.replace('zoom=1', 'zoom=2').replace('&edge=curl', '');
   }
   
-  // Open Library cover (reliable fallback for ISBNs)
+  // Use Bookcover API result if available (aggregates Amazon, Goodreads, etc.)
+  if (bookcoverUrl) {
+    return bookcoverUrl;
+  }
+  
+  // Fall back to OpenLibrary (works for most ISBNs, UI handles broken ones)
   if (isbn) {
     return `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`;
   }
@@ -400,20 +466,27 @@ export async function search(
   }
   debug.timing.ncCardinal = Date.now() - ncStart;
 
+  // Step 4.5: Fetch Bookcover URLs for ISBNs (in parallel, cached)
+  const bookcoverUrls = await fetchBookcoverUrls(isbnsToCheck);
+  if (bookcoverUrls.size > 0) {
+    debug.sources.push('bookcover-api');
+  }
+
   // Step 5: Build results
   if (wikiSeries && wikiSeries.volumes.length > 0) {
-    const seriesResult = buildSeriesResultFromWikipedia(wikiSeries, availability);
+    const seriesResult = buildSeriesResultFromWikipedia(wikiSeries, availability, bookcoverUrls);
     result.series.push(seriesResult);
 
     // Build volume results
     for (const vol of wikiSeries.volumes) {
       const volAvail = vol.englishISBN ? availability.get(vol.englishISBN) : undefined;
+      const bookcoverCover = vol.englishISBN ? bookcoverUrls.get(vol.englishISBN) : undefined;
       result.volumes.push({
         title: `${wikiSeries.title}, Vol. ${vol.volumeNumber}${vol.title ? `: ${vol.title}` : ''}`,
         volumeNumber: vol.volumeNumber,
         seriesTitle: wikiSeries.title,
         isbn: vol.englishISBN,
-        coverImage: getCoverImageUrl(vol.englishISBN),
+        coverImage: getCoverImageUrl(vol.englishISBN, undefined, bookcoverCover),
         availability: volAvail,
         source: 'wikipedia',
       });
@@ -421,19 +494,20 @@ export async function search(
   } else if (googleSeries.length > 0) {
     // Use Google Books results
     for (const series of googleSeries.slice(0, 3)) {
-      const seriesResult = buildSeriesResultFromGoogle(series, availability);
+      const seriesResult = buildSeriesResultFromGoogle(series, availability, bookcoverUrls);
       result.series.push(seriesResult);
 
       // Build volume results
       for (const vol of series.volumes) {
         const isbn = vol.isbn13 ?? vol.isbn10;
         const volAvail = isbn ? availability.get(isbn) : undefined;
+        const bookcoverCover = isbn ? bookcoverUrls.get(isbn) : undefined;
         result.volumes.push({
           title: vol.title,
           volumeNumber: vol.volumeNumber,
           seriesTitle: series.title,
           isbn,
-          coverImage: getCoverImageUrl(isbn, vol.thumbnail),
+          coverImage: getCoverImageUrl(isbn, vol.thumbnail, bookcoverCover),
           availability: volAvail,
           source: 'google-books',
         });
@@ -489,24 +563,64 @@ export async function getSeriesDetails(
     .map(v => v.englishISBN)
     .filter((isbn): isbn is string => isbn !== undefined);
 
-  // Check availability
+  // Fetch availability, Google Books covers, and Bookcover API in parallel
   console.log(`[MangaSearch] Checking availability for ${isbns.length} volumes...`);
   const ncStart = Date.now();
-  const availability = await getAvailabilityByISBNs(isbns, { org: 'CARDINAL', homeLibrary });
+  const [availability, googleBooksSeries, bookcoverUrls] = await Promise.all([
+    getAvailabilityByISBNs(isbns, { org: 'CARDINAL', homeLibrary }),
+    searchGoogleBooks(wikiSeries.title).catch(() => [] as GoogleBooksSeries[]),
+    fetchBookcoverUrls(isbns),
+  ]);
   debug.timing.ncCardinal = Date.now() - ncStart;
   debug.sources.push('nc-cardinal');
+
+  // Build maps for Google Books thumbnails:
+  // 1. ISBN -> thumbnail (for exact matches)
+  // 2. Volume number -> thumbnail (fallback when ISBNs differ between sources)
+  const googleThumbnails = new Map<string, string>();
+  const googleThumbnailsByVolume = new Map<number, string>();
+  for (const series of googleBooksSeries) {
+    for (const vol of series.volumes) {
+      const isbn = vol.isbn13 ?? vol.isbn10;
+      if (vol.thumbnail) {
+        if (isbn) {
+          googleThumbnails.set(isbn, vol.thumbnail);
+        }
+        if (vol.volumeNumber !== undefined) {
+          // Only set if we don't already have a thumbnail for this volume
+          if (!googleThumbnailsByVolume.has(vol.volumeNumber)) {
+            googleThumbnailsByVolume.set(vol.volumeNumber, vol.thumbnail);
+          }
+        }
+      }
+    }
+  }
+  if (googleThumbnails.size > 0 || googleThumbnailsByVolume.size > 0) {
+    debug.sources.push('google-books');
+  }
+  if (bookcoverUrls.size > 0) {
+    debug.sources.push('bookcover-api');
+  }
 
   // Get first volume's ISBN for cover image
   const firstVolumeIsbn = wikiSeries.volumes[0]?.englishISBN;
 
-  // Build volume info
-  const volumes: VolumeInfo[] = wikiSeries.volumes.map(vol => ({
-    volumeNumber: vol.volumeNumber,
-    title: vol.title,
-    isbn: vol.englishISBN,
-    coverImage: getCoverImageUrl(vol.englishISBN),
-    availability: vol.englishISBN ? availability.get(vol.englishISBN) : undefined,
-  }));
+  // Build volume info with covers from multiple sources
+  // Priority: Google Books > Bookcover API > OpenLibrary
+  const volumes: VolumeInfo[] = wikiSeries.volumes.map(vol => {
+    const isbnThumbnail = vol.englishISBN ? googleThumbnails.get(vol.englishISBN) : undefined;
+    const volumeThumbnail = googleThumbnailsByVolume.get(vol.volumeNumber);
+    const googleCover = isbnThumbnail ?? volumeThumbnail;
+    const bookcoverCover = vol.englishISBN ? bookcoverUrls.get(vol.englishISBN) : undefined;
+    
+    return {
+      volumeNumber: vol.volumeNumber,
+      title: vol.title,
+      isbn: vol.englishISBN,
+      coverImage: getCoverImageUrl(vol.englishISBN, googleCover, bookcoverCover),
+      availability: vol.englishISBN ? availability.get(vol.englishISBN) : undefined,
+    };
+  });
 
   // Count available volumes and find missing ones
   let availableCount = 0;
@@ -520,6 +634,12 @@ export async function getSeriesDetails(
     }
   }
 
+  // Get series cover from first volume
+  const firstVolIsbnThumbnail = firstVolumeIsbn ? googleThumbnails.get(firstVolumeIsbn) : undefined;
+  const firstVolNumThumbnail = googleThumbnailsByVolume.get(1);
+  const seriesCoverThumbnail = firstVolIsbnThumbnail ?? firstVolNumThumbnail;
+  const firstVolBookcover = firstVolumeIsbn ? bookcoverUrls.get(firstVolumeIsbn) : undefined;
+
   const result: SeriesDetails = {
     id: `wiki-${wikiSeries.pageid}`,
     slug: generateSlug(wikiSeries.title),
@@ -527,7 +647,7 @@ export async function getSeriesDetails(
     totalVolumes: wikiSeries.totalVolumes,
     isComplete: wikiSeries.isComplete,
     author: wikiSeries.author,
-    coverImage: getCoverImageUrl(firstVolumeIsbn),
+    coverImage: getCoverImageUrl(firstVolumeIsbn, seriesCoverThumbnail, firstVolBookcover),
     volumes,
     availableCount,
     missingVolumes,
@@ -546,23 +666,26 @@ export async function getSeriesDetails(
 
 function buildSeriesResultFromWikipedia(
   wiki: WikiMangaSeries,
-  availability: Map<string, VolumeAvailability>
+  availability: Map<string, VolumeAvailability>,
+  bookcoverUrls: Map<string, string> = new Map()
 ): SeriesResult {
   let availableVolumes = 0;
   
   // Get first volume's ISBN for cover image
   const firstVolumeIsbn = wiki.volumes[0]?.englishISBN;
+  const firstVolBookcover = firstVolumeIsbn ? bookcoverUrls.get(firstVolumeIsbn) : undefined;
 
   const volumes: VolumeInfo[] = wiki.volumes.map(vol => {
     const volAvail = vol.englishISBN ? availability.get(vol.englishISBN) : undefined;
     if (volAvail?.available) {
       availableVolumes++;
     }
+    const bookcoverCover = vol.englishISBN ? bookcoverUrls.get(vol.englishISBN) : undefined;
     return {
       volumeNumber: vol.volumeNumber,
       title: vol.title,
       isbn: vol.englishISBN,
-      coverImage: getCoverImageUrl(vol.englishISBN),
+      coverImage: getCoverImageUrl(vol.englishISBN, undefined, bookcoverCover),
       availability: volAvail,
     };
   });
@@ -575,7 +698,7 @@ function buildSeriesResultFromWikipedia(
     availableVolumes,
     isComplete: wiki.isComplete,
     author: wiki.author,
-    coverImage: getCoverImageUrl(firstVolumeIsbn),
+    coverImage: getCoverImageUrl(firstVolumeIsbn, undefined, firstVolBookcover),
     source: 'wikipedia',
     volumes,
   };
@@ -583,13 +706,15 @@ function buildSeriesResultFromWikipedia(
 
 function buildSeriesResultFromGoogle(
   series: GoogleBooksSeries,
-  availability: Map<string, VolumeAvailability>
+  availability: Map<string, VolumeAvailability>,
+  bookcoverUrls: Map<string, string> = new Map()
 ): SeriesResult {
   let availableVolumes = 0;
   
   // Get first volume for cover image
   const firstVolume = series.volumes[0];
   const firstIsbn = firstVolume?.isbn13 ?? firstVolume?.isbn10;
+  const firstVolBookcover = firstIsbn ? bookcoverUrls.get(firstIsbn) : undefined;
 
   const volumes: VolumeInfo[] = series.volumes.map(vol => {
     const isbn = vol.isbn13 ?? vol.isbn10;
@@ -597,11 +722,12 @@ function buildSeriesResultFromGoogle(
     if (volAvail?.available) {
       availableVolumes++;
     }
+    const bookcoverCover = isbn ? bookcoverUrls.get(isbn) : undefined;
     return {
       volumeNumber: vol.volumeNumber ?? 0,
       title: vol.subtitle,
       isbn,
-      coverImage: getCoverImageUrl(isbn, vol.thumbnail),
+      coverImage: getCoverImageUrl(isbn, vol.thumbnail, bookcoverCover),
       availability: volAvail,
     };
   });
@@ -613,7 +739,7 @@ function buildSeriesResultFromGoogle(
     totalVolumes: series.totalVolumesFound,
     availableVolumes,
     isComplete: false, // Google Books doesn't tell us this
-    coverImage: getCoverImageUrl(firstIsbn, firstVolume?.thumbnail),
+    coverImage: getCoverImageUrl(firstIsbn, firstVolume?.thumbnail, firstVolBookcover),
     source: 'google-books',
     volumes,
   };

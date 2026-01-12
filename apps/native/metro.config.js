@@ -4,6 +4,7 @@ const path = require('path');
 // Find the project and workspace directories
 const projectRoot = __dirname;
 const monorepoRoot = path.resolve(projectRoot, '../..');
+const appRoot = path.resolve(projectRoot, '../app');
 
 const config = getDefaultConfig(projectRoot);
 
@@ -13,6 +14,7 @@ config.watchFolders = [monorepoRoot];
 // 2. Let Metro know where to resolve packages and in what order
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
+  path.resolve(appRoot, 'node_modules'),
   path.resolve(monorepoRoot, 'node_modules'),
 ];
 

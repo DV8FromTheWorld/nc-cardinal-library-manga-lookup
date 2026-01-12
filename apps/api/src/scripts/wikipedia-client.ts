@@ -656,19 +656,24 @@ export async function getMangaSeries(query: string): Promise<WikiMangaSeries | n
     // Score the result
     let score = 0;
     
-    // HUGE bonus for exact title match (normalized)
-    if (titleLower === queryLower) {
+    // HUGE bonus for "list of ... volumes" or "list of ... chapters" - always prefer these
+    if (titleLower.startsWith('list of') && (titleLower.includes('volumes') || titleLower.includes('chapters'))) {
       score += 500;
     }
     
-    // Big bonus for "list of ... volumes" or "list of ... chapters"
-    if (titleLower.startsWith('list of') && (titleLower.includes('volumes') || titleLower.includes('chapters'))) {
-      score += 200;
+    // Big bonus for "(manga)" in title - this is THE manga page
+    if (titleLower.includes('(manga)')) {
+      score += 300;
     }
     
-    // Big bonus for "(manga)" in title
-    if (titleLower.includes('(manga)')) {
-      score += 100;
+    // Bonus for exact title match, but ONLY if it has "(manga)" qualifier
+    // Generic exact matches are often disambiguation pages
+    if (titleLower === queryLower) {
+      // Exact match without qualifier is likely a disambiguation page - small penalty
+      score -= 50;
+    } else if (titleLower === `${queryLower} (manga)`) {
+      // Exact manga page - big bonus
+      score += 200;
     }
     
     // Bonus for containing the query (normalized)
@@ -691,9 +696,9 @@ export async function getMangaSeries(query: string): Promise<WikiMangaSeries | n
       score += 10;
     }
     
-    // Penalty for very short titles (likely disambiguation)
-    if (title.length < 15) {
-      score -= 20;
+    // Penalty for very short generic titles (likely disambiguation)
+    if (title.length < 15 && !titleLower.includes('(manga)')) {
+      score -= 50;
     }
     
     if (score > bestScore) {
@@ -715,22 +720,30 @@ export async function getMangaSeries(query: string): Promise<WikiMangaSeries | n
   if (firstResult) {
     const actualTitle = firstResult.title;
     
+    // Strip common suffixes to get the base series name
+    // e.g., "Blue Box (manga)" -> "Blue Box"
+    const cleanTitle = actualTitle
+      .replace(/\s*\(manga\)\s*$/i, '')
+      .replace(/\s*\(Japanese manga\)\s*$/i, '')
+      .trim();
+    
     // If the search result is already a chapters page, put it first
     if (actualTitle.toLowerCase().includes('chapters') || actualTitle.toLowerCase().includes('volumes')) {
       pagesToTry.push(actualTitle);
     }
     
-    // Try various patterns using the actual Wikipedia title
+    // Try various patterns using the CLEAN title (without "(manga)" suffix)
     pagesToTry.push(
-      `List of ${actualTitle} manga volumes`, // One Piece style
-      `List of ${actualTitle} chapters`, // Common pattern
-      actualTitle, // The main page itself
-      `${actualTitle} (manga)`, // Some use this naming
+      `List of ${cleanTitle} manga volumes`, // One Piece style
+      `List of ${cleanTitle} chapters`, // Common pattern - THIS is what Blue Box uses
+      cleanTitle, // The main page itself
+      `${cleanTitle} (manga)`, // The manga-specific page
+      actualTitle, // Original title as fallback
     );
     
     // Also try without subtitles (e.g., "Demon Slayer" from "Demon Slayer: Kimetsu no Yaiba")
-    const baseTitle = actualTitle.split(':')[0]?.trim();
-    if (baseTitle && baseTitle !== actualTitle) {
+    const baseTitle = cleanTitle.split(':')[0]?.trim();
+    if (baseTitle && baseTitle !== cleanTitle) {
       pagesToTry.push(
         `List of ${baseTitle} manga volumes`,
         `List of ${baseTitle} chapters`,

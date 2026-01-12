@@ -1,1 +1,0 @@
-export { SeriesDetail } from './SeriesDetail';
