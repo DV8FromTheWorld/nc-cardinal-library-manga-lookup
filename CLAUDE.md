@@ -16,8 +16,8 @@ pnpm install
 # Run API (port 3001)
 cd apps/api && pnpm dev
 
-# Run web (port 3000)  
-cd apps/web && pnpm dev
+# Run web app (port 3000)  
+cd apps/app && pnpm dev
 
 # Test
 curl "http://localhost:3001/manga/search?q=one+piece" | jq
@@ -26,15 +26,55 @@ curl "http://localhost:3001/manga/search?q=one+piece" | jq
 ## Project Structure
 
 ```
-apps/api/src/
-├── index.ts              # Fastify server setup
-├── routes/manga.ts       # API endpoints
-└── scripts/
-    ├── wikipedia-client.ts    # Series data + ISBNs
-    ├── opensearch-client.ts   # NC Cardinal availability
-    ├── google-books-client.ts # Fallback source
-    └── manga-search.ts        # Orchestrates all sources
+apps/
+├── api/src/                    # Fastify API server
+│   ├── index.ts                # Server setup
+│   ├── routes/manga.ts         # API endpoints
+│   └── scripts/
+│       ├── wikipedia-client.ts     # Series data + ISBNs
+│       ├── opensearch-client.ts    # NC Cardinal availability
+│       ├── google-books-client.ts  # Fallback source
+│       └── manga-search.ts         # Orchestrates all sources
+│
+├── app/src/                    # Shared web + native code
+│   ├── entrypoints/
+│   │   ├── web/App.tsx         # Web bootstrap
+│   │   └── native/App.tsx      # Native bootstrap
+│   ├── modules/                # Feature slices
+│   │   ├── routing/            # Routes + routers
+│   │   ├── search/             # Search feature
+│   │   ├── series/             # Series detail
+│   │   ├── book/               # Book detail
+│   │   ├── settings/           # Home library
+│   │   ├── storage/            # Platform storage
+│   │   └── debug/              # Debug panel
+│   └── design/                 # Future UI components
+│
+└── native/                     # React Native entry point
+    └── index.js                # Points to apps/app code
 ```
+
+## Frontend Module Pattern
+
+Each module in `apps/app/src/modules/` follows this pattern:
+
+```
+modules/{feature}/
+├── types.tsx           # Shared types
+├── hooks/              # Shared hooks
+│   └── use{Feature}.tsx
+├── services/           # API calls
+│   └── {feature}Api.tsx
+├── web/                # Web-specific UI
+│   └── {Feature}Page.tsx
+└── native/             # React Native UI (future)
+    └── {Feature}Screen.tsx
+```
+
+**Key conventions:**
+- All files use `.tsx` extension (even without JSX)
+- No barrel files (`index.ts`) - use direct imports
+- Shared logic at module root, platform UI in `web/` or `native/`
 
 ## For Detailed Context
 
@@ -57,6 +97,11 @@ Read `llm-context/PROJECT-CONTEXT.md` - it contains:
 - OpenSearch API at `/opac/extras/opensearch/1.1/CARDINAL/atom-full/keyword/`
 - SuperCat for direct record lookup: `/opac/extras/supercat/retrieve/atom-full/record/{id}`
 - Two-tier cache: ISBN→RecordID (permanent) + Full records (1 hour)
+
+### Cover Images (Priority Order)
+1. **Bookcover API** - Clean 404 when no image
+2. **Google Books** - May return placeholder
+3. **OpenLibrary** - Last resort fallback
 
 ### Availability Categories
 ```typescript
@@ -101,3 +146,5 @@ This project uses `exactOptionalPropertyTypes: true`. Always type optional field
 field?: string | undefined;  // ✓ Correct
 field?: string;              // ✗ Will cause errors
 ```
+
+All TypeScript files use `.tsx` extension, even without JSX.

@@ -4,7 +4,7 @@ This document provides comprehensive context for LLMs working on this project. I
 
 ## Project Overview
 
-**Purpose**: A web application to search manga series and check availability across NC Cardinal library system (North Carolina's consortium of public libraries).
+**Purpose**: A web/native application to search manga series and check availability across NC Cardinal library system (North Carolina's consortium of public libraries).
 
 **Key Goals**:
 1. Search for manga by title (handles typos, romanized Japanese names, alternate titles)
@@ -20,7 +20,7 @@ This document provides comprehensive context for LLMs working on this project. I
 ```
 nc-cardinal-manga/
 ├── apps/
-│   ├── api/          # Fastify API server (port 3001)
+│   ├── api/              # Fastify API server (port 3001)
 │   │   └── src/
 │   │       ├── index.ts           # Entry point, CORS setup
 │   │       ├── routes/
@@ -31,19 +31,92 @@ nc-cardinal-manga/
 │   │           ├── opensearch-client.ts  # NC Cardinal
 │   │           ├── manga-search.ts       # Orchestrator
 │   │           └── ...
-│   ├── web/          # React + Rspack frontend (port 3000)
-│   └── native/       # React Native (not actively developed)
+│   │
+│   ├── app/              # React + Rspack (port 3000) - shared web/native code
+│   │   └── src/
+│   │       ├── entrypoints/       # Platform bootstrapping
+│   │       │   ├── web/App.tsx
+│   │       │   └── native/App.tsx
+│   │       ├── modules/           # Feature slices
+│   │       │   ├── routing/       # Routes + routers
+│   │       │   ├── search/        # Search feature
+│   │       │   ├── series/        # Series detail
+│   │       │   ├── book/          # Book detail
+│   │       │   ├── settings/      # Home library
+│   │       │   ├── storage/       # Platform storage
+│   │       │   └── debug/         # Debug panel
+│   │       └── design/            # Reusable UI components (future)
+│   │
+│   └── native/           # React Native entry point
+│       └── index.js      # Points to apps/app code
+│
 ├── packages/
-│   └── shared/       # Shared types and schemas
-└── llm-context/      # This folder - LLM documentation
+│   └── shared/           # Shared types and schemas
+└── llm-context/          # This folder - LLM documentation
 ```
 
 ### Tech Stack
 
 - **Backend**: Fastify + Zod (validation) + TypeScript
 - **Frontend**: React + Rspack + CSS Modules
+- **Native**: React Native (entry point in apps/native, code in apps/app)
 - **Package Manager**: pnpm with workspaces
 - **Build**: Turborepo for monorepo orchestration
+
+### Frontend Module Architecture
+
+The frontend uses **vertical slices** (modules) for code sharing between web and React Native:
+
+```
+modules/{feature}/
+├── types.tsx           # Shared types/interfaces
+├── hooks/              # Shared React hooks
+│   └── use{Feature}.tsx
+├── services/           # API client functions
+│   └── {feature}Api.tsx
+├── web/                # Web-specific React components
+│   ├── {Feature}Page.tsx
+│   └── {Feature}Page.module.css
+└── native/             # React Native components (future)
+    └── {Feature}Screen.tsx
+```
+
+**Key conventions:**
+- All TypeScript files use `.tsx` extension (even without JSX)
+- No barrel files (`index.ts`) - use direct imports
+- Platform-agnostic logic at module root
+- Platform-specific UI in `web/` or `native/` subfolders
+
+### Routing
+
+Routes are defined once and used by both platforms:
+
+```typescript
+// modules/routing/routes.tsx
+export const ROUTES = {
+  HOME: '/',
+  SEARCH: '/search',
+  SERIES: '/series/:slug',
+  BOOK: '/books/:isbn',
+} as const;
+```
+
+Platform-specific routers:
+- **Web**: `react-router-dom` in `modules/routing/web/Router.tsx`
+- **Native**: `@react-navigation` in `modules/routing/native/Router.tsx`
+
+### Platform-Specific Code
+
+For code that differs between platforms (e.g., storage), use platform extensions:
+
+```
+modules/storage/
+├── storage.tsx         # Interface + re-export
+├── storage.web.tsx     # localStorage implementation
+└── storage.native.tsx  # AsyncStorage implementation
+```
+
+The bundler (Rspack/Metro) resolves the correct file based on platform.
 
 ## Data Sources
 
@@ -126,7 +199,28 @@ type CopyStatusCategory =
   | 'unavailable';   // Lost, missing, repair, withdrawn
 ```
 
-### 3. Google Books API (Fallback for ISBNs)
+### 3. Cover Image Sources (Priority Order)
+
+**1. Bookcover API** (Preferred)
+```
+https://bookcover.longitood.com/bookcover/{isbn}
+```
+- Returns clean 404 when no image (allows proper placeholder handling)
+- Aggregates from Amazon, Goodreads, etc.
+- Cached in `.cache/bookcover/`
+
+**2. Google Books API** (Fallback)
+- `thumbnail` field in search results
+- May return placeholder images when no cover exists
+
+**3. OpenLibrary Covers API** (Last Resort)
+```
+https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg
+```
+- May return placeholder GIFs instead of 404
+- UI handles via `onError` image handler
+
+### 4. Google Books API (Series Data Fallback)
 
 **When used**: Fallback when Wikipedia doesn't have volume data
 
@@ -138,26 +232,6 @@ type CopyStatusCategory =
 **Limitations**:
 - `series/get` endpoint requires OAuth (geographically restricted)
 - Some series missing or incomplete
-
-### 4. Open Library Covers API
-
-**Usage**: Cover images as fallback
-```
-https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg
-```
-- `-S`: Small
-- `-M`: Medium
-- `-L`: Large
-
-### 5. LibraryThing (Limited Use)
-
-**Status**: Explored but mostly abandoned due to:
-- Cloudflare blocking automated requests
-- Talpa API limited to 50 requests/day
-- thingISBN API works but limited data
-
-**What works**:
-- `thingISBN` API for ISBN lookups (include API key in URL path)
 
 ## Key Implementation Patterns
 
@@ -286,6 +360,8 @@ All external API calls are cached:
 │   └── series_{query}.json
 ├── google-books/        # 24 hour TTL
 │   └── search_{query}.json
+├── bookcover/           # 24 hour TTL
+│   └── {isbn}.txt
 ├── nc-cardinal/
 │   ├── isbn-map/        # Permanent (ISBN→RecordID never changes)
 │   └── records/         # 1 hour TTL (availability changes)
@@ -417,7 +493,21 @@ Returns book details with holdings from all libraries.
 **Cause**: Sequential ISBN lookups
 **Solution**: Parallel batch fetching with p-limit + two-tier caching
 
+### 8. Duplicate React instances in monorepo
+
+**Cause**: Multiple React copies in node_modules
+**Solution**: Add `resolve.alias` in Rspack config to force single React
+
+### 9. Cover images showing placeholders instead of 404
+
+**Cause**: Google Books and OpenLibrary return placeholder images
+**Solution**: Prioritize Bookcover API which returns clean 404
+
 ## TypeScript Conventions
+
+### File Extensions
+
+All TypeScript files use `.tsx` extension, even without JSX. This simplifies tooling and allows adding JSX later without renaming.
 
 ### exactOptionalPropertyTypes
 
@@ -434,6 +524,18 @@ const foo: Foo = { bar: undefined }; // Error!
 interface Foo {
   bar?: string | undefined;
 }
+```
+
+### No Barrel Files
+
+Don't create `index.ts` files to re-export. Use direct imports:
+
+```typescript
+// ❌ Wrong
+import { useSearch } from '../search';
+
+// ✅ Correct
+import { useSearch } from '../search/hooks/useSearch';
 ```
 
 ### Zod Schemas
@@ -462,10 +564,11 @@ const BookDetailsSchema = z.object({
 | `apps/api/src/scripts/opensearch-client.ts` | NC Cardinal API + caching |
 | `apps/api/src/scripts/google-books-client.ts` | Google Books fallback |
 | `apps/api/src/scripts/manga-search.ts` | Search orchestrator |
-| `apps/web/src/App.tsx` | Main React app with routing |
-| `apps/web/src/components/SearchPage/` | Search UI |
-| `apps/web/src/components/SeriesDetail/` | Series detail UI |
-| `apps/web/src/components/BookDetail/` | Book detail UI |
+| `apps/app/src/entrypoints/web/App.tsx` | Web entry point |
+| `apps/app/src/modules/routing/web/Router.tsx` | Web router (react-router-dom) |
+| `apps/app/src/modules/search/web/SearchPage.tsx` | Search UI |
+| `apps/app/src/modules/series/web/SeriesPage.tsx` | Series detail UI |
+| `apps/app/src/modules/book/web/BookPage.tsx` | Book detail UI |
 
 ## Running the Project
 
@@ -476,8 +579,8 @@ pnpm install
 # Start API (port 3001)
 cd apps/api && pnpm dev
 
-# Start web (port 3000)
-cd apps/web && pnpm dev
+# Start web app (port 3000)
+cd apps/app && pnpm dev
 
 # Clear caches (useful for debugging)
 rm -rf apps/api/.cache/*
