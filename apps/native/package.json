@@ -11,7 +11,6 @@
     "prebuild:clean": "expo prebuild --clean",
     "build:ios": "expo run:ios",
     "build:android": "expo run:android",
-    "typecheck": "tsc --noEmit",
     "android": "expo run:android",
     "ios": "expo run:ios"
   },
