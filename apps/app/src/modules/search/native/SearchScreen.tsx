@@ -28,6 +28,8 @@ import { getAvailabilityPercent, getAvailabilityDisplayInfo } from '../utils/ava
 import type { SeriesResult, VolumeResult } from '../types';
 import { Text } from '../../../design/components/Text/native/Text';
 import { Heading } from '../../../design/components/Heading/native/Heading';
+import { LoginModal } from '../../login/native/LoginModal';
+import { UserButton } from '../../login/native/UserButton';
 import { colors, spacing, type ThemeColors } from './theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Search'>;
@@ -41,6 +43,7 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
   const { homeLibrary, setHomeLibrary, libraries, libraryName } = useHomeLibrary();
   const [showLibraryPicker, setShowLibraryPicker] = useState(false);
   const [showAllVolumes, setShowAllVolumes] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   const handleQueryChange = useCallback(
     (newQuery: string) => {
@@ -101,6 +104,13 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
       >
         {/* Header */}
         <View style={styles.header}>
+          {/* User button */}
+          <View style={styles.userButtonContainer}>
+            <UserButton
+              onLoginPress={() => setShowLoginModal(true)}
+              onAccountPress={() => navigation.navigate('Account')}
+            />
+          </View>
           {/* Back button when there's navigation history */}
           {navigation.canGoBack() && (
             <TouchableOpacity 
@@ -316,6 +326,12 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
           cacheContext={results?.query ? { type: 'search', identifier: results.query } : undefined}
           onClearCache={handleClearCache}
         />
+
+        {/* Login Modal */}
+        <LoginModal
+          visible={showLoginModal}
+          onClose={() => setShowLoginModal(false)}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -475,6 +491,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: spacing.xl,
     paddingBottom: spacing.lg,
+  },
+  userButtonContainer: {
+    position: 'absolute',
+    top: spacing.md,
+    right: spacing.md,
+    zIndex: 1,
   },
   backButton: {
     alignSelf: 'flex-start',

@@ -11,6 +11,8 @@ import { clearCacheForSearch } from '../services/mangaApi';
 import { getAvailabilityPercent, getAvailabilityDisplayInfo } from '../utils/availability';
 import { Text } from '../../../design/components/Text/web/Text';
 import { Heading } from '../../../design/components/Heading/web/Heading';
+import { LoginModal } from '../../login/web/LoginModal';
+import { UserMenu } from '../../login/web/UserMenu';
 import type { SeriesResult, VolumeResult } from '../types';
 import styles from './SearchPage.module.css';
 
@@ -20,6 +22,7 @@ export function SearchPage(): JSX.Element {
   const initialQuery = searchParams.get('q') ?? undefined;
   const inputRef = useRef<HTMLInputElement>(null);
   const [showAllVolumes, setShowAllVolumes] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   // Home library for local/remote availability
   const { homeLibrary, setHomeLibrary, libraries } = useHomeLibrary();
@@ -89,6 +92,9 @@ export function SearchPage(): JSX.Element {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
+        <div style={{ position: 'absolute', top: 'var(--spacing-md)', right: 'var(--spacing-lg)' }}>
+          <UserMenu onLoginClick={() => setShowLoginModal(true)} />
+        </div>
         <button 
           type="button" 
           className={styles.titleButton}
@@ -295,6 +301,12 @@ export function SearchPage(): JSX.Element {
         onRefreshWithDebug={results && !results._debug ? refreshWithDebug : undefined}
         cacheContext={results?.query ? { type: 'search', identifier: results.query } : undefined}
         onClearCache={handleClearCache}
+      />
+
+      {/* Login Modal */}
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
       />
     </div>
   );

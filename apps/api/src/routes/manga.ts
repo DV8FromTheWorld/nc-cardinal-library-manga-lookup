@@ -44,6 +44,21 @@ import {
   type CacheType,
 } from '../scripts/cache-utils.js';
 
+import {
+  login,
+  logout,
+  getCheckouts,
+  getHistory,
+  getHolds,
+  isSessionValid,
+  isHistoryEnabled,
+  getSession,
+  type PatronSession,
+  type CheckedOutItem,
+  type HistoryItem,
+  type HoldItem,
+} from '../scripts/patron-client.js';
+
 // ============================================================================
 // Zod Schemas
 // ============================================================================
@@ -273,6 +288,92 @@ const CacheClearResultSchema = z.object({
 });
 
 // ============================================================================
+// User/Patron Schemas
+// ============================================================================
+
+const LoginRequestSchema = z.object({
+  cardNumber: z.string().min(1).describe('Library card number'),
+  pin: z.string().min(1).describe('PIN or password'),
+});
+
+const LoginResponseSchema = z.object({
+  success: z.boolean(),
+  sessionId: z.string().optional(),
+  displayName: z.string().optional(),
+  error: z.string().optional(),
+});
+
+const CheckedOutItemSchema = z.object({
+  recordId: z.string(),
+  title: z.string(),
+  author: z.string().optional(),
+  dueDate: z.string(),
+  barcode: z.string(),
+  callNumber: z.string().optional(),
+  renewals: z.number().optional(),
+  renewalsRemaining: z.number().optional(),
+  overdue: z.boolean(),
+  catalogUrl: z.string(),
+});
+
+const CheckoutsResponseSchema = z.object({
+  items: z.array(CheckedOutItemSchema),
+  totalCount: z.number(),
+});
+
+const HistoryItemSchema = z.object({
+  recordId: z.string(),
+  title: z.string(),
+  author: z.string().optional(),
+  checkoutDate: z.string(),
+  dueDate: z.string(),
+  returnDate: z.string().optional(),
+  barcode: z.string().optional(),
+  callNumber: z.string().optional(),
+  catalogUrl: z.string(),
+});
+
+const HistoryResponseSchema = z.object({
+  items: z.array(HistoryItemSchema),
+  totalCount: z.number(),
+  hasMore: z.boolean(),
+  offset: z.number(),
+  limit: z.number(),
+  historyEnabled: z.boolean(),
+});
+
+const HoldItemSchema = z.object({
+  recordId: z.string(),
+  title: z.string(),
+  author: z.string().optional(),
+  holdDate: z.string(),
+  status: z.string(),
+  position: z.number().optional(),
+  pickupLibrary: z.string().optional(),
+  expiresAt: z.string().optional(),
+  catalogUrl: z.string(),
+});
+
+const HoldsResponseSchema = z.object({
+  items: z.array(HoldItemSchema),
+  totalCount: z.number(),
+});
+
+const LogoutResponseSchema = z.object({
+  success: z.boolean(),
+});
+
+const SessionStatusResponseSchema = z.object({
+  valid: z.boolean(),
+  sessionId: z.string().optional(),
+  displayName: z.string().optional(),
+});
+
+const HistorySettingsResponseSchema = z.object({
+  historyEnabled: z.boolean(),
+});
+
+// ============================================================================
 // Routes
 // ============================================================================
 
@@ -461,6 +562,320 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
         deletedFiles: result.deletedFiles,
         message: `Cleared ${result.deletedCount} cache entries for search "${query}"`,
       };
+    }
+  );
+
+  // ==========================================================================
+  // User/Patron Routes
+  // ==========================================================================
+
+  /**
+   * POST /manga/user/login
+   *
+   * Login to NC Cardinal with library card and PIN.
+   * Returns a session ID for subsequent authenticated requests.
+   */
+  app.post(
+    '/user/login',
+    {
+      schema: {
+        body: LoginRequestSchema,
+        response: {
+          200: LoginResponseSchema,
+          401: LoginResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { cardNumber, pin } = request.body;
+
+      try {
+        const result = await login(cardNumber, pin);
+
+        if (!result.success || !result.session) {
+          return reply.status(401).send({
+            success: false,
+            error: result.error ?? 'Login failed',
+          });
+        }
+
+        return {
+          success: true,
+          sessionId: result.session.sessionToken, // This is our session ID, not the raw token
+          displayName: result.session.displayName,
+        };
+      } catch (error) {
+        request.log.error(error, 'Login error');
+        return reply.status(401).send({
+          success: false,
+          error: error instanceof Error ? error.message : 'Login failed',
+        });
+      }
+    }
+  );
+
+  /**
+   * POST /manga/user/logout
+   *
+   * Logout and invalidate the session.
+   */
+  app.post(
+    '/user/logout',
+    {
+      schema: {
+        headers: z.object({
+          'x-session-id': z.string().optional(),
+        }),
+        response: {
+          200: LogoutResponseSchema,
+        },
+      },
+    },
+    async (request) => {
+      const sessionId = request.headers['x-session-id'];
+
+      if (sessionId) {
+        await logout(sessionId);
+      }
+
+      return { success: true };
+    }
+  );
+
+  /**
+   * GET /manga/user/session
+   *
+   * Check if the current session is valid and return user info.
+   */
+  app.get(
+    '/user/session',
+    {
+      schema: {
+        headers: z.object({
+          'x-session-id': z.string().optional(),
+        }),
+        response: {
+          200: SessionStatusResponseSchema,
+        },
+      },
+    },
+    async (request) => {
+      const sessionId = request.headers['x-session-id'];
+
+      if (!sessionId) {
+        return { valid: false };
+      }
+
+      const valid = isSessionValid(sessionId);
+      if (!valid) {
+        return { valid: false };
+      }
+
+      const session = getSession(sessionId);
+      return {
+        valid: true,
+        sessionId,
+        displayName: session?.displayName,
+      };
+    }
+  );
+
+  /**
+   * GET /manga/user/checkouts
+   *
+   * Get currently checked out items for the logged-in user.
+   * Requires X-Session-Id header from login.
+   */
+  app.get(
+    '/user/checkouts',
+    {
+      schema: {
+        headers: z.object({
+          'x-session-id': z.string(),
+        }),
+        response: {
+          200: CheckoutsResponseSchema,
+          401: ErrorSchema,
+          500: ErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const sessionId = request.headers['x-session-id'];
+
+      if (!sessionId || !isSessionValid(sessionId)) {
+        return reply.status(401).send({
+          error: 'unauthorized',
+          message: 'Invalid or expired session',
+        });
+      }
+
+      try {
+        const checkouts = await getCheckouts(sessionId);
+        return checkouts;
+      } catch (error) {
+        request.log.error(error, 'Failed to fetch checkouts');
+        
+        if (error instanceof Error && error.message.includes('Session expired')) {
+          return reply.status(401).send({
+            error: 'session_expired',
+            message: 'Your session has expired. Please log in again.',
+          });
+        }
+
+        return reply.status(500).send({
+          error: 'fetch_failed',
+          message: error instanceof Error ? error.message : 'Failed to fetch checkouts',
+        });
+      }
+    }
+  );
+
+  /**
+   * GET /manga/user/history
+   *
+   * Get checkout history for the logged-in user.
+   * Note: History must be enabled in the user's NC Cardinal account settings.
+   */
+  app.get(
+    '/user/history',
+    {
+      schema: {
+        headers: z.object({
+          'x-session-id': z.string(),
+        }),
+        querystring: z.object({
+          limit: z.string().optional().transform(v => v ? parseInt(v, 10) : 15),
+          offset: z.string().optional().transform(v => v ? parseInt(v, 10) : 0),
+        }),
+        response: {
+          200: HistoryResponseSchema,
+          401: ErrorSchema,
+          500: ErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const sessionId = request.headers['x-session-id'];
+      const { limit, offset } = request.query;
+
+      if (!sessionId || !isSessionValid(sessionId)) {
+        return reply.status(401).send({
+          error: 'unauthorized',
+          message: 'Invalid or expired session',
+        });
+      }
+
+      try {
+        const history = await getHistory(sessionId, { limit, offset });
+        return history;
+      } catch (error) {
+        request.log.error(error, 'Failed to fetch history');
+
+        if (error instanceof Error && error.message.includes('Session expired')) {
+          return reply.status(401).send({
+            error: 'session_expired',
+            message: 'Your session has expired. Please log in again.',
+          });
+        }
+
+        return reply.status(500).send({
+          error: 'fetch_failed',
+          message: error instanceof Error ? error.message : 'Failed to fetch history',
+        });
+      }
+    }
+  );
+
+  /**
+   * GET /manga/user/holds
+   *
+   * Get current holds for the logged-in user.
+   */
+  app.get(
+    '/user/holds',
+    {
+      schema: {
+        headers: z.object({
+          'x-session-id': z.string(),
+        }),
+        response: {
+          200: HoldsResponseSchema,
+          401: ErrorSchema,
+          500: ErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const sessionId = request.headers['x-session-id'];
+
+      if (!sessionId || !isSessionValid(sessionId)) {
+        return reply.status(401).send({
+          error: 'unauthorized',
+          message: 'Invalid or expired session',
+        });
+      }
+
+      try {
+        const holds = await getHolds(sessionId);
+        return holds;
+      } catch (error) {
+        request.log.error(error, 'Failed to fetch holds');
+
+        if (error instanceof Error && error.message.includes('Session expired')) {
+          return reply.status(401).send({
+            error: 'session_expired',
+            message: 'Your session has expired. Please log in again.',
+          });
+        }
+
+        return reply.status(500).send({
+          error: 'fetch_failed',
+          message: error instanceof Error ? error.message : 'Failed to fetch holds',
+        });
+      }
+    }
+  );
+
+  /**
+   * GET /manga/user/settings/history
+   *
+   * Check if checkout history tracking is enabled for the user.
+   */
+  app.get(
+    '/user/settings/history',
+    {
+      schema: {
+        headers: z.object({
+          'x-session-id': z.string(),
+        }),
+        response: {
+          200: HistorySettingsResponseSchema,
+          401: ErrorSchema,
+          500: ErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const sessionId = request.headers['x-session-id'];
+
+      if (!sessionId || !isSessionValid(sessionId)) {
+        return reply.status(401).send({
+          error: 'unauthorized',
+          message: 'Invalid or expired session',
+        });
+      }
+
+      try {
+        const historyEnabled = await isHistoryEnabled(sessionId);
+        return { historyEnabled };
+      } catch (error) {
+        request.log.error(error, 'Failed to check history settings');
+        return reply.status(500).send({
+          error: 'fetch_failed',
+          message: error instanceof Error ? error.message : 'Failed to check settings',
+        });
+      }
     }
   );
 
