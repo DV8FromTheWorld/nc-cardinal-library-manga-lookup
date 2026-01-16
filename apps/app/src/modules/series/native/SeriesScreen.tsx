@@ -134,7 +134,7 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
               <View
                 style={[
                   styles.availabilityFill,
-                  { width: `${availabilityPercent}%`, backgroundColor: theme.accent },
+                  { width: `${availabilityPercent}%`, backgroundColor: theme.success },
                 ]}
               />
             </View>

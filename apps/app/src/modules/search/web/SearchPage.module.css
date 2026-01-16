@@ -15,9 +15,22 @@
 
 .header {
   text-align: center;
-  margin-bottom: var(--spacing-xl);
-  padding-top: var(--spacing-xl);
+  margin-bottom: var(--spacing-lg);
+  padding-top: var(--spacing-lg);
   position: relative;
+}
+
+.userMenuContainer {
+  position: absolute;
+  top: var(--spacing-md);
+  right: var(--spacing-lg);
+}
+
+@media (max-width: 640px) {
+  .header {
+    margin-bottom: var(--spacing-md);
+    padding-top: calc(var(--spacing-xl) + var(--spacing-md));
+  }
 }
 
 .titleButton {
@@ -26,16 +39,17 @@
   padding: var(--spacing-sm) var(--spacing-md);
   margin: calc(var(--spacing-sm) * -1) calc(var(--spacing-md) * -1);
   font-family: 'Crimson Pro', Georgia, serif;
-  font-size: 3rem;
+  font-size: 2.5rem;
   font-weight: 700;
   color: var(--color-text-primary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--spacing-md);
+  gap: var(--spacing-sm);
   cursor: pointer;
   border-radius: var(--radius-md);
   transition: all 0.2s ease;
+  flex-wrap: wrap;
 }
 
 .titleButton:hover {
@@ -43,8 +57,24 @@
   background: rgba(196, 30, 58, 0.05);
 }
 
+@media (max-width: 640px) {
+  .titleButton {
+    font-size: 1.5rem;
+    gap: var(--spacing-xs);
+    max-width: 260px;
+    text-align: center;
+    line-height: 1.2;
+  }
+}
+
 .titleIcon {
-  font-size: 2.5rem;
+  font-size: 2rem;
+}
+
+@media (max-width: 640px) {
+  .titleIcon {
+    font-size: 1.5rem;
+  }
 }
 
 .titleText {
@@ -52,9 +82,16 @@
 }
 
 .subtitle {
-  font-size: 1.125rem;
+  font-size: 1rem;
   color: var(--color-text-secondary);
-  margin: var(--spacing-sm) 0 0;
+  margin: var(--spacing-xs) 0 0;
+}
+
+@media (max-width: 640px) {
+  .subtitle {
+    font-size: 0.875rem;
+    margin: var(--spacing-xs) 0 0;
+  }
 }
 
 .librarySelector {
@@ -270,6 +307,13 @@
   gap: var(--spacing-md);
 }
 
+@media (max-width: 640px) {
+  .seriesGrid {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-sm);
+  }
+}
+
 .seriesCard {
   background: var(--color-bg-secondary);
   border: 1px solid var(--color-border);
@@ -394,7 +438,7 @@
 
 .availabilityFill {
   height: 100%;
-  background: linear-gradient(90deg, var(--color-success) 0%, var(--color-accent) 100%);
+  background: var(--color-success);
   border-radius: var(--radius-full);
   transition: width 0.5s ease;
 }
@@ -411,8 +455,15 @@
 
 .volumeGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: var(--spacing-sm);
+}
+
+/* Tablet portrait and mobile: single column */
+@media (max-width: 900px) {
+  .volumeGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .volumeCard {

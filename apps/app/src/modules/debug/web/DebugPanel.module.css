@@ -4,8 +4,8 @@
 
 .container {
   position: fixed;
-  bottom: var(--spacing-lg);
-  left: var(--spacing-lg);
+  bottom: var(--spacing-md);
+  right: var(--spacing-md);
   z-index: 90;
 }
 
@@ -29,7 +29,7 @@
 .panel {
   position: absolute;
   bottom: calc(100% + var(--spacing-sm));
-  left: 0;
+  right: 0;
   width: 320px;
   max-height: 400px;
   overflow-y: auto;

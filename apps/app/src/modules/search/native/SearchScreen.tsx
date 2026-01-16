@@ -238,22 +238,58 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
         {/* Results */}
         {results && !isLoading && (
           <ScrollView style={styles.results} showsVerticalScrollIndicator={false}>
-            {/* Series Results */}
-            {results.series.length > 0 && (
+            {/* Best Match Highlight */}
+            {results.bestMatch && (
               <View style={styles.section}>
                 <Heading level={2} variant="header-sm/semibold" style={styles.sectionTitle}>
-                  Series ({results.series.length})
+                  Best Match
                 </Heading>
-                {results.series.map((series) => (
+                {results.bestMatch.type === 'series' && results.bestMatch.series && (
                   <SeriesCard
-                    key={series.id}
-                    series={series}
-                    onPress={() => handleSelectSeries(series.slug)}
+                    series={results.bestMatch.series}
+                    onPress={() => handleSelectSeries(results.bestMatch!.series!.slug)}
                     theme={theme}
+                    highlighted
                   />
-                ))}
+                )}
+                {results.bestMatch.type === 'volume' && results.bestMatch.volume && (
+                  <VolumeCard
+                    volume={results.bestMatch.volume}
+                    onPress={() => {
+                      if (results.bestMatch!.volume!.isbn) {
+                        handleSelectBook(results.bestMatch!.volume!.isbn);
+                      }
+                    }}
+                    theme={theme}
+                    highlighted
+                  />
+                )}
               </View>
             )}
+
+            {/* Series Results (excluding best match to avoid duplication) */}
+            {(() => {
+              const bestMatchSeriesId = results.bestMatch?.type === 'series' ? results.bestMatch.series?.id : undefined;
+              const filteredSeries = bestMatchSeriesId
+                ? results.series.filter((s) => s.id !== bestMatchSeriesId)
+                : results.series;
+              
+              return filteredSeries.length > 0 ? (
+                <View style={styles.section}>
+                  <Heading level={2} variant="header-sm/semibold" style={styles.sectionTitle}>
+                    {bestMatchSeriesId ? 'Other Series' : 'Series'} ({filteredSeries.length})
+                  </Heading>
+                  {filteredSeries.map((series) => (
+                    <SeriesCard
+                      key={series.id}
+                      series={series}
+                      onPress={() => handleSelectSeries(series.slug)}
+                      theme={theme}
+                    />
+                  ))}
+                </View>
+              ) : null;
+            })()}
 
             {/* Volume Results */}
             {results.volumes.length > 0 && (
@@ -345,15 +381,20 @@ interface SeriesCardProps {
   series: SeriesResult;
   onPress: () => void;
   theme: ThemeColors;
+  highlighted?: boolean | undefined;
 }
 
-function SeriesCard({ series, onPress, theme }: SeriesCardProps): JSX.Element {
+function SeriesCard({ series, onPress, theme, highlighted }: SeriesCardProps): JSX.Element {
   const availabilityPercent = getAvailabilityPercent(series.availableVolumes, series.totalVolumes);
   const [imageError, setImageError] = useState(false);
 
   return (
     <TouchableOpacity
-      style={[styles.seriesCard, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}
+      style={[
+        styles.seriesCard,
+        { backgroundColor: theme.bgSecondary, borderColor: highlighted ? theme.accent : theme.border },
+        highlighted && styles.seriesCardHighlighted,
+      ]}
       onPress={onPress}
       activeOpacity={0.7}
     >
@@ -398,7 +439,7 @@ function SeriesCard({ series, onPress, theme }: SeriesCardProps): JSX.Element {
           <View
             style={[
               styles.availabilityFill,
-              { width: `${availabilityPercent}%`, backgroundColor: theme.accent },
+              { width: `${availabilityPercent}%`, backgroundColor: theme.success },
             ]}
           />
         </View>
@@ -414,9 +455,10 @@ interface VolumeCardProps {
   volume: VolumeResult;
   onPress: () => void;
   theme: ThemeColors;
+  highlighted?: boolean | undefined;
 }
 
-function VolumeCard({ volume, onPress, theme }: VolumeCardProps): JSX.Element {
+function VolumeCard({ volume, onPress, theme, highlighted }: VolumeCardProps): JSX.Element {
   const { statusType, statusText } = getAvailabilityDisplayInfo(volume.availability);
   const [imageError, setImageError] = useState(false);
 
@@ -429,7 +471,11 @@ function VolumeCard({ volume, onPress, theme }: VolumeCardProps): JSX.Element {
 
   return (
     <TouchableOpacity
-      style={[styles.volumeCard, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}
+      style={[
+        styles.volumeCard,
+        { backgroundColor: theme.bgSecondary, borderColor: highlighted ? theme.accent : theme.border },
+        highlighted && styles.volumeCardHighlighted,
+      ]}
       onPress={onPress}
       activeOpacity={0.7}
       disabled={!volume.isbn}
@@ -621,6 +667,9 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.sm,
   },
+  seriesCardHighlighted: {
+    borderWidth: 2,
+  },
   seriesCover: {
     width: 70,
     marginRight: spacing.md,
@@ -683,6 +732,9 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.sm,
     gap: spacing.sm,
+  },
+  volumeCardHighlighted: {
+    borderWidth: 2,
   },
   volumeCover: {
     width: 45,

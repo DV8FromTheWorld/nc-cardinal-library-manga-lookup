@@ -92,7 +92,7 @@ export function SearchPage(): JSX.Element {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <div style={{ position: 'absolute', top: 'var(--spacing-md)', right: 'var(--spacing-lg)' }}>
+        <div className={styles.userMenuContainer}>
           <UserMenu onLoginClick={() => setShowLoginModal(true)} />
         </div>
         <button 
@@ -203,24 +203,31 @@ export function SearchPage(): JSX.Element {
             </section>
           )}
 
-          {/* Series Results */}
-          {results.series.length > 0 && (
-            <section className={styles.section}>
-              <Heading level={2} className={styles.sectionTitle}>
-                Series
-                <Text variant="text-sm/medium" color="text-muted" className={styles.count}>{results.series.length}</Text>
-              </Heading>
-              <div className={styles.seriesGrid}>
-                {results.series.map((series) => (
-                  <SeriesCard
-                    key={series.id}
-                    series={series}
-                    onClick={() => handleSelectSeries(series.slug)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
+          {/* Series Results (excluding best match to avoid duplication) */}
+          {(() => {
+            const bestMatchSeriesId = results.bestMatch?.type === 'series' ? results.bestMatch.series?.id : undefined;
+            const filteredSeries = bestMatchSeriesId
+              ? results.series.filter((s) => s.id !== bestMatchSeriesId)
+              : results.series;
+            
+            return filteredSeries.length > 0 ? (
+              <section className={styles.section}>
+                <Heading level={2} className={styles.sectionTitle}>
+                  {bestMatchSeriesId ? 'Other Series' : 'Series'}
+                  <Text variant="text-sm/medium" color="text-muted" className={styles.count}>{filteredSeries.length}</Text>
+                </Heading>
+                <div className={styles.seriesGrid}>
+                  {filteredSeries.map((series) => (
+                    <SeriesCard
+                      key={series.id}
+                      series={series}
+                      onClick={() => handleSelectSeries(series.slug)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null;
+          })()}
 
           {/* Volume Results */}
           {results.volumes.length > 0 && results.bestMatch?.type !== 'volume' && (

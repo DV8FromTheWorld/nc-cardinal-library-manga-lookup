@@ -172,6 +172,16 @@
   color: var(--color-accent);
 }
 
+.malIcon {
+  width: 16px;
+  height: 16px;
+  color: #2e51a2;
+}
+
+.externalLink:hover .malIcon {
+  color: var(--color-accent);
+}
+
 /* -----------------------------------------------------------------------------
    Availability Section
    ----------------------------------------------------------------------------- */
@@ -227,7 +237,7 @@
 
 .availabilityFill {
   height: 100%;
-  background: linear-gradient(90deg, var(--color-success) 0%, var(--color-accent) 100%);
+  background: var(--color-success);
   border-radius: var(--radius-full);
   transition: width 0.5s ease;
 }
