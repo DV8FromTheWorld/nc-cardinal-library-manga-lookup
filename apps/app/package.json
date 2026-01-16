@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@shopify/flash-list": "^2.2.0",
     "react": "^18",
     "react-dom": "^18",
     "react-router-dom": "^7",

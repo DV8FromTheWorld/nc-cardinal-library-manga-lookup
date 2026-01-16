@@ -2,7 +2,7 @@
  * Search screen component for React Native.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useMemo } from 'react';
 import {
   View,
   Text as RNText,
@@ -18,6 +18,7 @@ import {
   ScrollView,
   Modal,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../routing/native/Router';
 import { useSearch } from '../hooks/useSearch';
@@ -237,97 +238,14 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
 
         {/* Results */}
         {results && !isLoading && (
-          <ScrollView style={styles.results} showsVerticalScrollIndicator={false}>
-            {/* Best Match Highlight */}
-            {results.bestMatch && (
-              <View style={styles.section}>
-                <Heading level={2} variant="header-sm/semibold" style={styles.sectionTitle}>
-                  Best Match
-                </Heading>
-                {results.bestMatch.type === 'series' && results.bestMatch.series && (
-                  <SeriesCard
-                    series={results.bestMatch.series}
-                    onPress={() => handleSelectSeries(results.bestMatch!.series!.slug)}
-                    theme={theme}
-                    highlighted
-                  />
-                )}
-                {results.bestMatch.type === 'volume' && results.bestMatch.volume && (
-                  <VolumeCard
-                    volume={results.bestMatch.volume}
-                    onPress={() => {
-                      if (results.bestMatch!.volume!.isbn) {
-                        handleSelectBook(results.bestMatch!.volume!.isbn);
-                      }
-                    }}
-                    theme={theme}
-                    highlighted
-                  />
-                )}
-              </View>
-            )}
-
-            {/* Series Results (excluding best match to avoid duplication) */}
-            {(() => {
-              const bestMatchSeriesId = results.bestMatch?.type === 'series' ? results.bestMatch.series?.id : undefined;
-              const filteredSeries = bestMatchSeriesId
-                ? results.series.filter((s) => s.id !== bestMatchSeriesId)
-                : results.series;
-              
-              return filteredSeries.length > 0 ? (
-                <View style={styles.section}>
-                  <Heading level={2} variant="header-sm/semibold" style={styles.sectionTitle}>
-                    {bestMatchSeriesId ? 'Other Series' : 'Series'} ({filteredSeries.length})
-                  </Heading>
-                  {filteredSeries.map((series) => (
-                    <SeriesCard
-                      key={series.id}
-                      series={series}
-                      onPress={() => handleSelectSeries(series.slug)}
-                      theme={theme}
-                    />
-                  ))}
-                </View>
-              ) : null;
-            })()}
-
-            {/* Volume Results */}
-            {results.volumes.length > 0 && (
-              <View style={styles.section}>
-                <Heading level={2} variant="header-sm/semibold" style={styles.sectionTitle}>
-                  Volumes ({results.volumes.length})
-                </Heading>
-                {(showAllVolumes ? results.volumes : results.volumes.slice(0, 12)).map((volume, idx) => (
-                  <VolumeCard
-                    key={volume.isbn ?? idx}
-                    volume={volume}
-                    onPress={() => volume.isbn && handleSelectBook(volume.isbn)}
-                    theme={theme}
-                  />
-                ))}
-                {results.volumes.length > 12 && (
-                  <TouchableOpacity
-                    style={[styles.showMoreButton, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}
-                    onPress={() => setShowAllVolumes(!showAllVolumes)}
-                  >
-                    <Text variant="text-sm/normal" color="text-secondary">
-                      {showAllVolumes ? 'Show less' : `Show all ${results.volumes.length} volumes`}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-
-            {/* No Results */}
-            {results.series.length === 0 && results.volumes.length === 0 && (
-              <View style={styles.noResults}>
-                <RNText style={styles.noResultsIcon}>🔍</RNText>
-                <Text variant="text-md/normal" color="text-secondary">
-                  No results found for "{results.query}"
-                </Text>
-              </View>
-            )}
-          </ScrollView>
+          <ResultsList
+            results={results}
+            theme={theme}
+            showAllVolumes={showAllVolumes}
+            onToggleShowAllVolumes={() => setShowAllVolumes(!showAllVolumes)}
+            onSelectSeries={handleSelectSeries}
+            onSelectBook={handleSelectBook}
+          />
         )}
 
         {/* Empty State */}
@@ -517,6 +435,208 @@ function VolumeCard({ volume, onPress, theme, highlighted }: VolumeCardProps): J
 }
 
 // ============================================================================
+// ResultsList - Virtualized search results using FlashList
+// ============================================================================
+
+// Types for flattened list items (FlashList doesn't have native section support)
+type SectionHeaderItem = { type: 'sectionHeader'; id: string; title: string };
+type BestMatchItem = { type: 'bestMatch'; id: string };
+type SeriesItem = { type: 'series'; id: string; series: SeriesResult };
+type VolumeItem = { type: 'volume'; id: string; volume: VolumeResult };
+type ShowMoreItem = { type: 'showMore'; id: string };
+type NoResultsItem = { type: 'noResults'; id: string };
+
+type ResultItem = SectionHeaderItem | BestMatchItem | SeriesItem | VolumeItem | ShowMoreItem | NoResultsItem;
+
+// Estimated heights for different item types (used by FlashList)
+const ITEM_HEIGHTS = {
+  sectionHeader: 48,
+  bestMatch: 140, // SeriesCard or VolumeCard (variable, use larger estimate)
+  series: 140,
+  volume: 100,
+  showMore: 48,
+  noResults: 120,
+};
+
+interface ResultsListProps {
+  results: NonNullable<ReturnType<typeof useSearch>['results']>;
+  theme: ThemeColors;
+  showAllVolumes: boolean;
+  onToggleShowAllVolumes: () => void;
+  onSelectSeries: (slug: string) => void;
+  onSelectBook: (isbn: string) => void;
+}
+
+function ResultsList({
+  results,
+  theme,
+  showAllVolumes,
+  onToggleShowAllVolumes,
+  onSelectSeries,
+  onSelectBook,
+}: ResultsListProps): JSX.Element {
+  // Build flattened list from results (including section headers as items)
+  const items = useMemo((): ResultItem[] => {
+    const result: ResultItem[] = [];
+    
+    // Best Match section
+    if (results.bestMatch) {
+      result.push({ type: 'sectionHeader', id: 'header-best-match', title: 'Best Match' });
+      result.push({ type: 'bestMatch', id: 'best-match' });
+    }
+    
+    // Series section (excluding best match)
+    const bestMatchSeriesId = results.bestMatch?.type === 'series' ? results.bestMatch.series?.id : undefined;
+    const filteredSeries = bestMatchSeriesId
+      ? results.series.filter((s) => s.id !== bestMatchSeriesId)
+      : results.series;
+    
+    if (filteredSeries.length > 0) {
+      const title = bestMatchSeriesId 
+        ? `Other Series (${filteredSeries.length})` 
+        : `Series (${filteredSeries.length})`;
+      result.push({ type: 'sectionHeader', id: 'header-series', title });
+      
+      for (const series of filteredSeries) {
+        result.push({ type: 'series', id: series.id, series });
+      }
+    }
+    
+    // Volumes section
+    if (results.volumes.length > 0) {
+      result.push({ 
+        type: 'sectionHeader', 
+        id: 'header-volumes', 
+        title: `Volumes (${results.volumes.length})` 
+      });
+      
+      const displayVolumes = showAllVolumes ? results.volumes : results.volumes.slice(0, 12);
+      displayVolumes.forEach((volume, idx) => {
+        result.push({ type: 'volume', id: volume.isbn ?? `vol-${idx}`, volume });
+      });
+      
+      // Add "Show more" button if needed
+      if (results.volumes.length > 12) {
+        result.push({ type: 'showMore', id: 'show-more' });
+      }
+    }
+    
+    // No results
+    if (results.series.length === 0 && results.volumes.length === 0) {
+      result.push({ type: 'noResults', id: 'no-results' });
+    }
+    
+    return result;
+  }, [results, showAllVolumes]);
+
+  const renderItem = useCallback(
+    ({ item }: { item: ResultItem }) => {
+      switch (item.type) {
+        case 'sectionHeader':
+          return (
+            <View style={styles.sectionHeader}>
+              <Heading level={2} variant="header-sm/semibold" style={styles.sectionTitle}>
+                {item.title}
+              </Heading>
+            </View>
+          );
+        case 'bestMatch': {
+          if (!results.bestMatch) return null;
+          if (results.bestMatch.type === 'series' && results.bestMatch.series) {
+            return (
+              <SeriesCard
+                series={results.bestMatch.series}
+                onPress={() => onSelectSeries(results.bestMatch!.series!.slug)}
+                theme={theme}
+                highlighted
+              />
+            );
+          }
+          if (results.bestMatch.type === 'volume' && results.bestMatch.volume) {
+            return (
+              <VolumeCard
+                volume={results.bestMatch.volume}
+                onPress={() => {
+                  if (results.bestMatch!.volume!.isbn) {
+                    onSelectBook(results.bestMatch!.volume!.isbn);
+                  }
+                }}
+                theme={theme}
+                highlighted
+              />
+            );
+          }
+          return null;
+        }
+        case 'series':
+          return (
+            <SeriesCard
+              series={item.series}
+              onPress={() => onSelectSeries(item.series.slug)}
+              theme={theme}
+            />
+          );
+        case 'volume':
+          return (
+            <VolumeCard
+              volume={item.volume}
+              onPress={() => item.volume.isbn && onSelectBook(item.volume.isbn)}
+              theme={theme}
+            />
+          );
+        case 'showMore':
+          return (
+            <TouchableOpacity
+              style={[styles.showMoreButton, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}
+              onPress={onToggleShowAllVolumes}
+            >
+              <Text variant="text-sm/normal" color="text-secondary">
+                {showAllVolumes ? 'Show less' : `Show all ${results.volumes.length} volumes`}
+              </Text>
+            </TouchableOpacity>
+          );
+        case 'noResults':
+          return (
+            <View style={styles.noResults}>
+              <RNText style={styles.noResultsIcon}>🔍</RNText>
+              <Text variant="text-md/normal" color="text-secondary">
+                No results found for "{results.query}"
+              </Text>
+            </View>
+          );
+        default:
+          return null;
+      }
+    },
+    [results, theme, showAllVolumes, onSelectSeries, onSelectBook, onToggleShowAllVolumes]
+  );
+
+  const keyExtractor = useCallback((item: ResultItem) => item.id, []);
+
+  // Provide size hints to FlashList for better performance
+  const overrideItemLayout = useCallback(
+    (layout: { span?: number | undefined; size?: number | undefined }, item: ResultItem) => {
+      layout.size = ITEM_HEIGHTS[item.type];
+    },
+    []
+  );
+
+  return (
+    <View style={styles.results}>
+      <FlashList
+        data={items}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        overrideItemLayout={overrideItemLayout}
+        estimatedItemSize={100}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.resultsContent}
+      />
+    </View>
+  );
+}
+
+// ============================================================================
 // Theme
 // ============================================================================
 
@@ -657,8 +777,14 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: spacing.xl,
   },
+  sectionHeader: {
+    paddingTop: spacing.md,
+  },
   sectionTitle: {
     marginBottom: spacing.md,
+  },
+  resultsContent: {
+    paddingBottom: spacing.xl,
   },
   seriesCard: {
     flexDirection: 'row',

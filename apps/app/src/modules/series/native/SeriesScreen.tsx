@@ -2,11 +2,10 @@
  * Series detail screen component for React Native.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text as RNText,
-  ScrollView,
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
@@ -14,6 +13,7 @@ import {
   useColorScheme,
   SafeAreaView,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../routing/native/Router';
 import { useSeriesDetails } from '../hooks/useSeriesDetails';
@@ -41,55 +41,49 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
     homeLibrary,
   });
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     navigation.goBack();
-  };
+  }, [navigation]);
 
-  const handleSelectBook = (isbn: string) => {
+  const handleSelectBook = useCallback((isbn: string) => {
     navigation.navigate('Book', { isbn });
-  };
+  }, [navigation]);
 
   const handleClearCache = useCallback(async () => {
     if (slug) {
       await clearCacheForSeries(slug);
-      // Reload the screen with fresh data
       navigation.replace('Series', { slug });
     }
   }, [slug, navigation]);
 
-  // Loading State
-  if (isLoading) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.accent} />
-          <Text variant="text-md/normal" color="text-secondary" style={styles.loadingText}>
-            Loading series details...
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  // All hooks must be called before any early returns!
+  // Memoize key extractor (doesn't depend on series)
+  const keyExtractor = useCallback(
+    (item: VolumeInfo) => String(item.volumeNumber),
+    []
+  );
 
-  // Error State
-  if (error || !series) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Text variant="text-md/medium" color="accent">← Back to search</Text>
-        </TouchableOpacity>
-        <View style={[styles.errorContainer, { backgroundColor: theme.errorBg }]}>
-          <Text variant="text-sm/normal" color="error">⚠ {error ?? 'Series not found'}</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  // Memoize the render function - safe to use series?.title etc
+  const renderVolumeItem = useCallback(
+    ({ item: volume }: { item: VolumeInfo }) => (
+      <VolumeRow
+        key={volume.volumeNumber}
+        volume={volume}
+        seriesTitle={series?.title ?? ''}
+        seriesSlug={series?.slug ?? ''}
+        onPress={() => volume.isbn && handleSelectBook(volume.isbn)}
+        theme={theme}
+      />
+    ),
+    [series?.title, series?.slug, handleSelectBook, theme]
+  );
 
-  const availabilityPercent = getAvailabilityPercent(series.availableCount, series.totalVolumes);
+  const availabilityPercent = series ? getAvailabilityPercent(series.availableCount, series.totalVolumes) : 0;
 
-  return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+  // Header component - safe with optional chaining
+  const ListHeader = useMemo(
+    () => series ? (
+      <>
         {/* Back Button */}
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Text variant="text-md/medium" color="accent">← Back to search</Text>
@@ -168,32 +162,75 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
           </View>
         </View>
 
-        {/* All Volumes Section */}
-        <View style={styles.section}>
+        {/* Volumes Section Title */}
+        <View style={styles.sectionHeader}>
           <Heading level={2} variant="header-sm/semibold" style={styles.sectionTitle}>All Volumes</Heading>
-          {series.volumes.map((volume) => (
-            <VolumeRow
-              key={volume.volumeNumber}
-              volume={volume}
-              seriesTitle={series.title}
-              seriesSlug={series.slug}
-              onPress={() => volume.isbn && handleSelectBook(volume.isbn)}
-              theme={theme}
-            />
-          ))}
         </View>
+      </>
+    ) : null,
+    [handleBack, series, theme, availabilityPercent]
+  );
 
-        {/* Debug Panel */}
+  // Footer component with debug panel
+  const ListFooter = useMemo(
+    () => series ? (
+      <View style={styles.footerContainer}>
         <DebugPanel
           debug={series._debug}
           onRefreshWithDebug={!series._debug ? refreshWithDebug : undefined}
           cacheContext={slug ? { type: 'series', identifier: slug } : undefined}
           onClearCache={handleClearCache}
         />
-      </ScrollView>
+      </View>
+    ) : null,
+    [series, refreshWithDebug, slug, handleClearCache]
+  );
+
+  // Loading State - AFTER all hooks
+  if (isLoading) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.accent} />
+          <Text variant="text-md/normal" color="text-secondary" style={styles.loadingText}>
+            Loading series details...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Error State - AFTER all hooks
+  if (error || !series) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
+        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+          <Text variant="text-md/medium" color="accent">← Back to search</Text>
+        </TouchableOpacity>
+        <View style={[styles.errorContainer, { backgroundColor: theme.errorBg }]}>
+          <Text variant="text-sm/normal" color="error">⚠ {error ?? 'Series not found'}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
+      <FlashList
+        data={series.volumes}
+        renderItem={renderVolumeItem}
+        keyExtractor={keyExtractor}
+        ListHeaderComponent={ListHeader}
+        ListFooterComponent={ListFooter}
+        showsVerticalScrollIndicator={false}
+        estimatedItemSize={VOLUME_ROW_HEIGHT}
+      />
     </SafeAreaView>
   );
 }
+
+// Height of each volume row (padding + content + margin)
+const VOLUME_ROW_HEIGHT = 76 + spacing.sm;
 
 // ============================================================================
 // Sub-components
@@ -308,6 +345,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  listContent: {
+    paddingBottom: spacing.xl,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -362,8 +402,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.lg,
   },
+  sectionHeader: {
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+  },
   sectionTitle: {
     marginBottom: spacing.md,
+  },
+  footerContainer: {
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.md,
   },
   availabilityCard: {
     padding: spacing.md,
@@ -411,6 +459,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     marginBottom: spacing.sm,
+    marginHorizontal: spacing.lg,
     gap: spacing.sm,
   },
   volumeRowDisabled: {
