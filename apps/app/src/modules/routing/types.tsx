@@ -7,7 +7,7 @@ export type SearchParams = {
 };
 
 export type SeriesParams = {
-  slug: string;
+  id: string;
 };
 
 export type BookParams = {

@@ -18,13 +18,3 @@ export function cleanDisplayTitle(title: string): string {
 export function formatAuthorName(author: string): string {
   return author.split(',').slice(0, 2).join(', ').replace(/\.$/, '');
 }
-
-/**
- * Generate a URL-safe slug from a title.
- */
-export function generateSeriesSlug(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}

@@ -7,7 +7,7 @@ import { getSeriesDetails } from '../../search/services/mangaApi';
 import type { SeriesDetails } from '../../search/types';
 
 export interface UseSeriesDetailsOptions {
-  seriesSlug: string;
+  seriesId: string;
   homeLibrary?: string | undefined;
 }
 
@@ -19,7 +19,7 @@ export interface UseSeriesDetailsResult {
 }
 
 export function useSeriesDetails(options: UseSeriesDetailsOptions): UseSeriesDetailsResult {
-  const { seriesSlug, homeLibrary } = options;
+  const { seriesId, homeLibrary } = options;
   
   const [series, setSeries] = useState<SeriesDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -30,14 +30,14 @@ export function useSeriesDetails(options: UseSeriesDetailsOptions): UseSeriesDet
     setError(null);
 
     try {
-      const data = await getSeriesDetails(seriesSlug, { debug, homeLibrary });
+      const data = await getSeriesDetails(seriesId, { debug, homeLibrary });
       setSeries(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load series');
     } finally {
       setIsLoading(false);
     }
-  }, [seriesSlug, homeLibrary]);
+  }, [seriesId, homeLibrary]);
 
   useEffect(() => {
     fetchSeries(false);

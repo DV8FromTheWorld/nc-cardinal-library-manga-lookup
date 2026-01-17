@@ -66,8 +66,8 @@ export interface DebugInfo {
 }
 
 export interface SeriesResult {
+  /** Entity ID (e.g., "s_V1StGXR8Z") - stable across data source updates */
   id: string;
-  slug: string;
   title: string;
   totalVolumes: number;
   availableVolumes: number;
@@ -110,8 +110,8 @@ export interface SearchResult {
 }
 
 export interface SeriesDetails {
+  /** Entity ID (e.g., "s_V1StGXR8Z") - stable across data source updates */
   id: string;
-  slug: string;
   title: string;
   totalVolumes: number;
   isComplete: boolean;
@@ -156,6 +156,7 @@ export interface BookDetails {
     remoteAvailable?: number | undefined;
   };
   seriesInfo?: {
+    id?: string | undefined; // Entity ID for navigation
     title: string;
     volumeNumber?: number | undefined;
   } | undefined;

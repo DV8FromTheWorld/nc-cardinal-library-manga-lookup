@@ -11,7 +11,6 @@ import { clearCacheForBook } from '../../search/services/mangaApi';
 import {
   cleanDisplayTitle,
   formatAuthorName,
-  generateSeriesSlug,
 } from '../../search/utils/formatters';
 import { groupHoldingsByLibrary, getAvailableCount } from '../../search/utils/availability';
 import { Text } from '../../../design/components/Text/web/Text';
@@ -39,8 +38,8 @@ export function BookPage(): JSX.Element {
     navigate(-1);
   };
 
-  const handleSelectSeries = (seriesSlug: string) => {
-    navigate(`/series/${encodeURIComponent(seriesSlug)}`);
+  const handleSelectSeries = (seriesId: string) => {
+    navigate(`/series/${encodeURIComponent(seriesId)}`);
   };
 
   const handleClearCache = useCallback(async () => {
@@ -104,8 +103,8 @@ export function BookPage(): JSX.Element {
   const displayTitle = cleanDisplayTitle(book.title);
   const displayAuthors = book.authors.map(formatAuthorName);
 
-  // Generate a series slug from title
-  const seriesSlug = book.seriesInfo ? generateSeriesSlug(book.seriesInfo.title) : null;
+  // Get series ID for navigation (if available)
+  const seriesId = book.seriesInfo?.id;
 
   return (
     <div className={styles.container}>
@@ -135,11 +134,11 @@ export function BookPage(): JSX.Element {
               </Text>
             )}
 
-            {book.seriesInfo && seriesSlug && (
+            {book.seriesInfo && seriesId && (
               <button
                 type="button"
                 className={styles.seriesLink}
-                onClick={() => handleSelectSeries(seriesSlug)}
+                onClick={() => handleSelectSeries(seriesId)}
               >
                 <Text variant="text-sm/medium">
                   📚 Part of: {book.seriesInfo.title}

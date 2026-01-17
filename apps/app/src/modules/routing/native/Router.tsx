@@ -16,8 +16,8 @@ import { AccountScreen } from '../../account-detail/native/AccountScreen';
  */
 export type RootStackParamList = {
   Search: { query?: string | undefined; skipAnimation?: boolean | undefined } | undefined;
-  Series: { slug: string };
-  Book: { isbn: string; slug?: string | undefined };
+  Series: { id: string };
+  Book: { isbn: string };
   Account: undefined;
 };
 

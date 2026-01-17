@@ -20,15 +20,11 @@ const router = createBrowserRouter([
     element: <SearchPage />,
   },
   {
-    path: '/series/:slug',
+    path: '/series/:id',
     element: <SeriesPage />,
   },
   {
     path: '/books/:isbn',
-    element: <BookPage />,
-  },
-  {
-    path: '/books/:isbn/:slug',
     element: <BookPage />,
   },
   {

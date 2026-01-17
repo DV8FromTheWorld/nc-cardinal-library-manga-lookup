@@ -57,8 +57,9 @@ export function SearchPage(): JSX.Element {
     }
   }, [initialQuery]);
 
-  const handleSelectSeries = useCallback((slug: string) => {
-    navigate(`/series/${encodeURIComponent(slug)}`);
+  const handleSelectSeries = useCallback((seriesId: string) => {
+    // Use entity ID for navigation (stable across data source updates)
+    navigate(`/series/${encodeURIComponent(seriesId)}`);
   }, [navigate]);
 
   const handleSelectBook = useCallback((isbn: string) => {
@@ -182,7 +183,7 @@ export function SearchPage(): JSX.Element {
               {results.bestMatch.type === 'series' && results.bestMatch.series && (
                 <SeriesCard
                   series={results.bestMatch.series}
-                  onClick={() => handleSelectSeries(results.bestMatch!.series!.slug)}
+                  onClick={() => handleSelectSeries(results.bestMatch!.series!.id)}
                   highlighted
                 />
               )}
@@ -218,7 +219,7 @@ export function SearchPage(): JSX.Element {
                     <SeriesCard
                       key={series.id}
                       series={series}
-                      onClick={() => handleSelectSeries(series.slug)}
+                      onClick={() => handleSelectSeries(series.id)}
                     />
                   ))}
                 </div>

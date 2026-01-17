@@ -23,7 +23,6 @@ import { clearCacheForBook } from '../../search/services/mangaApi';
 import {
   cleanDisplayTitle,
   formatAuthorName,
-  generateSeriesSlug,
 } from '../../search/utils/formatters';
 import { groupHoldingsByLibrary, getAvailableCount } from '../../search/utils/availability';
 import { Text } from '../../../design/components/Text/native/Text';
@@ -50,8 +49,8 @@ export function BookScreen({ navigation, route }: Props): JSX.Element {
     navigation.goBack();
   };
 
-  const handleSelectSeries = (seriesSlug: string) => {
-    navigation.navigate('Series', { slug: seriesSlug });
+  const handleSelectSeries = (seriesId: string) => {
+    navigation.navigate('Series', { id: seriesId });
   };
 
   const handleOpenCatalog = () => {
@@ -105,8 +104,8 @@ export function BookScreen({ navigation, route }: Props): JSX.Element {
   const displayTitle = cleanDisplayTitle(book.title);
   const displayAuthors = book.authors.map(formatAuthorName);
 
-  // Generate a series slug from title
-  const seriesSlug = book.seriesInfo ? generateSeriesSlug(book.seriesInfo.title) : null;
+  // Get series ID for navigation (if available from entity store)
+  const seriesId = book.seriesInfo?.id;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
@@ -143,10 +142,10 @@ export function BookScreen({ navigation, route }: Props): JSX.Element {
               </Text>
             )}
 
-            {book.seriesInfo && seriesSlug && (
+            {book.seriesInfo && seriesId && (
               <TouchableOpacity
                 style={[styles.seriesLink, { backgroundColor: theme.bgSecondary }]}
-                onPress={() => handleSelectSeries(seriesSlug)}
+                onPress={() => handleSelectSeries(seriesId)}
               >
                 <Text variant="text-sm/medium" color="interactive-primary" style={styles.seriesLinkText}>
                   📚 Part of: {book.seriesInfo.title}

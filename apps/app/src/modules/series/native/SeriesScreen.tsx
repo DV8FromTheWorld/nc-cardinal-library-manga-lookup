@@ -33,11 +33,11 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
   const isDark = colorScheme === 'dark';
   const theme = isDark ? colors.dark : colors.light;
 
-  const { slug } = route.params;
+  const { id } = route.params;
   const { homeLibrary } = useHomeLibrary();
 
   const { series, isLoading, error, refreshWithDebug } = useSeriesDetails({
-    seriesSlug: slug,
+    seriesId: id,
     homeLibrary,
   });
 
@@ -50,11 +50,11 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
   }, [navigation]);
 
   const handleClearCache = useCallback(async () => {
-    if (slug) {
-      await clearCacheForSeries(slug);
-      navigation.replace('Series', { slug });
+    if (id) {
+      await clearCacheForSeries(id);
+      navigation.replace('Series', { id });
     }
-  }, [slug, navigation]);
+  }, [id, navigation]);
 
   // All hooks must be called before any early returns!
   // Memoize key extractor (doesn't depend on series)
@@ -70,12 +70,11 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
         key={volume.volumeNumber}
         volume={volume}
         seriesTitle={series?.title ?? ''}
-        seriesSlug={series?.slug ?? ''}
         onPress={() => volume.isbn && handleSelectBook(volume.isbn)}
         theme={theme}
       />
     ),
-    [series?.title, series?.slug, handleSelectBook, theme]
+    [series?.title, handleSelectBook, theme]
   );
 
   const availabilityPercent = series ? getAvailabilityPercent(series.availableCount, series.totalVolumes) : 0;
@@ -262,12 +261,11 @@ function SeriesCoverImage({ uri, theme }: SeriesCoverImageProps): JSX.Element {
 interface VolumeRowProps {
   volume: VolumeInfo;
   seriesTitle: string;
-  seriesSlug: string;
   onPress: () => void;
   theme: ThemeColors;
 }
 
-function VolumeRow({ volume, seriesTitle, seriesSlug, onPress, theme }: VolumeRowProps): JSX.Element {
+function VolumeRow({ volume, seriesTitle, onPress, theme }: VolumeRowProps): JSX.Element {
   const isAvailable = volume.availability?.available ?? false;
   const hasISBN = !!volume.isbn;
   const [imageError, setImageError] = useState(false);

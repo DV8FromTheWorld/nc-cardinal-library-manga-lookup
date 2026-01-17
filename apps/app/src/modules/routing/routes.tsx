@@ -4,7 +4,7 @@
 
 export const routes = {
   search: '/',
-  series: '/series/:slug',
+  series: '/series/:id',
   book: '/books/:isbn',
 } as const;
 

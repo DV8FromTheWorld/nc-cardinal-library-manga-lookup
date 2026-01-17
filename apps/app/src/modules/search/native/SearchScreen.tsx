@@ -68,8 +68,8 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
   }, [results?.query, search]);
 
   const handleSelectSeries = useCallback(
-    (slug: string) => {
-      navigation.navigate('Series', { slug });
+    (seriesId: string) => {
+      navigation.navigate('Series', { id: seriesId });
     },
     [navigation]
   );
@@ -463,7 +463,7 @@ interface ResultsListProps {
   theme: ThemeColors;
   showAllVolumes: boolean;
   onToggleShowAllVolumes: () => void;
-  onSelectSeries: (slug: string) => void;
+  onSelectSeries: (seriesId: string) => void;
   onSelectBook: (isbn: string) => void;
 }
 
@@ -546,7 +546,7 @@ function ResultsList({
             return (
               <SeriesCard
                 series={results.bestMatch.series}
-                onPress={() => onSelectSeries(results.bestMatch!.series!.slug)}
+                onPress={() => onSelectSeries(results.bestMatch!.series!.id)}
                 theme={theme}
                 highlighted
               />
@@ -572,7 +572,7 @@ function ResultsList({
           return (
             <SeriesCard
               series={item.series}
-              onPress={() => onSelectSeries(item.series.slug)}
+              onPress={() => onSelectSeries(item.series.id)}
               theme={theme}
             />
           );

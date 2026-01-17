@@ -15,12 +15,12 @@ import type { VolumeInfo } from '../../search/types';
 import styles from './SeriesPage.module.css';
 
 export function SeriesPage(): JSX.Element {
-  const { slug } = useParams<{ slug: string }>();
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { homeLibrary } = useHomeLibrary();
 
   const { series, isLoading, error, refreshWithDebug } = useSeriesDetails({
-    seriesSlug: slug ?? '',
+    seriesId: id ?? '',
     homeLibrary,
   });
 
@@ -28,21 +28,17 @@ export function SeriesPage(): JSX.Element {
     navigate(-1);
   };
 
-  const handleSelectBook = (isbn: string, bookSlug?: string | undefined) => {
-    if (bookSlug) {
-      navigate(`/books/${isbn}/${encodeURIComponent(bookSlug)}`);
-    } else {
-      navigate(`/books/${isbn}`);
-    }
+  const handleSelectBook = (isbn: string) => {
+    navigate(`/books/${isbn}`);
   };
 
   const handleClearCache = useCallback(async () => {
-    if (slug) {
-      await clearCacheForSeries(slug);
+    if (id) {
+      await clearCacheForSeries(id);
       // Reload to show fresh data
       window.location.reload();
     }
-  }, [slug]);
+  }, [id]);
 
   if (isLoading) {
     return (
@@ -189,8 +185,7 @@ export function SeriesPage(): JSX.Element {
               seriesTitle={series.title}
               onClick={() => {
                 if (volume.isbn) {
-                  const bookSlug = `${series.slug}-vol-${volume.volumeNumber}`;
-                  handleSelectBook(volume.isbn, bookSlug);
+                  handleSelectBook(volume.isbn);
                 }
               }}
             />
@@ -202,7 +197,7 @@ export function SeriesPage(): JSX.Element {
       <DebugPanel
         debug={series._debug}
         onRefreshWithDebug={!series._debug ? refreshWithDebug : undefined}
-        cacheContext={slug ? { type: 'series', identifier: slug } : undefined}
+        cacheContext={id ? { type: 'series', identifier: id } : undefined}
         onClearCache={handleClearCache}
       />
     </div>
