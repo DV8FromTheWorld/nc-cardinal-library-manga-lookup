@@ -50,6 +50,12 @@ import {
 } from '../scripts/cache-utils.js';
 
 import {
+  getSeriesEntity,
+  getBookEntity,
+  getSeriesBooks,
+} from '../entities/index.js';
+
+import {
   login,
   logout,
   getCheckouts,
@@ -136,7 +142,6 @@ const DebugInfoSchema = z.object({
 
 const SeriesResultSchema = z.object({
   id: z.string(),
-  slug: z.string(),
   title: z.string(),
   totalVolumes: z.number(),
   availableVolumes: z.number(),
@@ -180,7 +185,6 @@ const SearchResultSchema = z.object({
 
 const SeriesDetailsSchema = z.object({
   id: z.string(),
-  slug: z.string(),
   title: z.string(),
   totalVolumes: z.number(),
   coverImage: z.string().optional(),
@@ -258,8 +262,9 @@ const BookDetailsSchema = z.object({
   coverImage: z.string().optional(),
   holdings: z.array(HoldingSchema),
   availability: BookAvailabilitySchema,
-  // Series info if we can determine it
+  // Series info from entity store or extracted from title
   seriesInfo: z.object({
+    id: z.string().optional(), // Entity ID for navigation
     title: z.string(),
     volumeNumber: z.number().optional(),
   }).optional(),
@@ -997,27 +1002,29 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   /**
-   * GET /manga/series/:slug?debug=true
+   * GET /manga/series/:id?debug=true
    *
    * Get detailed series information with all volumes and availability.
-   * The slug can be a URL-encoded series title or series ID (wiki-12345).
+   * Requires an entity ID (e.g., "s_V1StGXR8Z").
    *
    * Query params:
    *   debug: Include debug info (optional, default: false)
+   *   homeLibrary: Library code for local/remote availability breakdown (optional)
    *
    * Examples:
-   *   /manga/series/demon%20slayer
-   *   /manga/series/demon-slayer-kimetsu-no-yaiba?debug=true
+   *   /manga/series/s_V1StGXR8Z
+   *   /manga/series/s_V1StGXR8Z?homeLibrary=HIGH_POINT_MAIN&debug=true
    */
   app.get(
-    '/series/:slug',
+    '/series/:id',
     {
       schema: {
         params: z.object({
-          slug: z.string().min(1).describe('Series title or slug'),
+          id: z.string().min(1).describe('Series entity ID'),
         }),
         querystring: z.object({
           debug: z.enum(['true', 'false']).optional().describe('Include debug info'),
+          homeLibrary: z.string().optional().describe('Home library code'),
         }),
         response: {
           200: SeriesDetailsSchema,
@@ -1027,20 +1034,29 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { slug } = request.params;
-      const { debug } = request.query;
+      const { id } = request.params;
+      const { debug, homeLibrary } = request.query;
       const includeDebug = debug === 'true';
       
-      // Decode the slug - it could be URL-encoded title or a slug
-      const seriesTitle = decodeURIComponent(slug).replace(/-/g, ' ');
-
       try {
-        const details = await getSeriesDetails(seriesTitle, { includeDebug });
-
+        // Look up by entity ID only
+        const entity = await getSeriesEntity(id);
+        
+        if (!entity) {
+          return reply.status(404).send({
+            error: 'series_not_found',
+            message: `Series with ID "${id}" not found`,
+          });
+        }
+        
+        // Found entity - fetch full details using the stored title
+        request.log.info(`Found entity: ${entity.id} - "${entity.title}"`);
+        const details = await getSeriesDetails(entity.title, { includeDebug, homeLibrary });
+        
         if (!details) {
           return reply.status(404).send({
             error: 'series_not_found',
-            message: `Series "${seriesTitle}" not found`,
+            message: `Series data for "${entity.title}" could not be loaded`,
           });
         }
 
@@ -1092,25 +1108,34 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
       const cleanISBN = isbn.replace(/[-\s]/g, '');
 
       try {
-        // Fetch NC Cardinal record and Bookcover API in parallel
-        // DISABLED: Google Books cover fetching
-        const [record, bookcoverUrl] = await Promise.all([
+        // Fetch NC Cardinal record, Bookcover API, and book entity in parallel
+        const [record, bookcoverUrl, bookEntity] = await Promise.all([
           searchByISBN(cleanISBN),
-          // DISABLED: Google Books
-          // searchGoogleBooksByISBN(cleanISBN).catch(() => null),
           fetchBookcoverUrl(cleanISBN).catch(() => null),
+          getBookEntity(cleanISBN).catch(() => null),
         ]);
         
         // Prefer Bookcover API (returns clean 404, no placeholder images)
         // Fall back to OpenLibrary
         const coverImage = bookcoverUrl ?? `https://covers.openlibrary.org/b/isbn/${cleanISBN}-M.jpg`;
 
+        // Build series info from entity (if available) or extract from title
+        let seriesInfo: { id?: string; title: string; volumeNumber?: number } | undefined;
+        
+        if (bookEntity) {
+          // We have entity data - use it for series info
+          seriesInfo = {
+            id: bookEntity.series.id,
+            title: bookEntity.series.title,
+            volumeNumber: bookEntity.book.volumeNumber,
+          };
+        }
+
         if (!record) {
-          // Book not in NC Cardinal catalog - return minimal info
-          // This allows the UI to still display something useful
+          // Book not in NC Cardinal catalog - return minimal info with entity data if available
           return {
             id: `isbn-${cleanISBN}`,
-            title: `Book (ISBN: ${cleanISBN})`,
+            title: bookEntity?.book.title ?? `Book (ISBN: ${cleanISBN})`,
             authors: [],
             isbns: [cleanISBN],
             subjects: [],
@@ -1128,7 +1153,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
               unavailableCopies: 0,
               libraries: [],
             },
-            seriesInfo: undefined,
+            seriesInfo,
             catalogUrl: undefined,
           };
         }
@@ -1136,106 +1161,13 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
         // Calculate detailed availability summary with local/remote breakdown
         const availability = getDetailedAvailabilitySummary(record, homeLibrary);
 
-        // Try to extract series info from title
-        const seriesInfo = extractSeriesInfo(record.title);
-
-        return {
-          id: record.id,
-          title: record.title,
-          authors: record.authors,
-          isbns: record.isbns,
-          subjects: record.subjects,
-          summary: record.summary,
-          coverImage,
-          holdings: record.holdings,
-          availability,
-          seriesInfo,
-          catalogUrl: getCatalogUrl(record.id),
-        };
-      } catch (error) {
-        request.log.error(error, 'Book lookup failed');
-        return reply.status(500).send({
-          error: 'book_lookup_failed',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    }
-  );
-  
-  /**
-   * GET /manga/books/:isbn/:slug
-   *
-   * SEO-friendly URL format. Slug is ignored, only ISBN is used.
-   * Redirects or returns same data as /manga/books/:isbn
-   */
-  app.get(
-    '/books/:isbn/:slug',
-    {
-      schema: {
-        params: z.object({
-          isbn: z.string().min(10).max(17).describe('ISBN-10 or ISBN-13'),
-          slug: z.string().describe('URL-friendly slug (ignored)'),
-        }),
-        querystring: z.object({
-          homeLibrary: z.string().optional().describe('Home library code for local/remote breakdown'),
-        }),
-        response: {
-          200: BookDetailsSchema,
-          404: ErrorSchema,
-          500: ErrorSchema,
-        },
-      },
-    },
-    async (request, reply) => {
-      // Forward to the main books handler by reusing the same logic
-      const { isbn } = request.params;
-      const { homeLibrary } = request.query;
-      const cleanISBN = isbn.replace(/[-\s]/g, '');
-
-      try {
-        // Fetch NC Cardinal record and Bookcover API in parallel
-        // DISABLED: Google Books cover fetching
-        const [record, bookcoverUrl] = await Promise.all([
-          searchByISBN(cleanISBN),
-          // DISABLED: Google Books
-          // searchGoogleBooksByISBN(cleanISBN).catch(() => null),
-          fetchBookcoverUrl(cleanISBN).catch(() => null),
-        ]);
-        
-        // Prefer Bookcover API (returns clean 404, no placeholder images)
-        // Fall back to OpenLibrary
-        const coverImage = bookcoverUrl ?? `https://covers.openlibrary.org/b/isbn/${cleanISBN}-M.jpg`;
-
-        if (!record) {
-          // Book not in NC Cardinal catalog - return minimal info
-          return {
-            id: `isbn-${cleanISBN}`,
-            title: `Book (ISBN: ${cleanISBN})`,
-            authors: [],
-            isbns: [cleanISBN],
-            subjects: [],
-            coverImage,
-            holdings: [],
-            availability: {
-              available: false,
-              notInCatalog: true,
-              totalCopies: 0,
-              availableCopies: 0,
-              checkedOutCopies: 0,
-              inTransitCopies: 0,
-              onOrderCopies: 0,
-              onHoldCopies: 0,
-              unavailableCopies: 0,
-              libraries: [],
-            },
-            seriesInfo: undefined,
-            catalogUrl: undefined,
-          };
+        // If we don't have entity data, try to extract series info from title
+        if (!seriesInfo) {
+          const extracted = extractSeriesInfo(record.title);
+          if (extracted) {
+            seriesInfo = extracted;
+          }
         }
-
-        // Calculate detailed availability summary with local/remote breakdown
-        const availability = getDetailedAvailabilitySummary(record, homeLibrary);
-        const seriesInfo = extractSeriesInfo(record.title);
 
         return {
           id: record.id,

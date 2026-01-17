@@ -26,6 +26,13 @@ import {
   type WikiVolume,
 } from './wikipedia-client.js';
 
+import {
+  createEntitiesFromWikipedia,
+  createEntitiesFromNCCardinal,
+  type Series as EntitySeries,
+  type MediaType,
+} from '../entities/index.js';
+
 // DISABLED: Google Books as a data source - relying on Wikipedia only
 // import {
 //   searchMangaVolumes as searchGoogleBooks,
@@ -102,8 +109,7 @@ export interface ParsedQuery {
 }
 
 export interface SeriesResult {
-  id: string;  // Wikipedia pageid or generated slug
-  slug: string; // URL-friendly slug
+  id: string;  // Entity ID (e.g., "s_V1StGXR8Z") - stable across data source updates
   title: string;
   totalVolumes: number;
   availableVolumes: number;
@@ -158,8 +164,7 @@ export interface BestMatch {
 }
 
 export interface SeriesDetails {
-  id: string;  // Wikipedia pageid or generated slug
-  slug: string; // URL-friendly slug
+  id: string;  // Entity ID (e.g., "s_V1StGXR8Z") - stable across data source updates
   title: string;
   totalVolumes: number;
   isComplete: boolean;
@@ -175,18 +180,6 @@ export interface SeriesDetails {
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-/**
- * Generate a URL-friendly slug from a title
- */
-function generateSlug(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/['']/g, '')  // Remove apostrophes
-    .replace(/[^a-z0-9]+/g, '-')  // Replace non-alphanumeric with dashes
-    .replace(/^-+|-+$/g, '')  // Trim dashes from start/end
-    .slice(0, 100);  // Limit length
-}
 
 /**
  * Get cover image URL from various sources
@@ -421,13 +414,10 @@ function buildSingleSeriesFromRecords(
     });
   }
   
-  // Create the series result
-  const slug = cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  
+  // Create the series result (id is temporary - gets replaced with entity ID)
   return {
-    id: slug,
+    id: `temp-${cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
     title: cleanTitle,
-    slug,
     totalVolumes: volumes.length,
     availableVolumes: availableCount,
     isComplete: false, // Can't determine from catalog data
@@ -815,7 +805,7 @@ export async function search(
 
   // Step 5: Build results
   if (wikiSeries && wikiSeries.volumes.length > 0) {
-    const seriesResult = buildSeriesResultFromWikipedia(wikiSeries, availability, bookcoverUrls);
+    const seriesResult = await buildSeriesResultFromWikipedia(wikiSeries, availability, bookcoverUrls);
     result.series.push(seriesResult);
 
     // Build volume results
@@ -952,10 +942,29 @@ export async function search(
     );
     const ncBookcovers = await fetchBookcoverUrls(allNcIsbns);
     
-    // Add each series and its volumes
+    // Add each series and its volumes, creating entities
     for (const ncSeries of ncCardinalFallbackSeries) {
+      // Determine media type for entity
+      const entityMediaType: MediaType = ncSeries.title.toLowerCase().includes('light novel') 
+        ? 'light_novel' 
+        : ncSeries.title.toLowerCase().includes('manga') 
+          ? 'manga' 
+          : 'unknown';
+      
+      // Create entity from NC Cardinal data
+      const { series: entity } = await createEntitiesFromNCCardinal(
+        ncSeries.title,
+        ncSeries.volumes?.map(v => ({
+          volumeNumber: v.volumeNumber,
+          isbn: v.isbn,
+          title: v.title,
+        })) ?? [],
+        entityMediaType
+      );
+      
       result.series.push({
         ...ncSeries,
+        id: entity.id,
         coverImage: ncBookcovers.get(ncSeries.volumes?.[0]?.isbn ?? ''),
       });
       
@@ -1117,9 +1126,11 @@ export async function getSeriesDetails(
   // Get series cover from first volume (Bookcover API or OpenLibrary fallback)
   const firstVolBookcover = firstVolumeIsbn ? bookcoverUrls.get(firstVolumeIsbn) : undefined;
 
+  // Create/update entities
+  const { series: entity } = await createEntitiesFromWikipedia(wikiSeries);
+
   const result: SeriesDetails = {
-    id: `wiki-${wikiSeries.pageid}`,
-    slug: generateSlug(wikiSeries.title),
+    id: entity.id,
     title: wikiSeries.title,
     totalVolumes: wikiSeries.totalVolumes,
     isComplete: wikiSeries.isComplete,
@@ -1141,12 +1152,15 @@ export async function getSeriesDetails(
 // Helper Functions
 // ============================================================================
 
-function buildSeriesResultFromWikipedia(
+async function buildSeriesResultFromWikipedia(
   wiki: WikiMangaSeries,
   availability: Map<string, VolumeAvailability>,
   bookcoverUrls: Map<string, string> = new Map()
-): SeriesResult {
+): Promise<SeriesResult> {
   let availableVolumes = 0;
+  
+  // Create/update entities
+  const { series: entity } = await createEntitiesFromWikipedia(wiki);
   
   // Get first volume's ISBN for cover image
   const firstVolumeIsbn = wiki.volumes[0]?.englishISBN;
@@ -1168,8 +1182,7 @@ function buildSeriesResultFromWikipedia(
   });
 
   return {
-    id: `wiki-${wiki.pageid}`,
-    slug: generateSlug(wiki.title),
+    id: entity.id,
     title: wiki.title,
     totalVolumes: wiki.totalVolumes,
     availableVolumes,

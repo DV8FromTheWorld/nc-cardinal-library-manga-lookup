@@ -27,6 +27,12 @@ import {
   type ParsedQuery,
 } from './manga-search.js';
 
+import {
+  createEntitiesFromWikipedia,
+  createEntitiesFromNCCardinal,
+} from '../entities/integration.js';
+import type { MediaType } from '../entities/types.js';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -59,15 +65,6 @@ export interface StreamingSearchOptions {
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-function generateSlug(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/['']/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 100);
-}
 
 function getCoverImageUrl(isbn?: string, bookcoverUrl?: string): string | undefined {
   if (bookcoverUrl) return bookcoverUrl;
@@ -257,7 +254,7 @@ export async function searchWithProgress(
     
     // Build final results with Wikipedia data
     if (wikiSeries && wikiSeries.volumes.length > 0) {
-      const seriesResult = buildSeriesResultFromWikipedia(wikiSeries, availability, bookcoverUrls);
+      const seriesResult = await buildSeriesResultFromWikipedia(wikiSeries, availability, bookcoverUrls);
       result.series.push(seriesResult);
       
       // Build volume results
@@ -306,10 +303,27 @@ export async function searchWithProgress(
       
       onProgress({ type: 'covers:complete' });
       
-      // Add NC Cardinal series with covers
+      // Add NC Cardinal series with covers - create entities first
       for (const ncSeries of ncCardinalFallbackSeries) {
+        // Determine media type from title
+        const ncMediaType: MediaType = ncSeries.title.toLowerCase().includes('light novel') 
+          ? 'light-novel' 
+          : ncSeries.title.toLowerCase().includes('manga') ? 'manga' : 'unknown';
+        
+        // Create entity to get stable ID
+        const { series: entity } = await createEntitiesFromNCCardinal(
+          ncSeries.title,
+          ncSeries.volumes?.map(v => ({
+            volumeNumber: v.volumeNumber,
+            isbn: v.isbn,
+            title: v.title,
+          })) ?? [],
+          ncMediaType
+        );
+        
         result.series.push({
           ...ncSeries,
+          id: entity.id, // Use entity ID
           coverImage: bookcoverUrls.get(ncSeries.volumes?.[0]?.isbn ?? ''),
         });
         
@@ -329,9 +343,28 @@ export async function searchWithProgress(
     } else {
       onProgress({ type: 'covers:complete' });
       
-      // No ISBNs to fetch covers for
+      // No ISBNs to fetch covers for - still create entities
       for (const ncSeries of ncCardinalFallbackSeries) {
-        result.series.push(ncSeries);
+        // Determine media type from title
+        const ncMediaType: MediaType = ncSeries.title.toLowerCase().includes('light novel') 
+          ? 'light-novel' 
+          : ncSeries.title.toLowerCase().includes('manga') ? 'manga' : 'unknown';
+        
+        // Create entity to get stable ID
+        const { series: entity } = await createEntitiesFromNCCardinal(
+          ncSeries.title,
+          ncSeries.volumes?.map(v => ({
+            volumeNumber: v.volumeNumber,
+            isbn: v.isbn,
+            title: v.title,
+          })) ?? [],
+          ncMediaType
+        );
+        
+        result.series.push({
+          ...ncSeries,
+          id: entity.id, // Use entity ID
+        });
         for (const vol of ncSeries.volumes ?? []) {
           result.volumes.push({
             title: vol.title ?? `${ncSeries.title}, Vol. ${vol.volumeNumber}`,
@@ -372,11 +405,14 @@ async function searchByISBNSingle(isbn: string): Promise<CatalogRecord | null> {
   return searchByISBN(isbn);
 }
 
-function buildSeriesResultFromWikipedia(
+async function buildSeriesResultFromWikipedia(
   wiki: WikiMangaSeries,
   availability: Map<string, VolumeAvailability>,
   bookcoverUrls: Map<string, string>
-): SeriesResult {
+): Promise<SeriesResult> {
+  // Create or update entities to get stable ID
+  const { series: entity } = await createEntitiesFromWikipedia(wiki);
+  
   let availableVolumes = 0;
   
   const firstVolumeIsbn = wiki.volumes[0]?.englishISBN;
@@ -398,8 +434,7 @@ function buildSeriesResultFromWikipedia(
   });
 
   return {
-    id: `wiki-${wiki.pageid}`,
-    slug: generateSlug(wiki.title),
+    id: entity.id,
     title: wiki.title,
     totalVolumes: wiki.totalVolumes,
     availableVolumes,
@@ -543,12 +578,10 @@ function buildSingleSeriesFromRecords(
     });
   }
   
-  const slug = cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  
+  // Return with temporary ID - will be replaced with entity ID by caller
   return {
-    id: slug,
+    id: `temp-nc-${cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
     title: cleanTitle,
-    slug,
     totalVolumes: volumes.length,
     availableVolumes: availableCount,
     isComplete: false,
