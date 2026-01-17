@@ -12,9 +12,9 @@ const app = Fastify({
   logger: true,
 }).withTypeProvider<ZodTypeProvider>();
 
-// Enable CORS for web app
+// Enable CORS for web app (allow any origin in development for local network access)
 app.register(cors, {
-  origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  origin: true, // Allow any origin - needed for local network access from mobile devices
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
 });
 

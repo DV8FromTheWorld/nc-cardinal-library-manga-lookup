@@ -79,6 +79,7 @@ export default defineConfig({
   ],
   devServer: {
     port: 3000,
+    host: '0.0.0.0', // Bind to all interfaces for local network access
     hot: true,
     historyApiFallback: true, // Serve index.html for all routes (HTML5 routing)
   },
