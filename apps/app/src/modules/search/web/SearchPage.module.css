@@ -380,9 +380,8 @@
 
 .seriesHeader {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--spacing-sm);
+  flex-direction: column;
+  gap: var(--spacing-xs);
   margin-bottom: var(--spacing-xs);
 }
 
@@ -394,11 +393,46 @@
   line-height: 1.3;
 }
 
+.seriesBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: var(--spacing-xs);
+}
+
 .completeBadge {
   font-size: 0.75rem;
   font-weight: 500;
   color: var(--color-success);
   background: rgba(46, 125, 50, 0.1);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+.mediaTypeBadge {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+.mediaTypeBadge.manga {
+  color: var(--color-accent);
+  background: rgba(196, 30, 58, 0.1);
+}
+
+.mediaTypeBadge.lightNovel {
+  color: #7b1fa2;
+  background: rgba(123, 31, 162, 0.1);
+}
+
+.relationshipBadge {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #1565c0;
+  background: rgba(21, 101, 192, 0.1);
   padding: 2px 8px;
   border-radius: var(--radius-full);
   white-space: nowrap;

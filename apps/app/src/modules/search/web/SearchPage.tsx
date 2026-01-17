@@ -329,6 +329,29 @@ interface SeriesCardProps {
 function SeriesCard({ series, onClick, highlighted }: SeriesCardProps): JSX.Element {
   const availabilityPercent = getAvailabilityPercent(series.availableVolumes, series.totalVolumes);
 
+  // Format media type for display
+  const getMediaTypeLabel = (mediaType?: string) => {
+    if (!mediaType || mediaType === 'unknown') return null;
+    return mediaType === 'light_novel' ? 'Light Novel' : 'Manga';
+  };
+
+  // Format relationship for display
+  const getRelationshipLabel = (relationship?: string) => {
+    if (!relationship) return null;
+    const labels: Record<string, string> = {
+      adaptation: 'Adaptation',
+      spinoff: 'Spin-off',
+      sequel: 'Sequel',
+      prequel: 'Prequel',
+      side_story: 'Side Story',
+      anthology: 'Anthology',
+    };
+    return labels[relationship] ?? relationship;
+  };
+
+  const mediaTypeLabel = getMediaTypeLabel(series.mediaType);
+  const relationshipLabel = getRelationshipLabel(series.relationship);
+
   return (
     <button
       type="button"
@@ -353,9 +376,24 @@ function SeriesCard({ series, onClick, highlighted }: SeriesCardProps): JSX.Elem
         <div className={styles.seriesInfo}>
           <div className={styles.seriesHeader}>
             <Text variant="header-sm/bold" tag="div" className={styles.seriesTitle}>{series.title}</Text>
-            {series.isComplete && (
-              <Text variant="text-xs/semibold" className={styles.completeBadge}>Complete</Text>
-            )}
+            <div className={styles.seriesBadges}>
+              {mediaTypeLabel && (
+                <Text 
+                  variant="text-xs/semibold" 
+                  className={`${styles.mediaTypeBadge} ${series.mediaType === 'light_novel' ? styles.lightNovel : styles.manga}`}
+                >
+                  {mediaTypeLabel}
+                </Text>
+              )}
+              {relationshipLabel && (
+                <Text variant="text-xs/semibold" className={styles.relationshipBadge}>
+                  {relationshipLabel}
+                </Text>
+              )}
+              {series.isComplete && (
+                <Text variant="text-xs/semibold" className={styles.completeBadge}>Complete</Text>
+              )}
+            </div>
           </div>
           
           {series.author && (

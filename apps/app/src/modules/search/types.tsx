@@ -65,6 +65,9 @@ export interface DebugInfo {
   sourceSummary: SourceSummary;
 }
 
+export type MediaType = 'manga' | 'light_novel' | 'unknown';
+export type SeriesRelationship = 'adaptation' | 'spinoff' | 'sequel' | 'side_story' | 'anthology' | 'prequel';
+
 export interface SeriesResult {
   /** Entity ID (e.g., "s_V1StGXR8Z") - stable across data source updates */
   id: string;
@@ -76,6 +79,10 @@ export interface SeriesResult {
   coverImage?: string | undefined;
   source: 'wikipedia' | 'google-books' | 'nc-cardinal';
   volumes?: VolumeInfo[] | undefined;
+  /** Media type: manga, light_novel, or unknown */
+  mediaType?: MediaType | undefined;
+  /** Relationship to parent series (for spin-offs, sequels, etc.) */
+  relationship?: SeriesRelationship | undefined;
 }
 
 export interface VolumeResult {
