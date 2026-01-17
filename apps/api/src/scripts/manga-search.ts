@@ -859,21 +859,54 @@ export async function search(
             homeLibrary
           );
           
+          // Collect all ISBNs from existing series for duplicate detection
+          const existingIsbns = new Set<string>();
+          for (const vol of result.volumes) {
+            if (vol.isbn) existingIsbns.add(vol.isbn);
+          }
+          
           // Add any series that is explicitly a different media type
           for (const altSeries of alternateSeries) {
             const altTitleLower = altSeries.title.toLowerCase();
-            const isAltManga = altTitleLower.includes('manga');
+            const isAltLightNovel = altTitleLower.includes('light novel') || altTitleLower.includes('novel');
             
-            // Add if:
-            // 1. Wikipedia is manga and NC Cardinal found light novel, OR
-            // 2. Wikipedia is NOT explicitly manga and NC Cardinal found manga
-            const shouldAdd = (isWikiManga && !isAltManga) || 
-                              (!isWikiManga && isAltManga);
+            // PRIMARY: ISBN-based duplicate detection
+            // If any ISBNs overlap, these are the same series regardless of title
+            const altIsbns = altSeries.volumes?.map(v => v.isbn).filter((isbn): isbn is string => !!isbn) ?? [];
+            const overlappingIsbns = altIsbns.filter(isbn => existingIsbns.has(isbn));
+            const hasIsbnOverlap = overlappingIsbns.length > 0;
             
-            // Also check we're not adding a duplicate
+            if (hasIsbnOverlap) {
+              console.log(`[MangaSearch] Skipping "${altSeries.title}" - ${overlappingIsbns.length} ISBNs overlap with existing series`);
+              continue;
+            }
+            
+            // SECONDARY: Title-based duplicate detection (fallback when ISBNs don't match)
+            const normalizeTitle = (title: string) => title.toLowerCase()
+              .replace(/\s*\(manga\)\s*/gi, '')
+              .replace(/\s*\(light novel\)\s*/gi, '')
+              .replace(/\s*\(novel\)\s*/gi, '')
+              .replace(/\s*manga\s*$/gi, '')
+              .replace(/\s*light novel\s*$/gi, '')
+              .trim();
+            
+            const normalizedWikiTitle = normalizeTitle(wikiTitleLower);
+            const normalizedAltTitle = normalizeTitle(altTitleLower);
+            
+            // Check if this is actually the same series with a different name format
+            const isSameSeriesByTitle = normalizedWikiTitle === normalizedAltTitle ||
+              normalizedWikiTitle.includes(normalizedAltTitle) ||
+              normalizedAltTitle.includes(normalizedWikiTitle);
+            
+            // Only add if it's a genuinely different media type (e.g., light novel vs manga)
+            // AND not just the same series with a different naming convention
+            const isGenuinelyDifferentType = isAltLightNovel && !wikiTitleLower.includes('light novel') && !wikiTitleLower.includes('novel');
+            const shouldAdd = isGenuinelyDifferentType && !isSameSeriesByTitle;
+            
+            // Also check we're not adding a duplicate by slug or normalized title
             const isDuplicate = result.series.some(s => 
               s.slug === altSeries.slug || 
-              s.title.toLowerCase() === altSeries.title.toLowerCase()
+              normalizeTitle(s.title) === normalizedAltTitle
             );
             
             if (shouldAdd && altSeries.totalVolumes > 0 && !isDuplicate) {
