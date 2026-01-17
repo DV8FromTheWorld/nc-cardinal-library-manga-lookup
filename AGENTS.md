@@ -72,6 +72,7 @@ Each module follows this structure:
 | Frontend search | `apps/app/src/modules/search/` |
 | Frontend routing | `apps/app/src/modules/routing/` |
 | Full context | `llm-context/PROJECT-CONTEXT.md` |
+| iOS Simulator automation | `llm-context/IOS-SIMULATOR-AUTOMATION.md` |
 
 ## TypeScript Conventions
 
@@ -134,6 +135,24 @@ curl "http://localhost:3001/manga/books/9781569319017" | jq
 
 # Clear all caches
 rm -rf apps/api/.cache/*
+```
+
+## iOS Simulator Testing
+
+For automated interaction with the iOS Simulator (clicking buttons, taking screenshots), see `llm-context/IOS-SIMULATOR-AUTOMATION.md`.
+
+Quick reference:
+```bash
+# Check running simulator
+xcrun simctl list devices | grep booted
+
+# Take screenshot
+xcrun simctl io booted screenshot /tmp/screenshot.png
+
+# Click at coordinates (requires cliclick: brew install cliclick)
+# Use window-relative percentages to calculate coordinates
+osascript -e 'tell application "Simulator" to activate'
+cliclick c:615,700
 ```
 
 ## Known Gotchas

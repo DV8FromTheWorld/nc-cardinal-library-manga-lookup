@@ -8,6 +8,7 @@ This folder contains context documents for LLMs working on this project.
 |------|-------------|
 | `PROJECT-CONTEXT.md` | **Main context document** - Comprehensive overview of the manga search functionality, data sources, APIs, implementation patterns, and common issues |
 | `INITIAL-SETUP.md` | Original project setup context from when the monorepo was first created |
+| `IOS-SIMULATOR-AUTOMATION.md` | Guide for programmatically interacting with iOS Simulator - clicking, screenshots, coordinate mapping |
 
 ## For LLMs
 
