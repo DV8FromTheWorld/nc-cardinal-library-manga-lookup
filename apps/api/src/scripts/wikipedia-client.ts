@@ -14,6 +14,10 @@ const WIKIPEDIA_API = 'https://en.wikipedia.org/w/api.php';
 const CACHE_DIR = path.join(process.cwd(), '.cache', 'wikipedia');
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+// Parser version - increment when making changes to parsing logic
+// This invalidates parsed series cache while preserving raw wikitext cache
+const PARSER_VERSION = 2;
+
 // Ensure cache directory exists
 if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -38,13 +42,24 @@ async function throttleRequest(): Promise<void> {
 }
 
 /**
+ * User-Agent header required by Wikipedia API guidelines
+ * See: https://www.mediawiki.org/wiki/API:Etiquette
+ */
+const USER_AGENT = 'NCCardinalManga/1.0 (https://github.com/nc-cardinal-manga; manga-search-app)';
+
+/**
  * Fetch with retry logic for rate limiting
  */
 async function fetchWithRetry(url: string, label: string): Promise<Response> {
   await throttleRequest();
   
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': USER_AGENT,
+        'Accept': 'application/json',
+      },
+    });
     
     if (response.status === 429) {
       // Rate limited - wait and retry with exponential backoff
@@ -112,6 +127,16 @@ interface WikiPageContent {
 function getCacheKey(type: string, query: string): string {
   const sanitized = query.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 100);
   return `${type}_${sanitized}.json`;
+}
+
+/**
+ * Get a versioned cache key for parsed results.
+ * When PARSER_VERSION changes, old parsed caches become stale
+ * while raw wikitext caches (page_title_*) remain valid.
+ */
+function getVersionedCacheKey(type: string, query: string): string {
+  const sanitized = query.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 100);
+  return `${type}_v${PARSER_VERSION}_${sanitized}.json`;
 }
 
 function readCache<T>(cacheKey: string): T | null {
@@ -649,10 +674,11 @@ function extractAuthor(wikitext: string): string | undefined {
  * Get complete manga series information including all volumes
  */
 export async function getMangaSeries(query: string): Promise<WikiMangaSeries | null> {
-  const cacheKey = getCacheKey('series', query);
+  // Use versioned cache key so parsing changes invalidate old cached results
+  const cacheKey = getVersionedCacheKey('series', query);
   const cached = readCache<WikiMangaSeries>(cacheKey);
   if (cached) {
-    console.log(`[Wikipedia] Cache hit for series: "${query}"`);
+    console.log(`[Wikipedia] Cache hit for series: "${query}" (parser v${PARSER_VERSION})`);
     return cached;
   }
 
@@ -874,6 +900,7 @@ export async function getMangaSeries(query: string): Promise<WikiMangaSeries | n
     .replace(/^List of /, '')
     .replace(/ chapters?$/i, '')
     .replace(/ manga volumes?$/i, '')
+    .replace(/ volumes?$/i, '')  // Handle pages like "Bleach volumes"
     .replace(/ manga$/i, '')
     .replace(/ \(manga\)$/i, '')
     .replace(/ light novels?$/i, '')
@@ -930,9 +957,8 @@ export async function getMangaSeries(query: string): Promise<WikiMangaSeries | n
  * Returns separate series for each media type found
  */
 export async function getAllSeriesFromPage(query: string): Promise<WikiMangaSeries[]> {
-  // First get the cached/fetched data using getMangaSeries
-  // Then parse for multiple media types
-  const cacheKey = `all_series_${query.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+  // Use versioned cache key so parsing changes invalidate old cached results
+  const cacheKey = getVersionedCacheKey('all_series', query);
   const cached = readCache<WikiMangaSeries[]>(cacheKey);
   if (cached) {
     return cached;
@@ -991,13 +1017,14 @@ export async function getAllSeriesFromPage(query: string): Promise<WikiMangaSeri
     .replace(/^List of /, '')
     .replace(/ chapters?$/i, '')
     .replace(/ manga volumes?$/i, '')
+    .replace(/ volumes?$/i, '')  // Handle pages like "Bleach volumes"
     .replace(/ manga$/i, '')
     .replace(/ \(manga\)$/i, '')
     .replace(/ light novels?$/i, '')
     .trim();
 
   // Also clean from query if baseSeriesTitle still has artifacts
-  if (baseSeriesTitle.toLowerCase() === query.toLowerCase() || baseSeriesTitle.includes('chapters')) {
+  if (baseSeriesTitle.toLowerCase() === query.toLowerCase() || baseSeriesTitle.includes('chapters') || baseSeriesTitle.includes('volumes')) {
     baseSeriesTitle = query;
   }
 
