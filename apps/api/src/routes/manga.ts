@@ -22,6 +22,11 @@ import {
 } from '../scripts/manga-search.js';
 
 import {
+  searchWithProgress,
+  type SearchProgressEvent,
+} from '../scripts/manga-search-streaming.js';
+
+import {
   searchByISBN,
   NC_CARDINAL_LIBRARIES,
   getCatalogUrl,
@@ -928,6 +933,66 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
+    }
+  );
+
+  /**
+   * GET /manga/search/stream?q=query&homeLibrary=HIGH_POINT_MAIN
+   *
+   * Streaming search endpoint using Server-Sent Events (SSE).
+   * Streams progress updates as the search progresses through:
+   * - Wikipedia lookup
+   * - NC Cardinal availability checks
+   * - Cover image fetching
+   *
+   * Query params:
+   *   q: Search query (required)
+   *   homeLibrary: Library code for local/remote availability breakdown (optional)
+   *
+   * Event types:
+   *   started, wikipedia:searching, wikipedia:found, wikipedia:not-found,
+   *   availability:start, availability:progress, availability:complete,
+   *   covers:start, covers:progress, covers:complete, complete, error
+   */
+  app.get(
+    '/search/stream',
+    {
+      schema: {
+        querystring: z.object({
+          q: z.string().min(1).describe('Search query'),
+          homeLibrary: z.string().optional().describe('Home library code'),
+        }),
+      },
+    },
+    async (request, reply) => {
+      const { q, homeLibrary } = request.query;
+
+      // Set SSE headers
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'X-Accel-Buffering': 'no', // Disable nginx buffering
+      });
+
+      // Helper to send SSE events
+      const sendEvent = (event: SearchProgressEvent) => {
+        reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+      };
+
+      try {
+        await searchWithProgress(q, {
+          homeLibrary,
+          onProgress: sendEvent,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        sendEvent({ type: 'error', message });
+      }
+
+      // End the stream
+      reply.raw.end();
     }
   );
 

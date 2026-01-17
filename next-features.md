@@ -14,7 +14,7 @@
 ## In Progress / Remaining
 
 - [ ] Back button on native - Need to investigate Android hardware back button handling
-- [ ] Search loading progress indicator - Show progress as N items are being looked up
+- [x] Search loading progress indicator - Implemented SSE streaming with step-by-step progress
 - [ ] Debug data capture without refetch - Debug info should persist from initial request
 - [ ] Search → Book instant navigation - Pre-populate book-detail cache from search results
 - [ ] Manga vs Light Novel differentiation - Allow series like Ascendance of a Bookworm to show both

@@ -4,7 +4,7 @@
 
 import { useRef, useEffect, useCallback, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { useSearch } from '../hooks/useSearch';
+import { useStreamingSearch } from '../hooks/useStreamingSearch';
 import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
 import { DebugPanel } from '../../debug/web/DebugPanel';
 import { clearCacheForSearch } from '../services/mangaApi';
@@ -13,7 +13,7 @@ import { Text } from '../../../design/components/Text/web/Text';
 import { Heading } from '../../../design/components/Heading/web/Heading';
 import { LoginModal } from '../../login/web/LoginModal';
 import { UserMenu } from '../../login/web/UserMenu';
-import type { SeriesResult, VolumeResult } from '../types';
+import type { SeriesResult, VolumeResult, StreamingSearchProgress } from '../types';
 import styles from './SearchPage.module.css';
 
 export function SearchPage(): JSX.Element {
@@ -41,10 +41,10 @@ export function SearchPage(): JSX.Element {
     results,
     isLoading,
     error,
+    progress,
     search,
-    refreshWithDebug,
     clearResults,
-  } = useSearch({
+  } = useStreamingSearch({
     initialQuery,
     homeLibrary,
     onQueryChange: handleQueryChange,
@@ -170,10 +170,7 @@ export function SearchPage(): JSX.Element {
       )}
 
       {isLoading && (
-        <div className={styles.loadingState}>
-          <div className={styles.loadingSpinner} />
-          <Text variant="text-md/normal" color="text-secondary" tag="p">Searching libraries...</Text>
-        </div>
+        <SearchProgressIndicator progress={progress} />
       )}
 
       {results && !isLoading && (
@@ -305,7 +302,6 @@ export function SearchPage(): JSX.Element {
       {/* Debug Panel */}
       <DebugPanel
         debug={results?._debug}
-        onRefreshWithDebug={results && !results._debug ? refreshWithDebug : undefined}
         cacheContext={results?.query ? { type: 'search', identifier: results.query } : undefined}
         onClearCache={handleClearCache}
       />
@@ -439,5 +435,121 @@ function VolumeCard({ volume, onClick, highlighted }: VolumeCardProps): JSX.Elem
         </div>
       </div>
     </button>
+  );
+}
+
+// ============================================================================
+// Progress Indicator
+// ============================================================================
+
+interface SearchProgressIndicatorProps {
+  progress: StreamingSearchProgress;
+}
+
+function SearchProgressIndicator({ progress }: SearchProgressIndicatorProps): JSX.Element {
+  const steps = [
+    { id: 'wikipedia', label: 'Wikipedia', icon: '📖' },
+    { id: 'nc-cardinal', label: 'Library Catalog', icon: '🏛️' },
+    { id: 'availability', label: 'Availability', icon: '📚' },
+    { id: 'covers', label: 'Cover Images', icon: '🖼️' },
+  ] as const;
+
+  // Determine which step is active/complete
+  const getStepStatus = (stepId: string): 'complete' | 'active' | 'pending' => {
+    const stepOrder = ['wikipedia', 'nc-cardinal', 'availability', 'covers', 'done'];
+    const currentIndex = stepOrder.indexOf(progress.currentStep ?? '');
+    const stepIndex = stepOrder.indexOf(stepId);
+    
+    if (currentIndex < 0) return 'pending';
+    if (stepIndex < currentIndex) return 'complete';
+    if (stepIndex === currentIndex) return 'active';
+    return 'pending';
+  };
+
+  // Calculate overall progress percentage
+  const getOverallProgress = (): number => {
+    if (!progress.currentStep) return 0;
+    
+    const stepWeights: Record<string, number> = {
+      'wikipedia': 10,
+      'nc-cardinal': 20,
+      'availability': 60,
+      'covers': 90,
+      'done': 100,
+    };
+    
+    let baseProgress = stepWeights[progress.currentStep] ?? 0;
+    
+    // Add detail progress for availability and covers
+    if (progress.currentStep === 'availability' && progress.availabilityProgress) {
+      const { completed, total } = progress.availabilityProgress;
+      const stepProgress = total > 0 ? (completed / total) : 0;
+      baseProgress = 20 + (stepProgress * 40); // 20% to 60%
+    }
+    
+    if (progress.currentStep === 'covers' && progress.coversProgress) {
+      const { completed, total } = progress.coversProgress;
+      const stepProgress = total > 0 ? (completed / total) : 0;
+      baseProgress = 60 + (stepProgress * 30); // 60% to 90%
+    }
+    
+    return Math.min(100, baseProgress);
+  };
+
+  return (
+    <div className={styles.progressContainer}>
+      {/* Main progress bar */}
+      <div className={styles.progressBarContainer}>
+        <div 
+          className={styles.progressBar}
+          style={{ width: `${getOverallProgress()}%` }}
+        />
+      </div>
+      
+      {/* Current status message */}
+      <Text variant="text-md/medium" tag="p" className={styles.progressMessage}>
+        {progress.message}
+      </Text>
+      
+      {/* Step indicators */}
+      <div className={styles.progressSteps}>
+        {steps.map((step) => {
+          const status = getStepStatus(step.id);
+          return (
+            <div 
+              key={step.id}
+              className={`${styles.progressStep} ${styles[status]}`}
+            >
+              <span className={styles.progressStepIcon}>
+                {status === 'complete' ? '✓' : step.icon}
+              </span>
+              <Text variant="text-xs/medium" className={styles.progressStepLabel}>
+                {step.label}
+              </Text>
+            </div>
+          );
+        })}
+      </div>
+      
+      {/* Detailed progress for availability/covers */}
+      {progress.availabilityProgress && progress.currentStep === 'availability' && (
+        <div className={styles.progressDetails}>
+          <Text variant="text-sm/normal" color="text-secondary">
+            Checked {progress.availabilityProgress.completed} of {progress.availabilityProgress.total} volumes
+            {progress.availabilityProgress.foundInCatalog > 0 && (
+              <> • <Text variant="text-sm/semibold" color="success">{progress.availabilityProgress.foundInCatalog} found in library</Text></>
+            )}
+          </Text>
+        </div>
+      )}
+      
+      {progress.coversProgress && progress.currentStep === 'covers' && (
+        <div className={styles.progressDetails}>
+          <Text variant="text-sm/normal" color="text-secondary">
+            Loading covers: {progress.coversProgress.completed} of {progress.coversProgress.total}
+          </Text>
+        </div>
+      )}
+    </div>
   );
 }

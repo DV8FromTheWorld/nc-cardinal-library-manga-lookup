@@ -176,3 +176,42 @@ export interface ApiError {
   error: string;
   message?: string | undefined;
 }
+
+// ============================================================================
+// Streaming Search Progress Types
+// ============================================================================
+
+/**
+ * Events sent during a streaming search to indicate progress.
+ * Uses Server-Sent Events (SSE) format.
+ */
+export type SearchProgressEvent =
+  | { type: 'started'; query: string; parsedQuery: ParsedQuery }
+  | { type: 'wikipedia:searching' }
+  | { type: 'wikipedia:found'; seriesTitle: string; volumeCount: number }
+  | { type: 'wikipedia:not-found'; fallback: 'nc-cardinal' }
+  | { type: 'wikipedia:error'; message: string }
+  | { type: 'nc-cardinal:searching' }
+  | { type: 'nc-cardinal:found'; recordCount: number }
+  | { type: 'availability:start'; total: number }
+  | { type: 'availability:progress'; completed: number; total: number; foundInCatalog: number }
+  | { type: 'availability:complete'; foundInCatalog: number; total: number }
+  | { type: 'covers:start'; total: number }
+  | { type: 'covers:progress'; completed: number; total: number }
+  | { type: 'covers:complete' }
+  | { type: 'complete'; result: SearchResult }
+  | { type: 'error'; message: string };
+
+/**
+ * Current state of a streaming search, derived from progress events.
+ */
+export interface StreamingSearchProgress {
+  status: 'idle' | 'searching' | 'complete' | 'error';
+  currentStep: 'wikipedia' | 'nc-cardinal' | 'availability' | 'covers' | 'done' | null;
+  message: string;
+  // Progress details
+  seriesFound?: string | undefined;
+  volumeCount?: number | undefined;
+  availabilityProgress?: { completed: number; total: number; foundInCatalog: number } | undefined;
+  coversProgress?: { completed: number; total: number } | undefined;
+}

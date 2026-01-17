@@ -7,6 +7,13 @@
   padding: var(--spacing-lg);
   max-width: 1200px;
   margin: 0 auto;
+  overflow-x: hidden; /* Prevent horizontal scroll on mobile */
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: var(--spacing-md);
+  }
 }
 
 /* -----------------------------------------------------------------------------
@@ -478,6 +485,15 @@
   cursor: pointer;
   transition: all 0.2s ease;
   width: 100%;
+  min-width: 0; /* Allow flex items to shrink below content size */
+  overflow: hidden;
+}
+
+@media (max-width: 480px) {
+  .volumeCard {
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
 }
 
 .volumeCard:hover:not(:disabled) {
@@ -522,7 +538,8 @@
 
 .volumeInfo {
   flex: 1;
-  min-width: 0;
+  min-width: 0; /* Critical for text truncation in flex containers */
+  overflow: hidden;
 }
 
 .volumeTitle {
@@ -530,9 +547,20 @@
   font-weight: 500;
   color: var(--color-text-primary);
   margin: 0 0 2px;
-  white-space: nowrap;
+  /* Allow wrapping on mobile, truncate on larger screens */
   overflow: hidden;
   text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+@media (min-width: 640px) {
+  .volumeTitle {
+    white-space: nowrap;
+    display: block;
+    -webkit-line-clamp: unset;
+  }
 }
 
 .volumeSeries {
@@ -652,4 +680,158 @@
 .noResultsHint {
   font-size: 0.875rem;
   color: var(--color-text-muted);
+}
+
+/* -----------------------------------------------------------------------------
+   Streaming Progress Indicator
+   ----------------------------------------------------------------------------- */
+
+.progressContainer {
+  max-width: 540px;
+  margin: 0 auto var(--spacing-xl);
+  padding: var(--spacing-lg);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  animation: fadeIn 0.3s ease;
+}
+
+.progressBarContainer {
+  height: 6px;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  margin-bottom: var(--spacing-md);
+}
+
+.progressBar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-accent) 0%, #e84a5f 100%);
+  border-radius: var(--radius-full);
+  transition: width 0.3s ease;
+  position: relative;
+}
+
+.progressBar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.3) 50%,
+    transparent 100%
+  );
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.progressMessage {
+  text-align: center;
+  margin: 0 0 var(--spacing-md);
+  color: var(--color-text-primary);
+  min-height: 1.5em;
+}
+
+.progressSteps {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.progressStep {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  opacity: 0.4;
+  transition: all 0.3s ease;
+}
+
+.progressStep.active {
+  opacity: 1;
+}
+
+.progressStep.complete {
+  opacity: 1;
+}
+
+.progressStepIcon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  background: var(--color-bg-tertiary);
+  border-radius: 50%;
+  border: 2px solid var(--color-border);
+  transition: all 0.3s ease;
+}
+
+.progressStep.active .progressStepIcon {
+  border-color: var(--color-accent);
+  background: rgba(196, 30, 58, 0.1);
+  animation: pulse 1.5s ease infinite;
+}
+
+.progressStep.complete .progressStepIcon {
+  background: var(--color-success);
+  border-color: var(--color-success);
+  color: white;
+  font-size: 0.875rem;
+  font-weight: bold;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.progressStepLabel {
+  color: var(--color-text-muted);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.progressStep.active .progressStepLabel {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.progressStep.complete .progressStepLabel {
+  color: var(--color-success);
+}
+
+.progressDetails {
+  text-align: center;
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--color-border);
+}
+
+/* Mobile adjustments */
+@media (max-width: 480px) {
+  .progressSteps {
+    flex-wrap: wrap;
+    gap: var(--spacing-md);
+  }
+  
+  .progressStep {
+    flex: 0 0 calc(50% - var(--spacing-sm));
+  }
+  
+  .progressStepIcon {
+    width: 32px;
+    height: 32px;
+    font-size: 1rem;
+  }
 }
