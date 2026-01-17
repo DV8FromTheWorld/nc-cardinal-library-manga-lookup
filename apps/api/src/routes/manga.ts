@@ -140,6 +140,9 @@ const DebugInfoSchema = z.object({
   sourceSummary: SourceSummarySchema,
 });
 
+const MediaTypeSchema = z.enum(['manga', 'light_novel', 'unknown']);
+const SeriesRelationshipSchema = z.enum(['adaptation', 'spinoff', 'sequel', 'side_story', 'anthology', 'prequel']);
+
 const SeriesResultSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -150,6 +153,8 @@ const SeriesResultSchema = z.object({
   coverImage: z.string().optional(),
   source: z.enum(['wikipedia', 'google-books', 'nc-cardinal']),
   volumes: z.array(VolumeInfoSchema).optional(),
+  mediaType: MediaTypeSchema.optional(),
+  relationship: SeriesRelationshipSchema.optional(),
 });
 
 const VolumeResultSchema = z.object({
@@ -1050,8 +1055,13 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
         }
         
         // Found entity - fetch full details using the stored title
+        // Pass entityId as fallback for related series without Wikipedia pages
         request.log.info(`Found entity: ${entity.id} - "${entity.title}"`);
-        const details = await getSeriesDetails(entity.title, { includeDebug, homeLibrary });
+        const details = await getSeriesDetails(entity.title, { 
+          includeDebug, 
+          homeLibrary,
+          entityId: entity.id,
+        });
         
         if (!details) {
           return reply.status(404).send({
