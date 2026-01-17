@@ -20,16 +20,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import {
-  getMangaSeries as getWikipediaSeries,
-  searchManga as searchWikipedia,
-  type WikiMangaSeries,
+  getSeries as getWikipediaSeries,
+  searchSeries as searchWikipedia,
+  type WikiSeries,
   type WikiVolume,
 } from './wikipedia-client.js';
 
 import {
   createEntitiesFromWikipedia,
   createEntitiesFromNCCardinal,
+  findOrCreateSeriesByTitle,
+  detectMediaType,
+  getSeriesById,
+  getBooksBySeriesId,
   type Series as EntitySeries,
+  type Book as EntityBook,
   type MediaType,
 } from '../entities/index.js';
 
@@ -118,6 +123,10 @@ export interface SeriesResult {
   coverImage?: string | undefined;
   source: 'wikipedia' | 'google-books' | 'nc-cardinal';
   volumes?: VolumeInfo[] | undefined;
+  /** Media type: manga, light_novel, or unknown */
+  mediaType?: 'manga' | 'light_novel' | 'unknown' | undefined;
+  /** Relationship to parent series (for spin-offs, sequels, etc.) */
+  relationship?: 'adaptation' | 'spinoff' | 'sequel' | 'side_story' | 'anthology' | 'prequel' | undefined;
 }
 
 export interface VolumeInfo {
@@ -628,7 +637,7 @@ export async function search(
 
   // Step 1: Try Wikipedia first (better structured data)
   debugLog(debug, `Starting Wikipedia search for "${parsedQuery.title}"`);
-  let wikiSeries: WikiMangaSeries | null = null;
+  let wikiSeries: WikiSeries | null = null;
   const wikiStart = Date.now();
   try {
     wikiSeries = await getWikipediaSeries(parsedQuery.title);
@@ -808,7 +817,7 @@ export async function search(
     const seriesResult = await buildSeriesResultFromWikipedia(wikiSeries, availability, bookcoverUrls);
     result.series.push(seriesResult);
 
-    // Build volume results
+    // Build volume results for main series
     for (const vol of wikiSeries.volumes) {
       const volAvail = vol.englishISBN ? availability.get(vol.englishISBN) : undefined;
       const bookcoverCover = vol.englishISBN ? bookcoverUrls.get(vol.englishISBN) : undefined;
@@ -821,6 +830,54 @@ export async function search(
         availability: volAvail,
         source: 'wikipedia',
       });
+    }
+    
+    // Step 5a: Add related series (adaptations, spin-offs, etc.) from Wikipedia
+    if (wikiSeries.relatedSeries && wikiSeries.relatedSeries.length > 0) {
+      console.log(`[MangaSearch] Processing ${wikiSeries.relatedSeries.length} related series from Wikipedia`);
+      
+      for (const related of wikiSeries.relatedSeries) {
+        // Get availability for related series volumes
+        const relatedIsbns = related.volumes
+          .map(v => v.englishISBN)
+          .filter((isbn): isbn is string => !!isbn);
+        
+        // If we don't have availability for these ISBNs yet, fetch them
+        const missingIsbns = relatedIsbns.filter(isbn => !availability.has(isbn));
+        if (missingIsbns.length > 0) {
+          const relatedAvailability = await getAvailabilityByISBNs(missingIsbns, homeLibrary);
+          for (const [isbn, avail] of relatedAvailability) {
+            availability.set(isbn, avail);
+          }
+        }
+        
+        // Build series result using title-based entity ID (not Wikipedia ID)
+        const relatedSeriesResult = await buildRelatedSeriesResult(
+          related,
+          wikiSeries.title,
+          wikiSeries.author,
+          availability, 
+          bookcoverUrls
+        );
+        result.series.push(relatedSeriesResult);
+        
+        // Build volume results for related series
+        for (const vol of related.volumes) {
+          const volAvail = vol.englishISBN ? availability.get(vol.englishISBN) : undefined;
+          const bookcoverCover = vol.englishISBN ? bookcoverUrls.get(vol.englishISBN) : undefined;
+          result.volumes.push({
+            title: `${relatedSeriesResult.title}, Vol. ${vol.volumeNumber}${vol.title ? `: ${vol.title}` : ''}`,
+            volumeNumber: vol.volumeNumber,
+            seriesTitle: relatedSeriesResult.title,
+            isbn: vol.englishISBN,
+            coverImage: getCoverImageUrl(vol.englishISBN, undefined, bookcoverCover),
+            availability: volAvail,
+            source: 'wikipedia',
+          });
+        }
+        
+        console.log(`[MangaSearch] Added related series: "${relatedSeriesResult.title}" (${related.relationship}, ${related.mediaType}) with ${related.volumes.length} volumes`);
+      }
     }
     
     // Step 5b: Check NC Cardinal for alternate media types (e.g., manga vs light novel)
@@ -1033,9 +1090,9 @@ export async function search(
  */
 export async function getSeriesDetails(
   seriesTitle: string,
-  options: { includeDebug?: boolean; homeLibrary?: string | undefined } = {}
+  options: { includeDebug?: boolean; homeLibrary?: string | undefined; entityId?: string | undefined } = {}
 ): Promise<SeriesDetails | null> {
-  const { includeDebug = false, homeLibrary } = options;
+  const { includeDebug = false, homeLibrary, entityId } = options;
   const debug = createDebugInfo();
   
   // Try Wikipedia first
@@ -1044,7 +1101,16 @@ export async function getSeriesDetails(
   debug.timing.wikipedia = Date.now() - wikiStart;
 
   if (!wikiSeries || wikiSeries.volumes.length === 0) {
-    console.log(`[MangaSearch] Series not found: "${seriesTitle}"`);
+    console.log(`[MangaSearch] Wikipedia lookup failed for "${seriesTitle}", trying entity fallback...`);
+    
+    // Fallback: Try to load from entity data (for related series that don't have Wikipedia pages)
+    if (entityId) {
+      const entityResult = await getSeriesDetailsFromEntity(entityId, { includeDebug, homeLibrary });
+      if (entityResult) {
+        return entityResult;
+      }
+    }
+    
     debug.errors.push(`Series not found: "${seriesTitle}"`);
     return null;
   }
@@ -1148,12 +1214,122 @@ export async function getSeriesDetails(
   return result;
 }
 
+/**
+ * Load series details from entity data (fallback for related series without Wikipedia pages)
+ */
+async function getSeriesDetailsFromEntity(
+  entityId: string,
+  options: { includeDebug?: boolean; homeLibrary?: string | undefined } = {}
+): Promise<SeriesDetails | null> {
+  const { includeDebug = false, homeLibrary } = options;
+  const debug = createDebugInfo();
+  
+  // Load entity
+  const entity = await getSeriesById(entityId);
+  if (!entity) {
+    console.log(`[MangaSearch] Entity not found: ${entityId}`);
+    return null;
+  }
+  
+  // Load book entities for this series
+  const books = await getBooksBySeriesId(entityId);
+  if (books.length === 0 && (!entity.bookIds || entity.bookIds.length === 0)) {
+    console.log(`[MangaSearch] No books found for entity: ${entityId}`);
+    return null;
+  }
+  
+  debug.sources.push('entity-store');
+  
+  // Collect ISBNs (prefer books, fall back to bookIds)
+  const isbns = books.length > 0 
+    ? books.map(b => b.id)
+    : (entity.bookIds ?? []);
+  
+  // Fetch availability and covers
+  console.log(`[MangaSearch] Loading from entity: ${entity.title} (${isbns.length} volumes)`);
+  const ncStart = Date.now();
+  const [availability, bookcoverUrls] = await Promise.all([
+    getAvailabilityByISBNs(isbns, { org: 'CARDINAL', homeLibrary }),
+    fetchBookcoverUrls(isbns),
+  ]);
+  debug.timing.ncCardinal = Date.now() - ncStart;
+  debug.sources.push('nc-cardinal');
+  
+  if (bookcoverUrls.size > 0) {
+    debug.sources.push('bookcover-api');
+  }
+  
+  // Build volume info
+  const volumes: VolumeInfo[] = [];
+  
+  if (books.length > 0) {
+    // Use book entities for detailed info
+    const sortedBooks = [...books].sort((a, b) => a.volumeNumber - b.volumeNumber);
+    for (const book of sortedBooks) {
+      const bookcoverCover = bookcoverUrls.get(book.id);
+      volumes.push({
+        volumeNumber: book.volumeNumber,
+        title: book.title,
+        isbn: book.id,
+        coverImage: getCoverImageUrl(book.id, undefined, bookcoverCover),
+        availability: availability.get(book.id),
+      });
+    }
+  } else {
+    // Fall back to bookIds (less info available)
+    for (let i = 0; i < isbns.length; i++) {
+      const isbn = isbns[i];
+      const bookcoverCover = bookcoverUrls.get(isbn);
+      volumes.push({
+        volumeNumber: i + 1,
+        isbn,
+        coverImage: getCoverImageUrl(isbn, undefined, bookcoverCover),
+        availability: availability.get(isbn),
+      });
+    }
+  }
+  
+  // Count available volumes and find missing ones
+  let availableCount = 0;
+  const missingVolumes: number[] = [];
+  
+  for (const vol of volumes) {
+    if (vol.availability?.available) {
+      availableCount++;
+    } else {
+      missingVolumes.push(vol.volumeNumber);
+    }
+  }
+  
+  // Get cover from first volume
+  const firstVolumeIsbn = volumes[0]?.isbn;
+  const firstVolBookcover = firstVolumeIsbn ? bookcoverUrls.get(firstVolumeIsbn) : undefined;
+  
+  const result: SeriesDetails = {
+    id: entity.id,
+    title: entity.title,
+    totalVolumes: entity.totalVolumes ?? volumes.length,
+    isComplete: entity.status === 'completed',
+    author: entity.author,
+    coverImage: getCoverImageUrl(firstVolumeIsbn, undefined, firstVolBookcover),
+    volumes,
+    availableCount,
+    missingVolumes,
+  };
+  
+  if (includeDebug) {
+    result._debug = finalizeDebugInfo(debug);
+  }
+  
+  return result;
+}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
 
 async function buildSeriesResultFromWikipedia(
-  wiki: WikiMangaSeries,
+  wiki: WikiSeries,
   availability: Map<string, VolumeAvailability>,
   bookcoverUrls: Map<string, string> = new Map()
 ): Promise<SeriesResult> {
@@ -1191,6 +1367,76 @@ async function buildSeriesResultFromWikipedia(
     coverImage: getCoverImageUrl(firstVolumeIsbn, undefined, firstVolBookcover),
     source: 'wikipedia',
     volumes,
+    mediaType: wiki.mediaType,
+  };
+}
+
+/**
+ * Build a SeriesResult for a related series (spin-off, adaptation, etc.)
+ * Uses findOrCreateSeriesByTitle instead of Wikipedia ID to ensure unique entity IDs
+ */
+export async function buildRelatedSeriesResult(
+  related: import('./wikipedia-client.js').WikiRelatedSeries,
+  parentTitle: string,
+  parentAuthor: string | undefined,
+  availability: Map<string, VolumeAvailability>,
+  bookcoverUrls: Map<string, string> = new Map()
+): Promise<SeriesResult> {
+  let availableVolumes = 0;
+  
+  // Determine media type
+  const mediaType = detectMediaType(related.title, {
+    isManga: related.mediaType === 'manga',
+    isLightNovel: related.mediaType === 'light_novel',
+  });
+  
+  // Generate full title - prefix with parent title if not included
+  let relatedTitle = related.title;
+  const parentBase = parentTitle.toLowerCase().split(/[:(]/)[0]?.trim() ?? '';
+  if (!related.title.toLowerCase().includes(parentBase)) {
+    relatedTitle = `${parentTitle}: ${related.title}`;
+  }
+  
+  // Create/find entity using title (not Wikipedia ID) to get unique ID
+  const entity = await findOrCreateSeriesByTitle({
+    title: relatedTitle,
+    mediaType,
+    author: parentAuthor,
+    status: 'unknown',
+    totalVolumes: related.volumes.length,
+  });
+  
+  // Get first volume's ISBN for cover image
+  const firstVolumeIsbn = related.volumes[0]?.englishISBN;
+  const firstVolBookcover = firstVolumeIsbn ? bookcoverUrls.get(firstVolumeIsbn) : undefined;
+
+  const volumes: VolumeInfo[] = related.volumes.map(vol => {
+    const volAvail = vol.englishISBN ? availability.get(vol.englishISBN) : undefined;
+    if (volAvail?.available) {
+      availableVolumes++;
+    }
+    const bookcoverCover = vol.englishISBN ? bookcoverUrls.get(vol.englishISBN) : undefined;
+    return {
+      volumeNumber: vol.volumeNumber,
+      title: vol.title,
+      isbn: vol.englishISBN,
+      coverImage: getCoverImageUrl(vol.englishISBN, undefined, bookcoverCover),
+      availability: volAvail,
+    };
+  });
+
+  return {
+    id: entity.id,
+    title: relatedTitle,
+    totalVolumes: related.volumes.length,
+    availableVolumes,
+    isComplete: false,
+    author: parentAuthor,
+    coverImage: getCoverImageUrl(firstVolumeIsbn, undefined, firstVolBookcover),
+    source: 'wikipedia',
+    volumes,
+    mediaType: related.mediaType,
+    relationship: related.relationship,
   };
 }
 

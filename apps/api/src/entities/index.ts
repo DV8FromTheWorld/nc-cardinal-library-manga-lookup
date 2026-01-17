@@ -9,6 +9,7 @@
 export type {
   MediaType,
   SeriesStatus,
+  SeriesRelationship,
   SeriesExternalIds,
   BookExternalIds,
   Series,
@@ -43,6 +44,7 @@ export {
   findOrCreateSeriesByWikipedia,
   findOrCreateSeriesByTitle,
   updateSeriesBooks,
+  linkRelatedSeries,
   detectMediaType,
 } from './series.js';
 

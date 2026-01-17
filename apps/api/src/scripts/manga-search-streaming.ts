@@ -6,8 +6,8 @@
  */
 
 import {
-  getMangaSeries as getWikipediaSeries,
-  type WikiMangaSeries,
+  getSeries as getWikipediaSeries,
+  type WikiSeries,
 } from './wikipedia-client.js';
 
 import {
@@ -19,6 +19,7 @@ import {
 import {
   parseQuery,
   fetchBookcoverUrl,
+  buildRelatedSeriesResult,
   type SearchResult,
   type SeriesResult,
   type VolumeResult,
@@ -101,7 +102,7 @@ export async function searchWithProgress(
   // Step 1: Try Wikipedia
   onProgress({ type: 'wikipedia:searching' });
   
-  let wikiSeries: WikiMangaSeries | null = null;
+  let wikiSeries: WikiSeries | null = null;
   let ncCardinalFallbackSeries: SeriesResult[] = [];
   
   try {
@@ -271,6 +272,52 @@ export async function searchWithProgress(
           source: 'wikipedia',
         });
       }
+      
+      // Process related series (adaptations, spin-offs, etc.)
+      if (wikiSeries.relatedSeries && wikiSeries.relatedSeries.length > 0) {
+        for (const related of wikiSeries.relatedSeries) {
+          // Get availability for related series volumes
+          const relatedIsbns = related.volumes
+            .map(v => v.englishISBN)
+            .filter((isbn): isbn is string => !!isbn);
+          
+          // Fetch availability for related series ISBNs not already fetched
+          for (const isbn of relatedIsbns) {
+            if (!availability.has(isbn)) {
+              const record = await searchByISBNSingle(isbn);
+              if (record) {
+                const volAvail = getDetailedAvailabilitySummary(record, homeLibrary);
+                availability.set(isbn, volAvail);
+              }
+            }
+          }
+          
+          // Build series result using title-based entity ID (not Wikipedia ID)
+          const relatedSeriesResult = await buildRelatedSeriesResult(
+            related,
+            wikiSeries.title,
+            wikiSeries.author,
+            availability, 
+            bookcoverUrls
+          );
+          result.series.push(relatedSeriesResult);
+          
+          // Build volume results for related series
+          for (const vol of related.volumes) {
+            const volAvail = vol.englishISBN ? availability.get(vol.englishISBN) : undefined;
+            const bookcoverCover = vol.englishISBN ? bookcoverUrls.get(vol.englishISBN) : undefined;
+            result.volumes.push({
+              title: `${relatedSeriesResult.title}, Vol. ${vol.volumeNumber}${vol.title ? `: ${vol.title}` : ''}`,
+              volumeNumber: vol.volumeNumber,
+              seriesTitle: relatedSeriesResult.title,
+              isbn: vol.englishISBN,
+              coverImage: getCoverImageUrl(vol.englishISBN, bookcoverCover),
+              availability: volAvail,
+              source: 'wikipedia',
+            });
+          }
+        }
+      }
     }
   } else if (ncCardinalFallbackSeries.length > 0) {
     // Use NC Cardinal fallback
@@ -406,7 +453,7 @@ async function searchByISBNSingle(isbn: string): Promise<CatalogRecord | null> {
 }
 
 async function buildSeriesResultFromWikipedia(
-  wiki: WikiMangaSeries,
+  wiki: WikiSeries,
   availability: Map<string, VolumeAvailability>,
   bookcoverUrls: Map<string, string>
 ): Promise<SeriesResult> {
@@ -443,6 +490,7 @@ async function buildSeriesResultFromWikipedia(
     coverImage: getCoverImageUrl(firstVolumeIsbn, firstVolBookcover),
     source: 'wikipedia',
     volumes,
+    mediaType: wiki.mediaType,
   };
 }
 

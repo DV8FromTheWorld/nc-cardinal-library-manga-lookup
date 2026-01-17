@@ -16,7 +16,7 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // Parser version - increment when making changes to parsing logic
 // This invalidates parsed series cache while preserving raw wikitext cache
-const PARSER_VERSION = 2;
+const PARSER_VERSION = 3;
 
 // Ensure cache directory exists
 if (!fs.existsSync(CACHE_DIR)) {
@@ -92,7 +92,16 @@ export interface WikiSearchResult {
 
 export type MediaType = 'manga' | 'light_novel' | 'unknown';
 
-export interface WikiMangaSeries {
+export type SeriesRelationship = 'spinoff' | 'sequel' | 'side_story' | 'anthology' | 'prequel' | 'adaptation';
+
+export interface WikiRelatedSeries {
+  title: string;
+  relationship: SeriesRelationship;
+  volumes: WikiVolume[];
+  mediaType: MediaType;
+}
+
+export interface WikiSeries {
   title: string;
   pageid: number;
   volumes: WikiVolume[];
@@ -102,6 +111,7 @@ export interface WikiMangaSeries {
   author?: string | undefined;
   publisher?: string | undefined;
   chapterListPageId?: number | undefined;
+  relatedSeries?: WikiRelatedSeries[] | undefined;
 }
 
 export interface WikiVolume {
@@ -170,7 +180,7 @@ function writeCache<T>(cacheKey: string, data: T): void {
  * Search for manga titles using Wikipedia's OpenSearch API
  * This handles typos and alternate names well (e.g., "demonslayer" finds "Demon Slayer")
  */
-export async function searchManga(query: string, limit: number = 10): Promise<WikiSearchResult[]> {
+export async function searchSeries(query: string, limit: number = 10): Promise<WikiSearchResult[]> {
   const cacheKey = getCacheKey('search', query);
   const cached = readCache<WikiSearchResult[]>(cacheKey);
   if (cached) {
@@ -217,7 +227,7 @@ export async function searchManga(query: string, limit: number = 10): Promise<Wi
 /**
  * Search specifically for manga chapter/volume list pages
  */
-export async function searchMangaChapterList(seriesTitle: string): Promise<WikiSearchResult | null> {
+export async function searchSeriesChapterList(seriesTitle: string): Promise<WikiSearchResult | null> {
   // Try various page naming patterns
   const searchPatterns = [
     `List of ${seriesTitle} chapters`,
@@ -417,29 +427,176 @@ function isSpinoffTitle(title: string | undefined): boolean {
 }
 
 /**
- * Parse volume list from wikitext
- * Handles {{Graphic novel list}} templates used in manga chapter list pages
- * Also detects section headers to differentiate light novels from manga
+ * Classify a section as main series or a type of related series.
+ * Uses patterns discovered from research on 10+ popular series.
+ * 
+ * @param sectionName - The section header text (e.g., "Part 1", "Hannelore's Fifth Year")
+ * @param mainSeriesTitle - The main series title for comparison
+ * @param parentSection - The parent section name if this is nested (e.g., "Manga", "Light novels")
  */
-export function parseVolumeList(wikitext: string): WikiVolume[] {
-  const volumes: WikiVolume[] = [];
+function classifySection(
+  sectionName: string,
+  mainSeriesTitle: string,
+  parentSection?: string
+): 'main' | SeriesRelationship {
+  const lower = sectionName.toLowerCase();
   
-  // Split the wikitext by {{Graphic novel list to get each volume's content
-  // The templates have complex nested content, so we extract by field patterns instead
+  // Normalize the main series title for comparison
+  // Extract first significant word(s) - handles "Ascendance of a Bookworm" -> "ascendance"
+  const mainBase = mainSeriesTitle.toLowerCase()
+    .replace(/[:']/g, '')
+    .replace(/^list of\s+/i, '')
+    .replace(/\s+(chapters?|volumes?|manga|light novels?)$/i, '')
+    .split(/\s+/)[0] ?? '';
+  
+  // 1. Part N / Volumes N-M = Main series continuation (JoJo, Bookworm)
+  if (/^part\s*\d/i.test(lower)) return 'main';
+  if (/^volumes?\s*\d/i.test(lower)) return 'main';
+  
+  // 2. Generic volume/chapter list sections are always main series
+  // (e.g., "Volume list" under "Light novels" = main LN series)
+  if (lower === 'volume list' || lower === 'volumes' || lower === 'chapter list' || 
+      lower === 'chapters' || lower === 'manga' || lower === 'light novels') {
+    return 'main';
+  }
+  
+  // 2. Explicit spin-off sections (Fate, Frieren)
+  if (lower.includes('spin-off') || lower.includes('spinoff')) return 'spinoff';
+  
+  // 3. Year N = Sequel pattern (Classroom of the Elite: Year 2)
+  if (/year\s*\d/i.test(lower)) return 'sequel';
+  
+  // 4. Explicit keywords for specific relationship types
+  if (lower.includes('alternative')) return 'spinoff';
+  if (lower.includes('progressive')) return 'spinoff';
+  if (lower.includes('side stor')) return 'side_story';
+  if (lower.includes('short stor')) return 'anthology';
+  if (lower.includes('gaiden')) return 'side_story';
+  if (lower.includes('prequel')) return 'prequel';
+  
+  // 5. Stories/anthology collections
+  if (lower.includes('stories') && !lower.includes(mainBase)) return 'anthology';
+  
+  // 6. Extended title pattern: "Main Title: Subtitle" (Blue Lock: Episode Nagi, SAO: Progressive)
+  // If the section contains the main title but has additional text, it's likely a spin-off
+  if (sectionName.includes(':') && lower.includes(mainBase) && lower !== mainBase) {
+    return 'spinoff';
+  }
+  
+  // 7. Nested under media type but completely different title (Hannelore's Fifth Year under Light novels)
+  if (parentSection) {
+    const parentLower = parentSection.toLowerCase();
+    const isUnderMediaType = parentLower.includes('manga') || 
+                             parentLower.includes('novel') ||
+                             parentLower === 'media';
+    
+    if (isUnderMediaType && mainBase && !lower.includes(mainBase)) {
+      // Different title under a media type section = likely a spin-off
+      return 'spinoff';
+    }
+  }
+  
+  // 8. Check existing isSpinoffTitle patterns (for volume titles that are used as section names)
+  if (isSpinoffTitle(sectionName)) return 'spinoff';
+  
+  // 9. If section name matches or contains main series name, it's the main series
+  if (mainBase && lower.includes(mainBase)) return 'main';
+  
+  // Default to main if we can't determine otherwise
+  return 'main';
+}
+
+/**
+ * Internal type for tracking parsed sections with their volumes
+ */
+interface ParsedSection {
+  name: string;
+  level: number;
+  mediaType: MediaType;
+  relationship: 'main' | SeriesRelationship;
+  volumes: WikiVolume[];
+}
+
+/**
+ * Parse volume list from wikitext with full section hierarchy tracking.
+ * Returns sections with their volumes grouped, classified as main or related series.
+ * 
+ * @param wikitext - The raw wikitext content
+ * @param mainSeriesTitle - The main series title for classification (optional, used for better detection)
+ */
+function parseVolumeListWithSections(wikitext: string, mainSeriesTitle: string = ''): ParsedSection[] {
+  const sections: ParsedSection[] = [];
   const lines = wikitext.split('\n');
   
+  // Track section hierarchy
+  let l2Section: string | undefined;
+  let l3Section: string | undefined;
+  let l4Section: string | undefined;
+  
+  // Current parsing state
   let currentVolume: Partial<WikiVolume> | null = null;
   let currentMediaType: MediaType = 'unknown';
+  let currentSection: ParsedSection | null = null;
+  
+  // Part numbering for sequential volume numbers
   let currentPartNumber: number | undefined;
-  let partVolumeOffset = 0; // For re-numbering manga parts sequentially
+  let partVolumeOffset = 0;
   let lastVolumeInPart = 0;
   
-  for (const line of lines) {
-    // Detect section headers like ===Light novels=== or ===Manga===
-    const sectionMatch = line.match(/^={2,4}\s*(.+?)\s*={2,4}$/);
-    if (sectionMatch) {
-      const sectionName = sectionMatch[1] ?? '';
-      const newMediaType = detectMediaType(sectionName);
+  // Helper to save current volume to current section
+  const saveCurrentVolume = () => {
+    if (!currentVolume?.volumeNumber) return;
+    
+    const adjustedVolumeNumber = currentPartNumber !== undefined 
+      ? currentVolume.volumeNumber + partVolumeOffset 
+      : currentVolume.volumeNumber;
+    
+    lastVolumeInPart = Math.max(lastVolumeInPart, currentVolume.volumeNumber);
+    
+    const volume: WikiVolume = {
+      volumeNumber: adjustedVolumeNumber,
+      japaneseISBN: currentVolume.japaneseISBN,
+      englishISBN: currentVolume.englishISBN,
+      japaneseReleaseDate: currentVolume.japaneseReleaseDate,
+      englishReleaseDate: currentVolume.englishReleaseDate,
+      title: currentVolume.title,
+      mediaType: currentMediaType,
+    };
+    
+    if (currentSection) {
+      currentSection.volumes.push(volume);
+    } else {
+      // Create a default section if we haven't seen any section headers yet
+      currentSection = {
+        name: mainSeriesTitle || 'Main',
+        level: 2,
+        mediaType: currentMediaType,
+        relationship: 'main',
+        volumes: [volume],
+      };
+      sections.push(currentSection);
+    }
+  };
+  
+  // Helper to start or update current section based on header
+  const processSection = (sectionName: string, level: number) => {
+    // Clean the section name (remove wiki formatting)
+    const cleanName = sectionName.replace(/'''?/g, '').trim();
+    
+    // Update hierarchy tracking
+    if (level === 2) {
+      l2Section = cleanName;
+      l3Section = undefined;
+      l4Section = undefined;
+    } else if (level === 3) {
+      l3Section = cleanName;
+      l4Section = undefined;
+    } else if (level === 4) {
+      l4Section = cleanName;
+    }
+    
+    // Detect media type from section name
+    const newMediaType = detectMediaType(cleanName);
       if (newMediaType !== 'unknown') {
         currentMediaType = newMediaType;
         // Reset part tracking when switching media types
@@ -448,40 +605,52 @@ export function parseVolumeList(wikitext: string): WikiVolume[] {
         lastVolumeInPart = 0;
       }
       
-      // Detect manga parts like ====''Part 1''==== or ====Part 1====
-      const partMatch = sectionName.match(/part\s*(\d+)/i);
+    // Detect manga parts (for sequential numbering)
+    const partMatch = cleanName.match(/part\s*(\d+)/i);
       if (partMatch) {
         const newPartNumber = parseInt(partMatch[1] ?? '0', 10);
         if (currentPartNumber !== undefined && newPartNumber > currentPartNumber) {
-          // Moving to a new part - add the last part's volumes to offset
           partVolumeOffset += lastVolumeInPart;
           lastVolumeInPart = 0;
         }
         currentPartNumber = newPartNumber;
-      }
+    }
+    
+    // Determine parent section for classification
+    const parentSection = level === 4 ? l3Section : level === 3 ? l2Section : undefined;
+    
+    // Classify this section
+    const relationship = classifySection(cleanName, mainSeriesTitle, parentSection);
+    
+    // Create new section if this looks like a content section (not just a heading)
+    // We'll add volumes to it as we parse them
+    currentSection = {
+      name: cleanName,
+      level,
+          mediaType: currentMediaType,
+      relationship,
+      volumes: [],
+    };
+    sections.push(currentSection);
+  };
+  
+  for (const line of lines) {
+    // Detect section headers like ===Light novels=== or ===Manga===
+    const sectionMatch = line.match(/^(={2,4})\s*(.+?)\s*={2,4}$/);
+    if (sectionMatch) {
+      // Save any pending volume before switching sections
+      saveCurrentVolume();
+      currentVolume = null;
+      
+      const level = sectionMatch[1]?.length ?? 2;
+      const sectionName = sectionMatch[2] ?? '';
+      processSection(sectionName, level);
       continue;
     }
     
     // Start of a new volume template
     if (line.includes('{{Graphic novel list') && !line.includes('/header')) {
-      // Save previous volume if exists
-      if (currentVolume?.volumeNumber !== undefined) {
-        const adjustedVolumeNumber = currentPartNumber !== undefined 
-          ? currentVolume.volumeNumber + partVolumeOffset 
-          : currentVolume.volumeNumber;
-        
-        lastVolumeInPart = Math.max(lastVolumeInPart, currentVolume.volumeNumber);
-        
-        volumes.push({
-          volumeNumber: adjustedVolumeNumber,
-          japaneseISBN: currentVolume.japaneseISBN,
-          englishISBN: currentVolume.englishISBN,
-          japaneseReleaseDate: currentVolume.japaneseReleaseDate,
-          englishReleaseDate: currentVolume.englishReleaseDate,
-          title: currentVolume.title,
-          mediaType: currentMediaType,
-        });
-      }
+      saveCurrentVolume();
       currentVolume = { mediaType: currentMediaType };
       continue;
     }
@@ -489,7 +658,7 @@ export function parseVolumeList(wikitext: string): WikiVolume[] {
     // Skip if we're not inside a volume template
     if (!currentVolume) continue;
     
-    // Extract field values from lines like "| FieldName = value" or " | FieldName = value"
+    // Extract field values from lines like "| FieldName = value"
     const fieldMatch = line.match(/^\s*\|\s*(\w+)\s*=\s*(.+)/);
     if (!fieldMatch) continue;
     
@@ -497,10 +666,10 @@ export function parseVolumeList(wikitext: string): WikiVolume[] {
     if (!fieldName || !rawValue) continue;
     
     // Clean the value - remove refs, templates, wiki links
-    let value = rawValue
+    const value = rawValue
       .replace(/<ref[^>]*>.*?<\/ref>/g, '')
       .replace(/<ref[^>]*\/>/g, '')
-      .replace(/\{\{[^{}]*\}\}/g, '') // Simple nested templates
+      .replace(/\{\{[^{}]*\}\}/g, '')
       .replace(/\[\[([^\]|]+\|)?([^\]]+)\]\]/g, '$2')
       .replace(/'''?/g, '')
       .trim();
@@ -528,31 +697,37 @@ export function parseVolumeList(wikitext: string): WikiVolume[] {
   }
   
   // Don't forget the last volume
-  if (currentVolume?.volumeNumber !== undefined) {
-    const adjustedVolumeNumber = currentPartNumber !== undefined 
-      ? currentVolume.volumeNumber + partVolumeOffset 
-      : currentVolume.volumeNumber;
-    
-    volumes.push({
-      volumeNumber: adjustedVolumeNumber,
-      japaneseISBN: currentVolume.japaneseISBN,
-      englishISBN: currentVolume.englishISBN,
-      japaneseReleaseDate: currentVolume.japaneseReleaseDate,
-      englishReleaseDate: currentVolume.englishReleaseDate,
-      title: currentVolume.title,
-      mediaType: currentVolume.mediaType ?? currentMediaType,
-    });
+  saveCurrentVolume();
+  
+  // Filter out empty sections
+  return sections.filter(s => s.volumes.length > 0);
+}
+
+/**
+ * Parse volume list from wikitext (legacy function for backwards compatibility).
+ * Returns only main series volumes, filtering out spin-offs.
+ * 
+ * @deprecated Use parseVolumeListWithSections for full section tracking
+ */
+export function parseVolumeList(wikitext: string): WikiVolume[] {
+  const sections = parseVolumeListWithSections(wikitext);
+  
+  // Collect all volumes from main sections
+  const mainVolumes: WikiVolume[] = [];
+  for (const section of sections) {
+    if (section.relationship === 'main') {
+      mainVolumes.push(...section.volumes);
+    }
   }
   
-  // Filter out spin-offs and side stories
-  const mainVolumes = volumes.filter(v => !isSpinoffTitle(v.title));
+  // Also filter by volume title for backwards compatibility
+  const filteredVolumes = mainVolumes.filter(v => !isSpinoffTitle(v.title));
   
   // Deduplicate by volume number within each media type
-  // (keep the first one with an ISBN, which is usually the main series)
   const deduplicatedVolumes: WikiVolume[] = [];
   const seenByTypeAndNumber = new Map<string, WikiVolume>();
   
-  for (const vol of mainVolumes) {
+  for (const vol of filteredVolumes) {
     const key = `${vol.mediaType ?? 'unknown'}-${vol.volumeNumber}`;
     const existing = seenByTypeAndNumber.get(key);
     
@@ -560,7 +735,6 @@ export function parseVolumeList(wikitext: string): WikiVolume[] {
       seenByTypeAndNumber.set(key, vol);
       deduplicatedVolumes.push(vol);
     } else if (!existing.englishISBN && vol.englishISBN) {
-      // Replace if the new one has an ISBN and the old one doesn't
       const idx = deduplicatedVolumes.indexOf(existing);
       if (idx >= 0) {
         deduplicatedVolumes[idx] = vol;
@@ -571,7 +745,6 @@ export function parseVolumeList(wikitext: string): WikiVolume[] {
   
   // Sort by volume number within each media type
   deduplicatedVolumes.sort((a, b) => {
-    // First sort by media type (manga before light_novel)
     if (a.mediaType !== b.mediaType) {
       if (a.mediaType === 'manga') return -1;
       if (b.mediaType === 'manga') return 1;
@@ -673,17 +846,17 @@ function extractAuthor(wikitext: string): string | undefined {
 /**
  * Get complete manga series information including all volumes
  */
-export async function getMangaSeries(query: string): Promise<WikiMangaSeries | null> {
+export async function getSeries(query: string): Promise<WikiSeries | null> {
   // Use versioned cache key so parsing changes invalidate old cached results
   const cacheKey = getVersionedCacheKey('series', query);
-  const cached = readCache<WikiMangaSeries>(cacheKey);
+  const cached = readCache<WikiSeries>(cacheKey);
   if (cached) {
     console.log(`[Wikipedia] Cache hit for series: "${query}" (parser v${PARSER_VERSION})`);
     return cached;
   }
 
   // Step 1: Search for the series
-  const searchResults = await searchManga(query, 10);
+  const searchResults = await searchSeries(query, 10);
   if (searchResults.length === 0) {
     console.log(`[Wikipedia] No results found for: "${query}"`);
     return null;
@@ -787,8 +960,17 @@ export async function getMangaSeries(query: string): Promise<WikiMangaSeries | n
   
   console.log(`[Wikipedia] Best search result: "${firstResult?.title}"`);
   
-  // Build list of pages to try - use ACTUAL Wikipedia titles from search results
-  // to handle special characters like × in "Spy × Family"
+  // Build list of pages to try, prioritizing chapter/volume list pages
+  // because they have the most complete volume data
+  
+  // FIRST: Try query-based chapter list pages (highest priority)
+  // These are most likely to have the main series data
+  pagesToTry.push(
+    `List of ${query} chapters`,
+    `List of ${query} manga volumes`,
+  );
+  
+  // SECOND: Build pages from best search result
   if (firstResult) {
     const actualTitle = firstResult.title;
     
@@ -799,33 +981,45 @@ export async function getMangaSeries(query: string): Promise<WikiMangaSeries | n
       .replace(/\s*\(Japanese manga\)\s*$/i, '')
       .trim();
     
-    // If the search result is already a chapters page, put it first
+    // If the search result is already a chapters page, add it high priority
     if (actualTitle.toLowerCase().includes('chapters') || actualTitle.toLowerCase().includes('volumes')) {
+      if (!pagesToTry.includes(actualTitle)) {
       pagesToTry.push(actualTitle);
+      }
     }
     
     // Try various patterns using the CLEAN title (without "(manga)" suffix)
-    pagesToTry.push(
-      `List of ${cleanTitle} manga volumes`, // One Piece style
-      `List of ${cleanTitle} chapters`, // Common pattern - THIS is what Blue Box uses
-      cleanTitle, // The main page itself
-      `${cleanTitle} (manga)`, // The manga-specific page
-      actualTitle, // Original title as fallback
-    );
+    const cleanTitlePages = [
+      `List of ${cleanTitle} chapters`,
+      `List of ${cleanTitle} manga volumes`,
+      cleanTitle,
+      `${cleanTitle} (manga)`,
+      actualTitle,
+    ];
+    for (const page of cleanTitlePages) {
+      if (!pagesToTry.includes(page)) {
+        pagesToTry.push(page);
+      }
+    }
     
     // Also try without subtitles (e.g., "Demon Slayer" from "Demon Slayer: Kimetsu no Yaiba")
     const baseTitle = cleanTitle.split(':')[0]?.trim();
     if (baseTitle && baseTitle !== cleanTitle) {
-      pagesToTry.push(
-        `List of ${baseTitle} manga volumes`,
+      const baseTitlePages = [
         `List of ${baseTitle} chapters`,
+        `List of ${baseTitle} manga volumes`,
         baseTitle,
         `${baseTitle} (manga)`,
-      );
+      ];
+      for (const page of baseTitlePages) {
+        if (!pagesToTry.includes(page)) {
+          pagesToTry.push(page);
+        }
+      }
     }
   }
   
-  // Also add pages based on ALL search results that might have chapters or volumes
+  // THIRD: Add pages from ALL search results that might have chapters or volumes
   for (const result of searchResults) {
     const title = result.title;
     if ((title.toLowerCase().includes('chapters') || title.toLowerCase().includes('volumes')) && !pagesToTry.includes(title)) {
@@ -833,14 +1027,12 @@ export async function getMangaSeries(query: string): Promise<WikiMangaSeries | n
     }
   }
   
-  // Also try the raw query (in case nothing else works)
-  if (!pagesToTry.some(p => normalizeForCompare(p) === `list of ${queryLower} manga volumes`)) {
-    pagesToTry.push(
-      `List of ${query} manga volumes`,
-      `List of ${query} chapters`,
-      query,
-      `${query} (manga)`,
-    );
+  // FOURTH: Try the main query page and manga variant as fallbacks
+  const fallbackPages = [query, `${query} (manga)`];
+  for (const page of fallbackPages) {
+    if (!pagesToTry.includes(page)) {
+      pagesToTry.push(page);
+    }
   }
 
   let bestPage: WikiPageContent | null = null;
@@ -870,18 +1062,20 @@ export async function getMangaSeries(query: string): Promise<WikiMangaSeries | n
       }
     }
     
-    const volumes = parseVolumeList(fullWikitext);
-    console.log(`[Wikipedia] Page "${pageTitle}" has ${volumes.length} volumes`);
+    // Use section-aware parsing to capture related series
+    const sections = parseVolumeListWithSections(fullWikitext, pageTitle);
+    const totalVolumes = sections.reduce((sum, s) => sum + s.volumes.length, 0);
+    console.log(`[Wikipedia] Page "${pageTitle}" has ${totalVolumes} volumes across ${sections.length} sections`);
     
     // Keep the page with the most volumes found
-    if (volumes.length > bestVolumes.length) {
+    if (totalVolumes > bestVolumes.length) {
       bestPage = pageContent;
-      bestVolumes = volumes;
+      bestVolumes = sections.flatMap(s => s.volumes);
       bestFullWikitext = fullWikitext;
     }
     
     // If we found a good number of volumes, we're done
-    if (volumes.length >= 10) {
+    if (totalVolumes >= 10) {
       break;
     }
   }
@@ -906,28 +1100,113 @@ export async function getMangaSeries(query: string): Promise<WikiMangaSeries | n
     .replace(/ light novels?$/i, '')
     .trim();
 
-  // Check if we have mixed media types (both manga and light novels)
-  const mediaTypes = new Set(bestVolumes.map(v => v.mediaType).filter(t => t && t !== 'unknown'));
+  // Re-parse with sections to get proper classification
+  const allSections = parseVolumeListWithSections(bestFullWikitext, baseSeriesTitle);
   
-  // If there are multiple media types, prefer manga and return those
-  if (mediaTypes.size > 1) {
-    console.log(`[Wikipedia] Page has multiple media types: ${[...mediaTypes].join(', ')}`);
+  // Separate main sections from related series
+  const mainSections = allSections.filter(s => s.relationship === 'main');
+  const relatedSections = allSections.filter(s => s.relationship !== 'main');
+  
+  // Collect main volumes, preferring manga over light novels if both exist
+  const mainVolumes: WikiVolume[] = [];
+  const mainMediaTypes = new Set<MediaType>();
+  
+  for (const section of mainSections) {
+    mainVolumes.push(...section.volumes);
+    if (section.mediaType !== 'unknown') {
+      mainMediaTypes.add(section.mediaType);
+    }
+  }
+  
+  // Deduplicate main volumes by volume number within each media type
+  const deduplicatedMain: WikiVolume[] = [];
+  const seenByTypeAndNumber = new Map<string, WikiVolume>();
+  
+  for (const vol of mainVolumes) {
+    const key = `${vol.mediaType ?? 'unknown'}-${vol.volumeNumber}`;
+    const existing = seenByTypeAndNumber.get(key);
     
-    // Prefer manga over light novels
-    const preferredType: MediaType = mediaTypes.has('manga') ? 'manga' : 'light_novel';
-    const filteredVolumes = bestVolumes.filter(v => v.mediaType === preferredType);
+    if (!existing) {
+      seenByTypeAndNumber.set(key, vol);
+      deduplicatedMain.push(vol);
+    } else if (!existing.englishISBN && vol.englishISBN) {
+      const idx = deduplicatedMain.indexOf(existing);
+      if (idx >= 0) {
+        deduplicatedMain[idx] = vol;
+        seenByTypeAndNumber.set(key, vol);
+      }
+    }
+  }
+  
+  // Sort main volumes
+  deduplicatedMain.sort((a, b) => {
+    if (a.mediaType !== b.mediaType) {
+      if (a.mediaType === 'manga') return -1;
+      if (b.mediaType === 'manga') return 1;
+      if (a.mediaType === 'light_novel') return -1;
+      if (b.mediaType === 'light_novel') return 1;
+    }
+    return a.volumeNumber - b.volumeNumber;
+  });
+  
+  // Build related series array from related sections
+  const relatedSeries: WikiRelatedSeries[] = [];
+  
+  for (const section of relatedSections) {
+    if (section.volumes.length === 0) continue;
+    if (section.relationship === 'main') continue; // Skip main (shouldn't happen but be safe)
     
-    console.log(`[Wikipedia] Using ${preferredType} volumes: ${filteredVolumes.length}`);
+    relatedSeries.push({
+      title: section.name,
+      relationship: section.relationship,
+      volumes: section.volumes,
+      mediaType: section.mediaType,
+    });
+  }
+  
+  if (relatedSeries.length > 0) {
+    console.log(`[Wikipedia] Found ${relatedSeries.length} related series: ${relatedSeries.map(r => r.title).join(', ')}`);
+  }
+  
+  // Determine primary media type and handle multiple media types
+  let mediaType: MediaType = 'manga';
+  if (mainMediaTypes.size > 1) {
+    // Prefer manga over light novels for the primary series
+    mediaType = mainMediaTypes.has('manga') ? 'manga' : 'light_novel';
+    const alternateType: MediaType = mediaType === 'manga' ? 'light_novel' : 'manga';
     
-    const series: WikiMangaSeries = {
-      title: `${baseSeriesTitle}${preferredType === 'light_novel' ? ' (Light Novel)' : ''}`,
+    // Filter main volumes by type
+    const filteredVolumes = deduplicatedMain.filter(v => v.mediaType === mediaType);
+    const alternateVolumes = deduplicatedMain.filter(v => v.mediaType === alternateType);
+    
+    // Add the alternate media type as a related series with 'adaptation' relationship
+    // This ensures both manga and light novel versions are returned
+    if (alternateVolumes.length > 0) {
+      const alternateTitle = alternateType === 'light_novel' 
+        ? `${baseSeriesTitle} (Light Novel)`
+        : baseSeriesTitle;
+      
+      // Insert at the beginning so the main alternate series comes before spin-offs
+      relatedSeries.unshift({
+        title: alternateTitle,
+        relationship: 'adaptation',
+        volumes: alternateVolumes,
+        mediaType: alternateType,
+      });
+      
+      console.log(`[Wikipedia] Added ${alternateType} adaptation with ${alternateVolumes.length} volumes`);
+    }
+    
+    const series: WikiSeries = {
+      title: `${baseSeriesTitle}${mediaType === 'light_novel' ? ' (Light Novel)' : ''}`,
       pageid: bestPage.pageid,
       volumes: filteredVolumes,
       totalVolumes: filteredVolumes.length,
       isComplete,
-      mediaType: preferredType,
+      mediaType,
       author,
       chapterListPageId: bestPage.pageid,
+      relatedSeries: relatedSeries.length > 0 ? relatedSeries : undefined,
     };
 
     writeCache(cacheKey, series);
@@ -935,17 +1214,18 @@ export async function getMangaSeries(query: string): Promise<WikiMangaSeries | n
   }
 
   // Single media type or unknown
-  const mediaType: MediaType = mediaTypes.size === 1 ? [...mediaTypes][0] as MediaType : 'manga';
+  mediaType = mainMediaTypes.size === 1 ? [...mainMediaTypes][0] as MediaType : 'manga';
 
-  const series: WikiMangaSeries = {
+  const series: WikiSeries = {
     title: baseSeriesTitle,
     pageid: bestPage.pageid,
-    volumes: bestVolumes,
-    totalVolumes: bestVolumes.length,
+    volumes: deduplicatedMain,
+    totalVolumes: deduplicatedMain.length,
     isComplete,
     mediaType,
     author,
     chapterListPageId: bestPage.pageid,
+    relatedSeries: relatedSeries.length > 0 ? relatedSeries : undefined,
   };
 
   writeCache(cacheKey, series);
@@ -956,21 +1236,21 @@ export async function getMangaSeries(query: string): Promise<WikiMangaSeries | n
  * Get ALL series from a page (both manga and light novels)
  * Returns separate series for each media type found
  */
-export async function getAllSeriesFromPage(query: string): Promise<WikiMangaSeries[]> {
+export async function getAllSeriesFromPage(query: string): Promise<WikiSeries[]> {
   // Use versioned cache key so parsing changes invalidate old cached results
   const cacheKey = getVersionedCacheKey('all_series', query);
-  const cached = readCache<WikiMangaSeries[]>(cacheKey);
+  const cached = readCache<WikiSeries[]>(cacheKey);
   if (cached) {
     return cached;
   }
 
   // Get the main series first to ensure we have the page data
-  const mainSeries = await getMangaSeries(query);
+  const mainSeries = await getSeries(query);
   if (!mainSeries) {
     return [];
   }
 
-  // Re-fetch the page to get all volumes (getMangaSeries may have filtered)
+  // Re-fetch the page to get all volumes (getSeries may have filtered)
   const pageContent = await getPageContentByTitle(mainSeries.title);
   if (!pageContent) {
     return [mainSeries];
@@ -1009,7 +1289,7 @@ export async function getAllSeriesFromPage(query: string): Promise<WikiMangaSeri
   }
 
   // Build series for each media type
-  const allSeries: WikiMangaSeries[] = [];
+  const allSeries: WikiSeries[] = [];
   const isComplete = checkSeriesComplete(fullWikitext);
   const author = extractAuthor(fullWikitext);
   
@@ -1060,7 +1340,7 @@ export async function getAllSeriesFromPage(query: string): Promise<WikiMangaSeri
  * Get volumes for a series by title (convenience function)
  */
 export async function getSeriesVolumes(seriesTitle: string): Promise<WikiVolume[]> {
-  const series = await getMangaSeries(seriesTitle);
+  const series = await getSeries(seriesTitle);
   return series?.volumes ?? [];
 }
 
@@ -1086,7 +1366,7 @@ async function main() {
   try {
     // Test 1: OpenSearch with typo
     console.log('\n--- Test 1: OpenSearch (with typo "demonslayer") ---');
-    const searchResults = await searchManga('demonslayer', 5);
+    const searchResults = await searchSeries('demonslayer', 5);
     console.log('Results:');
     for (const result of searchResults) {
       console.log(`  - ${result.title}`);
@@ -1094,7 +1374,7 @@ async function main() {
 
     // Test 2: Search with romanized name
     console.log('\n--- Test 2: OpenSearch (romanized "Kimetsu no Yaiba") ---');
-    const romanizedResults = await searchManga('Kimetsu no Yaiba', 5);
+    const romanizedResults = await searchSeries('Kimetsu no Yaiba', 5);
     console.log('Results:');
     for (const result of romanizedResults) {
       console.log(`  - ${result.title}`);
@@ -1102,7 +1382,7 @@ async function main() {
 
     // Test 3: Get full series data
     console.log('\n--- Test 3: Get Demon Slayer series data ---');
-    const demonSlayer = await getMangaSeries('Demon Slayer');
+    const demonSlayer = await getSeries('Demon Slayer');
     if (demonSlayer) {
       console.log(`Title: ${demonSlayer.title}`);
       console.log(`Author: ${demonSlayer.author}`);
@@ -1119,7 +1399,7 @@ async function main() {
 
     // Test 4: Get Hirayasumi (smaller series)
     console.log('\n--- Test 4: Get Hirayasumi series data ---');
-    const hirayasumi = await getMangaSeries('Hirayasumi');
+    const hirayasumi = await getSeries('Hirayasumi');
     if (hirayasumi) {
       console.log(`Title: ${hirayasumi.title}`);
       console.log(`Total Volumes: ${hirayasumi.totalVolumes}`);

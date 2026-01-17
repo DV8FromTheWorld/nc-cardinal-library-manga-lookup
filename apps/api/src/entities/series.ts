@@ -34,12 +34,15 @@ export async function createSeries(input: CreateSeriesInput): Promise<Series> {
     author: input.author,
     artist: input.artist,
     status: input.status ?? 'unknown',
+    relatedSeriesIds: input.relatedSeriesIds,
+    parentSeriesId: input.parentSeriesId,
+    relationship: input.relationship,
     createdAt: now,
     updatedAt: now,
   };
   
   await saveSeries(series);
-  console.log(`[Series] Created series: ${series.id} - "${series.title}"`);
+  console.log(`[Series] Created series: ${series.id} - "${series.title}"${input.relationship ? ` (${input.relationship})` : ''}`);
   
   return series;
 }
@@ -117,6 +120,34 @@ export async function updateSeriesBooks(
   
   await saveSeries(series);
   console.log(`[Series] Updated books for ${seriesId}: ${bookIds.length} books`);
+}
+
+/**
+ * Link a related series to its parent series
+ */
+export async function linkRelatedSeries(
+  parentSeriesId: string,
+  relatedSeriesId: string
+): Promise<void> {
+  const { getSeriesById } = await import('./store.js');
+  const parent = await getSeriesById(parentSeriesId);
+  
+  if (!parent) {
+    throw new Error(`Parent series not found: ${parentSeriesId}`);
+  }
+  
+  // Initialize relatedSeriesIds if not present
+  if (!parent.relatedSeriesIds) {
+    parent.relatedSeriesIds = [];
+  }
+  
+  // Add related series ID if not already present
+  if (!parent.relatedSeriesIds.includes(relatedSeriesId)) {
+    parent.relatedSeriesIds.push(relatedSeriesId);
+    parent.updatedAt = new Date().toISOString();
+    await saveSeries(parent);
+    console.log(`[Series] Linked related series ${relatedSeriesId} to parent ${parentSeriesId}`);
+  }
 }
 
 /**

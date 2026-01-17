@@ -5,12 +5,13 @@
  * and our entity data layer, ensuring entities are created/updated during searches.
  */
 
-import type { WikiMangaSeries, WikiVolume } from '../scripts/wikipedia-client.js';
-import type { Series, Book, MediaType, CreateSeriesInput, CreateBookInput } from './types.js';
+import type { WikiSeries, WikiVolume, WikiRelatedSeries } from '../scripts/wikipedia-client.js';
+import type { Series, Book, MediaType, CreateSeriesInput, CreateBookInput, SeriesRelationship } from './types.js';
 import {
   findOrCreateSeriesByWikipedia,
   findOrCreateSeriesByTitle,
   updateSeriesBooks,
+  linkRelatedSeries,
   detectMediaType,
 } from './series.js';
 import { findOrCreateBooks, getBookWithSeries } from './books.js';
@@ -19,16 +20,18 @@ import { getSeriesById, getSeriesByTitle, getBooksBySeriesId } from './store.js'
 /**
  * Create or update entities from Wikipedia series data
  * Called after a successful Wikipedia fetch during search
+ * 
+ * Also creates entities for related series (spin-offs, side stories, etc.)
  */
 export async function createEntitiesFromWikipedia(
-  wikiSeries: WikiMangaSeries
-): Promise<{ series: Series; books: Book[] }> {
+  wikiSeries: WikiSeries
+): Promise<{ series: Series; books: Book[]; relatedSeries?: Series[] | undefined }> {
   const mediaType = detectMediaType(wikiSeries.title, {
     isManga: wikiSeries.title.toLowerCase().includes('manga'),
     isLightNovel: wikiSeries.title.toLowerCase().includes('light novel'),
   });
 
-  // Create or find the series
+  // Create or find the main series
   const series = await findOrCreateSeriesByWikipedia(wikiSeries.pageid, {
     title: wikiSeries.title,
     mediaType,
@@ -37,7 +40,7 @@ export async function createEntitiesFromWikipedia(
     totalVolumes: wikiSeries.totalVolumes,
   });
 
-  // Create books for volumes with ISBNs
+  // Create books for main series volumes with ISBNs
   const bookInputs: CreateBookInput[] = [];
   const bookIds: string[] = [];
 
@@ -63,7 +66,101 @@ export async function createEntitiesFromWikipedia(
 
   console.log(`[EntityIntegration] Created/updated: Series "${series.title}" (${series.id}) with ${books.length} books`);
 
-  return { series, books };
+  // Process related series if present
+  const relatedSeriesEntities: Series[] = [];
+  
+  if (wikiSeries.relatedSeries && wikiSeries.relatedSeries.length > 0) {
+    console.log(`[EntityIntegration] Processing ${wikiSeries.relatedSeries.length} related series`);
+    
+    for (const related of wikiSeries.relatedSeries) {
+      const relatedEntity = await createRelatedSeriesEntity(
+        related,
+        series.id,
+        wikiSeries.title,
+        wikiSeries.author
+      );
+      
+      if (relatedEntity) {
+        relatedSeriesEntities.push(relatedEntity);
+        
+        // Link to parent series
+        await linkRelatedSeries(series.id, relatedEntity.id);
+      }
+    }
+    
+    if (relatedSeriesEntities.length > 0) {
+      console.log(`[EntityIntegration] Created ${relatedSeriesEntities.length} related series entities`);
+    }
+  }
+
+  return { 
+    series, 
+    books, 
+    relatedSeries: relatedSeriesEntities.length > 0 ? relatedSeriesEntities : undefined 
+  };
+}
+
+/**
+ * Create entity for a related series (spin-off, side story, etc.)
+ */
+async function createRelatedSeriesEntity(
+  related: WikiRelatedSeries,
+  parentSeriesId: string,
+  parentTitle: string,
+  author?: string
+): Promise<Series | null> {
+  // Determine media type from related series
+  const relatedMediaType = detectMediaType(related.title, {
+    isManga: related.mediaType === 'manga',
+    isLightNovel: related.mediaType === 'light_novel',
+  });
+  
+  // Generate a title for the related series
+  // If the related title doesn't include the parent title, prefix it
+  let relatedTitle = related.title;
+  const parentBase = parentTitle.toLowerCase().split(/[:(]/)[0]?.trim() ?? '';
+  if (!related.title.toLowerCase().includes(parentBase)) {
+    relatedTitle = `${parentTitle}: ${related.title}`;
+  }
+  
+  // Create the related series entity
+  const relatedSeries = await findOrCreateSeriesByTitle({
+    title: relatedTitle,
+    mediaType: relatedMediaType,
+    author,
+    status: 'unknown',
+    totalVolumes: related.volumes.length,
+    parentSeriesId,
+    relationship: related.relationship,
+  });
+  
+  // Create books for related series volumes
+  const bookInputs: CreateBookInput[] = [];
+  const bookIds: string[] = [];
+  
+  for (const vol of related.volumes) {
+    if (vol.englishISBN) {
+      bookIds.push(vol.englishISBN);
+      bookInputs.push({
+        id: vol.englishISBN,
+        seriesId: relatedSeries.id,
+        volumeNumber: vol.volumeNumber,
+        title: vol.title ?? `${relatedTitle}, Vol. ${vol.volumeNumber}`,
+        mediaType: relatedMediaType,
+        releaseDate: (vol as { englishDate?: string }).englishDate,
+      });
+    }
+  }
+  
+  if (bookInputs.length > 0) {
+    await findOrCreateBooks(bookInputs);
+    await updateSeriesBooks(relatedSeries.id, bookIds, related.volumes.length);
+    console.log(`[EntityIntegration] Created related series "${relatedSeries.title}" (${relatedSeries.relationship}) with ${bookIds.length} books`);
+  } else {
+    console.log(`[EntityIntegration] Created related series "${relatedSeries.title}" (${relatedSeries.relationship}) with no English ISBNs`);
+  }
+  
+  return relatedSeries;
 }
 
 /**

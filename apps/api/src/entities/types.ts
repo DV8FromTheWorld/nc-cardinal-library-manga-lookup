@@ -9,6 +9,8 @@ export type MediaType = 'manga' | 'light_novel' | 'artbook' | 'guidebook' | 'unk
 
 export type SeriesStatus = 'ongoing' | 'completed' | 'hiatus' | 'unknown';
 
+export type SeriesRelationship = 'spinoff' | 'sequel' | 'side_story' | 'anthology' | 'prequel' | 'adaptation';
+
 /**
  * External IDs linking to various data sources
  */
@@ -58,6 +60,15 @@ export interface Series {
   
   /** Publication status */
   status: SeriesStatus;
+  
+  /** IDs of related series (spin-offs, side stories, sequels) */
+  relatedSeriesIds?: string[] | undefined;
+  
+  /** If this is a related series, the parent series ID */
+  parentSeriesId?: string | undefined;
+  
+  /** Relationship type if this is a related series */
+  relationship?: SeriesRelationship | undefined;
   
   /** ISO timestamp when entity was created */
   createdAt: string;
@@ -130,6 +141,9 @@ export interface CreateSeriesInput {
   author?: string | undefined;
   artist?: string | undefined;
   status?: SeriesStatus | undefined;
+  relatedSeriesIds?: string[] | undefined;
+  parentSeriesId?: string | undefined;
+  relationship?: SeriesRelationship | undefined;
 }
 
 /**
