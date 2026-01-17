@@ -68,9 +68,28 @@ export function BookPage(): JSX.Element {
         <button type="button" className={styles.backButton} onClick={handleBack}>
           <Text variant="text-sm/medium">← Back to series</Text>
         </button>
-        <div className={styles.error}>
-          <Text variant="text-lg/medium" className={styles.errorIcon}>⚠</Text>
-          <Text variant="text-md/normal" color="error">{error ?? 'Book not found'}</Text>
+        <div className={styles.errorContainer}>
+          <div className={styles.errorIconLarge}>⚠️</div>
+          <Heading level={2} className={styles.errorTitle}>Unable to load book</Heading>
+          <Text variant="text-md/normal" color="text-secondary" tag="p" className={styles.errorMessage}>
+            {error ?? 'Book not found'}
+          </Text>
+          <div className={styles.errorActions}>
+            <button 
+              type="button" 
+              className={styles.retryButton}
+              onClick={() => window.location.reload()}
+            >
+              Try again
+            </button>
+            <button 
+              type="button" 
+              className={styles.backButtonSecondary}
+              onClick={handleBack}
+            >
+              Go back
+            </button>
+          </div>
         </div>
       </div>
     );

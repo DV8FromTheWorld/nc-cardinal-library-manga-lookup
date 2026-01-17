@@ -61,9 +61,28 @@ export function SeriesPage(): JSX.Element {
         <button type="button" className={styles.backButton} onClick={handleBack}>
           <Text variant="text-sm/medium">← Back to search</Text>
         </button>
-        <div className={styles.error}>
-          <Text variant="text-lg/medium" className={styles.errorIcon}>⚠</Text>
-          <Text variant="text-md/normal" color="error">{error ?? 'Series not found'}</Text>
+        <div className={styles.errorContainer}>
+          <div className={styles.errorIcon}>⚠️</div>
+          <Heading level={2} className={styles.errorTitle}>Unable to load series</Heading>
+          <Text variant="text-md/normal" color="text-secondary" tag="p" className={styles.errorMessage}>
+            {error ?? 'Series not found'}
+          </Text>
+          <div className={styles.errorActions}>
+            <button 
+              type="button" 
+              className={styles.retryButton}
+              onClick={() => window.location.reload()}
+            >
+              Try again
+            </button>
+            <button 
+              type="button" 
+              className={styles.backButtonSecondary}
+              onClick={handleBack}
+            >
+              Go back
+            </button>
+          </div>
         </div>
       </div>
     );

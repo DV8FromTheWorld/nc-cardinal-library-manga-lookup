@@ -24,8 +24,28 @@ export class MangaApiError extends Error {
 async function fetchApi<T>(endpoint: string): Promise<T> {
   const url = `${env.apiUrl}${endpoint}`;
   
-  const response = await fetch(url);
-  const data = await response.json();
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch (err) {
+    // Network error - CORS, offline, server unreachable, etc.
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    if (message === 'Failed to fetch') {
+      throw new Error(
+        `Unable to connect to the API server at ${env.apiUrl}. ` +
+        'This may be a network issue or CORS error. ' +
+        'If accessing from another device, ensure the API allows cross-origin requests.'
+      );
+    }
+    throw new Error(`Network error: ${message}`);
+  }
+  
+  let data: unknown;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error(`Server returned invalid response (${response.status} ${response.statusText})`);
+  }
   
   if (!response.ok) {
     throw new MangaApiError(response.status, data as ApiError);
