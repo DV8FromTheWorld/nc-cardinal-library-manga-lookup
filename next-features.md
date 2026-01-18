@@ -20,7 +20,7 @@
 - [x] Manga vs Light Novel differentiation - Allow series like Ascendance of a Bookworm to show both
 - [ ] Fix the search loading indicator to not jump around when changing between categories
 - [ ] Research how the hold/reserve system works so we can implement it into our app instead of requiring the user open the library website
-- [ ] Fix the amazon links as they're broken
+- [x] Fix the amazon links as they're broken
 - [ ] Update the homepage to have more recommendations for series
 - [ ] Implement a way for users to refresh on mobile, potentially by pulling down.
 - [ ] When the API is down we should better communicate that to the user rather than things just breaking
