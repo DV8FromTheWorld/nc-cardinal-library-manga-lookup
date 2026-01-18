@@ -159,6 +159,16 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
           </View>
         </View>
 
+        {/* Description Section */}
+        {volume.summary && (
+          <View style={styles.section}>
+            <Text variant="header-sm/semibold" style={styles.sectionTitle}>Description</Text>
+            <Text variant="text-md/normal" color="text-secondary" style={styles.descriptionText}>
+              {volume.summary}
+            </Text>
+          </View>
+        )}
+
         {/* Availability Section */}
         <View style={styles.section}>
           <Text variant="header-sm/semibold" style={styles.sectionTitle}>Availability</Text>
@@ -416,6 +426,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     marginBottom: spacing.md,
+  },
+  descriptionText: {
+    fontSize: 15,
+    lineHeight: 24,
   },
   availabilityCard: {
     borderRadius: 12,

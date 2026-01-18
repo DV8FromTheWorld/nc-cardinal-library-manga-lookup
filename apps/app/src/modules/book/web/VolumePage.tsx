@@ -150,6 +150,15 @@ export function VolumePage(): JSX.Element {
             )}
           </header>
 
+          {volume.summary && (
+            <section className={styles.descriptionSection}>
+              <Heading level={2} className={styles.sectionTitle}>Description</Heading>
+              <Text variant="text-md/normal" color="text-secondary" tag="p" className={styles.descriptionText}>
+                {volume.summary}
+              </Text>
+            </section>
+          )}
+
           <section className={styles.availabilitySection}>
             <Heading level={2} className={styles.sectionTitle}>Availability</Heading>
             <div className={styles.availabilityCard}>

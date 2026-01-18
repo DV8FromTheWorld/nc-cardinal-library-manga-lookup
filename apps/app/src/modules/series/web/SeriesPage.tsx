@@ -171,6 +171,14 @@ export function SeriesPage(): JSX.Element {
         </div>
       </header>
 
+      {/* Series Description */}
+      {series.description && (
+        <section className={styles.descriptionSection}>
+          <Heading level={2} className={styles.sectionTitle}>About</Heading>
+          <Text variant="text-md/normal" color="text-secondary" className={styles.descriptionText}>{series.description}</Text>
+        </section>
+      )}
+
       <section className={styles.availabilitySection}>
         <Heading level={2} className={styles.sectionTitle}>Library Availability</Heading>
         <div className={styles.availabilityCard}>

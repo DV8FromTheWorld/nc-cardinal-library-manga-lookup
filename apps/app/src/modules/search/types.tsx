@@ -150,6 +150,8 @@ export interface SeriesDetails {
   /** Entity ID (e.g., "s_V1StGXR8Z") - stable across data source updates */
   id: string;
   title: string;
+  /** Series description/preamble from Vol 1 */
+  description?: string | undefined;
   totalVolumes: number;
   isComplete: boolean;
   author?: string | undefined;

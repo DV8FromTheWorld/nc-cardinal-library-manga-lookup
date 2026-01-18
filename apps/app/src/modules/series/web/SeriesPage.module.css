@@ -256,6 +256,23 @@
 }
 
 /* -----------------------------------------------------------------------------
+   Description Section
+   ----------------------------------------------------------------------------- */
+
+.descriptionSection {
+  margin-bottom: var(--spacing-xl);
+  padding: var(--spacing-lg);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.descriptionText {
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+}
+
+/* -----------------------------------------------------------------------------
    Availability Section
    ----------------------------------------------------------------------------- */
 

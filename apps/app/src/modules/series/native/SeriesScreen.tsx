@@ -113,6 +113,16 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
           </View>
         </View>
 
+        {/* Description Section */}
+        {series.description && (
+          <View style={[styles.section, styles.descriptionSection, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}>
+            <Heading level={2} variant="header-sm/semibold" style={styles.sectionTitle}>About</Heading>
+            <Text variant="text-md/normal" color="text-secondary" style={styles.descriptionText}>
+              {series.description}
+            </Text>
+          </View>
+        )}
+
         {/* Availability Section */}
         <View style={styles.section}>
           <Heading level={2} variant="header-sm/semibold" style={styles.sectionTitle}>Library Availability</Heading>
@@ -403,6 +413,14 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     marginBottom: spacing.md,
+  },
+  descriptionSection: {
+    padding: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  descriptionText: {
+    lineHeight: 24,
   },
   footerContainer: {
     paddingHorizontal: spacing.lg,
