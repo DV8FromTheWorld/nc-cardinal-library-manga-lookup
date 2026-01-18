@@ -2,7 +2,7 @@
  * Entity types for the manga data layer
  * 
  * These entities provide stable IDs that persist across data source updates.
- * Series get generated IDs, books use ISBN as their ID.
+ * Series get generated IDs, volumes get generated IDs with ISBN index for lookups.
  */
 
 export type MediaType = 'manga' | 'light_novel' | 'artbook' | 'guidebook' | 'unknown';
@@ -10,6 +10,10 @@ export type MediaType = 'manga' | 'light_novel' | 'artbook' | 'guidebook' | 'unk
 export type SeriesStatus = 'ongoing' | 'completed' | 'hiatus' | 'unknown';
 
 export type SeriesRelationship = 'spinoff' | 'sequel' | 'side_story' | 'anthology' | 'prequel' | 'adaptation';
+
+export type EditionFormat = 'digital' | 'physical';
+
+export type EditionLanguage = 'ja' | 'en';
 
 /**
  * External IDs linking to various data sources
@@ -23,11 +27,22 @@ export interface SeriesExternalIds {
   anilist?: number | undefined;
 }
 
-export interface BookExternalIds {
-  /** NC Cardinal record ID */
-  ncCardinalRecordId?: string | undefined;
-  /** Google Books volume ID */
-  googleBooksId?: string | undefined;
+/**
+ * A specific published edition of a volume.
+ * Each format/language combination gets its own ISBN.
+ */
+export interface Edition {
+  /** ISBN-13 for this edition */
+  isbn: string;
+  
+  /** Physical book or ebook */
+  format: EditionFormat;
+  
+  /** Language of this edition */
+  language: EditionLanguage;
+  
+  /** Release date (ISO format) */
+  releaseDate?: string | undefined;
 }
 
 /**
@@ -46,11 +61,11 @@ export interface Series {
   /** Links to external data sources */
   externalIds: SeriesExternalIds;
   
-  /** Ordered list of book ISBNs in this series */
-  bookIds: string[];
-  
-  /** Total expected volumes (may be more than bookIds if some volumes lack ISBNs) */
-  totalVolumes?: number | undefined;
+  /** 
+   * Ordered list of Volume IDs in this series.
+   * Includes ALL volumes, even Japan-only ones without English ISBNs.
+   */
+  volumeIds: string[];
   
   /** Author name */
   author?: string | undefined;
@@ -78,32 +93,27 @@ export interface Series {
 }
 
 /**
- * A book/volume entity
+ * A volume in a series (the creative work, not a specific physical product).
  */
-export interface Book {
-  /** ISBN-13 (primary identifier) */
+export interface Volume {
+  /** Generated ID: "v_abc123" */
   id: string;
   
-  /** Series this book belongs to */
+  /** Series this volume belongs to */
   seriesId: string;
   
-  /** Volume number within the series */
+  /** Volume number within the series (1, 2, 3...) */
   volumeNumber: number;
   
-  /** Display title */
-  title: string;
+  /** Display title (e.g., "Goodbye Parakeet, Good Night My Sister") */
+  title?: string | undefined;
   
-  /** Type of media */
-  mediaType: MediaType;
-  
-  /** Links to external data sources */
-  externalIds: BookExternalIds;
-  
-  /** ISBN-10 (alternative identifier) */
-  isbn10?: string | undefined;
-  
-  /** Release date (ISO format) */
-  releaseDate?: string | undefined;
+  /** 
+   * All known editions of this volume.
+   * Can be empty (Japan-only, no ISBN known yet).
+   * Can have 1-4+ entries (JP digital, JP physical, EN digital, EN physical).
+   */
+  editions: Edition[];
   
   /** ISO timestamp when entity was created */
   createdAt: string;
@@ -119,8 +129,14 @@ export interface EntityStore {
   /** All series, keyed by series ID */
   series: Record<string, Series>;
   
-  /** All books, keyed by ISBN-13 */
-  books: Record<string, Book>;
+  /** All volumes, keyed by volume ID */
+  volumes: Record<string, Volume>;
+  
+  /** 
+   * Index from ISBN to Volume ID.
+   * Allows lookups like "given ISBN 978-xxx, which volume is this?"
+   */
+  isbnIndex: Record<string, string>;
   
   /** Index: Wikipedia page ID -> Series ID */
   wikipediaIndex: Record<number, string>;
@@ -136,8 +152,7 @@ export interface CreateSeriesInput {
   title: string;
   mediaType: MediaType;
   externalIds?: SeriesExternalIds | undefined;
-  bookIds?: string[] | undefined;
-  totalVolumes?: number | undefined;
+  volumeIds?: string[] | undefined;
   author?: string | undefined;
   artist?: string | undefined;
   status?: SeriesStatus | undefined;
@@ -147,15 +162,11 @@ export interface CreateSeriesInput {
 }
 
 /**
- * Input for creating a new book (without auto-generated fields)
+ * Input for creating a new volume (without auto-generated fields)
  */
-export interface CreateBookInput {
-  id: string; // ISBN-13
+export interface CreateVolumeInput {
   seriesId: string;
   volumeNumber: number;
-  title: string;
-  mediaType: MediaType;
-  externalIds?: BookExternalIds | undefined;
-  isbn10?: string | undefined;
-  releaseDate?: string | undefined;
+  title?: string | undefined;
+  editions: Edition[];
 }

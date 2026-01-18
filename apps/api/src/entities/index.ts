@@ -1,8 +1,8 @@
 /**
  * Entity data layer
  * 
- * This module provides stable IDs for series and books, persisted to disk.
- * Series get generated IDs, books use ISBN as their ID.
+ * This module provides stable IDs for series and volumes, persisted to disk.
+ * Series get generated IDs, volumes get generated IDs with ISBN index for lookups.
  */
 
 // Types
@@ -11,12 +11,14 @@ export type {
   SeriesStatus,
   SeriesRelationship,
   SeriesExternalIds,
-  BookExternalIds,
+  EditionFormat,
+  EditionLanguage,
+  Edition,
   Series,
-  Book,
+  Volume,
   EntityStore,
   CreateSeriesInput,
-  CreateBookInput,
+  CreateVolumeInput,
 } from './types.js';
 
 // Store operations
@@ -24,15 +26,18 @@ export {
   loadStore,
   saveStore,
   normalizeTitle,
+  generateVolumeId,
   getSeriesById,
   getSeriesByWikipediaId,
   getSeriesByTitle,
   saveSeries,
-  getBookByIsbn,
-  getBooksBySeriesId,
-  saveBook,
-  saveBooks,
-  addBookToSeries,
+  getVolumeById,
+  getVolumeByIsbn,
+  getVolumeBySeriesAndNumber,
+  getVolumesBySeriesId,
+  saveVolume,
+  saveVolumes,
+  addVolumeToSeries,
   getAllSeries,
   getStoreStats,
   clearCache,
@@ -43,27 +48,26 @@ export {
   createSeries,
   findOrCreateSeriesByWikipedia,
   findOrCreateSeriesByTitle,
-  updateSeriesBooks,
+  updateSeriesVolumes,
   linkRelatedSeries,
   detectMediaType,
 } from './series.js';
 
-// Book operations
+// Volume operations
 export {
-  createBook,
-  findOrCreateBook,
-  createBooks,
-  findOrCreateBooks,
-  updateBookWithNCCardinal,
-  getBookWithSeries,
-} from './books.js';
+  createVolume,
+  findOrCreateVolume,
+  findOrCreateVolumes,
+  getVolumeWithSeries,
+  mergeEditions,
+} from './volumes.js';
 
 // Integration with existing services
 export {
   createEntitiesFromWikipedia,
   createEntitiesFromNCCardinal,
   getSeriesEntity,
-  getBookEntity,
-  getSeriesBooks,
+  getVolumeEntity,
+  getSeriesVolumes,
   hasSeriesEntity,
 } from './integration.js';

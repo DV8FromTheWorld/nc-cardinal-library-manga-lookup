@@ -8,7 +8,6 @@ import {
   getSeriesByTitle,
   getSeriesByWikipediaId,
   saveSeries,
-  normalizeTitle,
 } from './store.js';
 
 /**
@@ -29,8 +28,7 @@ export async function createSeries(input: CreateSeriesInput): Promise<Series> {
     title: input.title,
     mediaType: input.mediaType,
     externalIds: input.externalIds ?? {},
-    bookIds: input.bookIds ?? [],
-    totalVolumes: input.totalVolumes,
+    volumeIds: input.volumeIds ?? [],
     author: input.author,
     artist: input.artist,
     status: input.status ?? 'unknown',
@@ -98,12 +96,11 @@ export async function findOrCreateSeriesByTitle(input: CreateSeriesInput): Promi
 }
 
 /**
- * Update series book list
+ * Update series volume list
  */
-export async function updateSeriesBooks(
+export async function updateSeriesVolumes(
   seriesId: string,
-  bookIds: string[],
-  totalVolumes?: number
+  volumeIds: string[]
 ): Promise<void> {
   const { getSeriesById } = await import('./store.js');
   const series = await getSeriesById(seriesId);
@@ -112,14 +109,11 @@ export async function updateSeriesBooks(
     throw new Error(`Series not found: ${seriesId}`);
   }
   
-  series.bookIds = bookIds;
-  if (totalVolumes !== undefined) {
-    series.totalVolumes = totalVolumes;
-  }
+  series.volumeIds = volumeIds;
   series.updatedAt = new Date().toISOString();
   
   await saveSeries(series);
-  console.log(`[Series] Updated books for ${seriesId}: ${bookIds.length} books`);
+  console.log(`[Series] Updated volumes for ${seriesId}: ${volumeIds.length} volumes`);
 }
 
 /**

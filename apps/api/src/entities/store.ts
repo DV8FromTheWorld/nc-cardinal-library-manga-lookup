@@ -6,7 +6,8 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { EntityStore, Series, Book } from './types.js';
+import { nanoid } from 'nanoid';
+import type { EntityStore, Series, Volume } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, '../../.data');
@@ -21,7 +22,8 @@ let storeCache: EntityStore | null = null;
 function createEmptyStore(): EntityStore {
   return {
     series: {},
-    books: {},
+    volumes: {},
+    isbnIndex: {},
     wikipediaIndex: {},
     titleIndex: {},
   };
@@ -35,6 +37,13 @@ export function normalizeTitle(title: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '')
     .trim();
+}
+
+/**
+ * Generate a new volume ID
+ */
+export function generateVolumeId(): string {
+  return `v_${nanoid(10)}`;
 }
 
 /**
@@ -52,7 +61,29 @@ export async function loadStore(): Promise<EntityStore> {
     }
 
     const data = await readFile(STORE_PATH, 'utf-8');
-    storeCache = JSON.parse(data) as EntityStore;
+    const loaded = JSON.parse(data) as Record<string, unknown>;
+    
+    // Check for old book-based store format and start fresh if detected
+    if ('books' in loaded && !('volumes' in loaded)) {
+      console.warn('[EntityStore] Old book-based store detected. Starting fresh with volume-based store.');
+      console.warn('[EntityStore] Delete .data/entities.json to clear this warning.');
+      storeCache = createEmptyStore();
+      return storeCache;
+    }
+    
+    // Validate that loaded data has the required structure
+    if (!loaded.series || !loaded.volumes) {
+      console.warn('[EntityStore] Invalid store format detected. Starting fresh.');
+      storeCache = createEmptyStore();
+      return storeCache;
+    }
+    
+    storeCache = loaded as unknown as EntityStore;
+    
+    // Ensure all required fields exist
+    storeCache.volumes = storeCache.volumes ?? {};
+    storeCache.isbnIndex = storeCache.isbnIndex ?? {};
+    
     return storeCache;
   } catch (error) {
     console.error('[EntityStore] Failed to load store, creating empty:', error);
@@ -133,18 +164,53 @@ export async function saveSeries(series: Series): Promise<void> {
   await saveStore();
 }
 
+// ============================================================================
+// Volume functions (replaces Book functions)
+// ============================================================================
+
 /**
- * Get a book by ISBN
+ * Get a volume by its ID
  */
-export async function getBookByIsbn(isbn: string): Promise<Book | null> {
+export async function getVolumeById(id: string): Promise<Volume | null> {
   const store = await loadStore();
-  return store.books[isbn] ?? null;
+  return store.volumes[id] ?? null;
 }
 
 /**
- * Get all books for a series
+ * Get a volume by any of its ISBNs
  */
-export async function getBooksBySeriesId(seriesId: string): Promise<Book[]> {
+export async function getVolumeByIsbn(isbn: string): Promise<Volume | null> {
+  const store = await loadStore();
+  const volumeId = store.isbnIndex[isbn];
+  if (!volumeId) return null;
+  return store.volumes[volumeId] ?? null;
+}
+
+/**
+ * Get a volume by series ID and volume number
+ */
+export async function getVolumeBySeriesAndNumber(seriesId: string, volumeNumber: number): Promise<Volume | null> {
+  const store = await loadStore();
+  const series = store.series[seriesId];
+  
+  if (!series) {
+    return null;
+  }
+  
+  for (const volumeId of series.volumeIds) {
+    const volume = store.volumes[volumeId];
+    if (volume && volume.volumeNumber === volumeNumber) {
+      return volume;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Get all volumes for a series
+ */
+export async function getVolumesBySeriesId(seriesId: string): Promise<Volume[]> {
   const store = await loadStore();
   const series = store.series[seriesId];
   
@@ -152,36 +218,47 @@ export async function getBooksBySeriesId(seriesId: string): Promise<Book[]> {
     return [];
   }
   
-  // Return books in order from bookIds
-  return series.bookIds
-    .map(isbn => store.books[isbn])
-    .filter((book): book is Book => book !== undefined);
+  // Return volumes in order from volumeIds
+  return series.volumeIds
+    .map(id => store.volumes[id])
+    .filter((volume): volume is Volume => volume !== undefined);
 }
 
 /**
- * Save a book (creates or updates)
+ * Save a volume and update ISBN index
  */
-export async function saveBook(book: Book): Promise<void> {
+export async function saveVolume(volume: Volume): Promise<void> {
   const store = await loadStore();
-  store.books[book.id] = book;
+  store.volumes[volume.id] = volume;
+  
+  // Update ISBN index for all editions
+  for (const edition of volume.editions) {
+    store.isbnIndex[edition.isbn] = volume.id;
+  }
+  
   await saveStore();
 }
 
 /**
- * Save multiple books at once (more efficient)
+ * Save multiple volumes at once (more efficient)
  */
-export async function saveBooks(books: Book[]): Promise<void> {
+export async function saveVolumes(volumes: Volume[]): Promise<void> {
   const store = await loadStore();
-  for (const book of books) {
-    store.books[book.id] = book;
+  for (const volume of volumes) {
+    store.volumes[volume.id] = volume;
+    
+    // Update ISBN index for all editions
+    for (const edition of volume.editions) {
+      store.isbnIndex[edition.isbn] = volume.id;
+    }
   }
   await saveStore();
 }
 
 /**
- * Add a book to a series (updates bookIds)
+ * Add a volume to a series (updates volumeIds)
  */
-export async function addBookToSeries(seriesId: string, isbn: string): Promise<void> {
+export async function addVolumeToSeries(seriesId: string, volumeId: string): Promise<void> {
   const store = await loadStore();
   const series = store.series[seriesId];
   
@@ -189,8 +266,8 @@ export async function addBookToSeries(seriesId: string, isbn: string): Promise<v
     throw new Error(`Series not found: ${seriesId}`);
   }
   
-  if (!series.bookIds.includes(isbn)) {
-    series.bookIds.push(isbn);
+  if (!series.volumeIds.includes(volumeId)) {
+    series.volumeIds.push(volumeId);
     series.updatedAt = new Date().toISOString();
     await saveStore();
   }
@@ -209,14 +286,16 @@ export async function getAllSeries(): Promise<Series[]> {
  */
 export async function getStoreStats(): Promise<{
   seriesCount: number;
-  bookCount: number;
+  volumeCount: number;
+  isbnIndexCount: number;
   wikipediaIndexCount: number;
   titleIndexCount: number;
 }> {
   const store = await loadStore();
   return {
     seriesCount: Object.keys(store.series).length,
-    bookCount: Object.keys(store.books).length,
+    volumeCount: Object.keys(store.volumes).length,
+    isbnIndexCount: Object.keys(store.isbnIndex).length,
     wikipediaIndexCount: Object.keys(store.wikipediaIndex).length,
     titleIndexCount: Object.keys(store.titleIndex).length,
   };
