@@ -11,6 +11,8 @@ import { clearCacheForBook } from '../../search/services/mangaApi';
 import {
   cleanDisplayTitle,
   formatAuthorName,
+  getAmazonUrl,
+  getBestIsbnForAmazon,
 } from '../../search/utils/formatters';
 import { groupHoldingsByLibrary, getAvailableCount } from '../../search/utils/availability';
 import { Text } from '../../../design/components/Text/web/Text';
@@ -43,7 +45,9 @@ export function VolumePage(): JSX.Element {
   };
 
   // Get the primary ISBN from the volume for cache clearing and external links
+  // Use first ISBN for cache, but prefer English ISBN for Amazon
   const primaryIsbn = volume?.isbns?.[0];
+  const amazonIsbn = volume?.isbns ? getBestIsbnForAmazon(volume.isbns) : undefined;
 
   const handleClearCache = useCallback(async () => {
     if (primaryIsbn) {
@@ -212,9 +216,9 @@ export function VolumePage(): JSX.Element {
                   </a>
                 )}
                 <div className={styles.secondaryLinks}>
-                  {primaryIsbn && (
+                  {amazonIsbn && (
                     <a 
-                      href={`https://www.amazon.com/dp/${primaryIsbn}`} 
+                      href={getAmazonUrl(amazonIsbn)} 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className={styles.externalLink}

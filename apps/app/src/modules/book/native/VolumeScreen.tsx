@@ -24,6 +24,8 @@ import { clearCacheForBook } from '../../search/services/mangaApi';
 import {
   cleanDisplayTitle,
   formatAuthorName,
+  getAmazonUrl,
+  getBestIsbnForAmazon,
 } from '../../search/utils/formatters';
 import { groupHoldingsByLibrary, getAvailableCount } from '../../search/utils/availability';
 import { Text } from '../../../design/components/Text/native/Text';
@@ -61,7 +63,9 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
   };
 
   // Get the primary ISBN from the volume for cache clearing
+  // Use first ISBN for cache, but prefer English ISBN for Amazon
   const primaryIsbn = volume?.isbns?.[0];
+  const amazonIsbn = volume?.isbns ? getBestIsbnForAmazon(volume.isbns) : undefined;
 
   const handleClearCache = useCallback(async () => {
     if (primaryIsbn) {
@@ -240,6 +244,26 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
                 </Text>
               </TouchableOpacity>
             )}
+
+            {/* External Links */}
+            <View style={[styles.externalLinks, { borderTopColor: theme.border }]}>
+              {amazonIsbn && (
+                <TouchableOpacity
+                  style={[styles.externalLink, { backgroundColor: theme.bgTertiary }]}
+                  onPress={() => Linking.openURL(getAmazonUrl(amazonIsbn))}
+                >
+                  <Text variant="text-sm/medium" style={styles.externalLinkText}>🛒 Amazon</Text>
+                </TouchableOpacity>
+              )}
+              {volume.seriesInfo && (
+                <TouchableOpacity
+                  style={[styles.externalLink, { backgroundColor: theme.bgTertiary }]}
+                  onPress={() => Linking.openURL(`https://myanimelist.net/manga.php?q=${encodeURIComponent(volume.seriesInfo?.title ?? '')}`)}
+                >
+                  <Text variant="text-sm/medium" style={styles.externalLinkText}>📊 MyAnimeList</Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
             {/* Library List */}
             <View style={[styles.libraryList, { borderTopColor: theme.border }]}>
@@ -497,6 +521,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     textAlign: 'center',
+  },
+  externalLinks: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderTopWidth: 1,
+  },
+  externalLink: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+  },
+  externalLinkText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   libraryList: {
     padding: spacing.md,
