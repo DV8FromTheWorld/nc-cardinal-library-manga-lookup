@@ -19,6 +19,7 @@ import {
 import {
   parseQuery,
   fetchBookcoverUrl,
+  fetchGoogleBooksCoverUrl,
   buildRelatedSeriesResult,
   type SearchResult,
   type SeriesResult,
@@ -67,8 +68,12 @@ export interface StreamingSearchOptions {
 // Helper Functions
 // ============================================================================
 
-function getCoverImageUrl(isbn?: string, bookcoverUrl?: string): string | undefined {
+function getCoverImageUrl(isbn?: string, bookcoverUrl?: string, googleBooksUrl?: string): string | undefined {
+  // Priority 1: Bookcover API
   if (bookcoverUrl) return bookcoverUrl;
+  // Priority 2: Google Books (with placeholder detection)
+  if (googleBooksUrl) return googleBooksUrl;
+  // Priority 3: OpenLibrary fallback (frontend handles placeholder detection)
   if (isbn) return `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`;
   return undefined;
 }
@@ -135,7 +140,7 @@ export async function searchWithProgress(
       
       if (fallbackResults.records.length > 0) {
         onProgress({ type: 'nc-cardinal:found', recordCount: fallbackResults.records.length });
-        ncCardinalFallbackSeries = buildMultipleSeriesFromRecords(
+        ncCardinalFallbackSeries = await buildMultipleSeriesFromRecords(
           parsedQuery.title,
           fallbackResults.records,
           homeLibrary
@@ -227,6 +232,7 @@ export async function searchWithProgress(
     const COVER_BATCH_SIZE = 5;
     let coversCompleted = 0;
     
+    // First pass: Bookcover API
     for (let i = 0; i < isbnsToCheck.length; i += COVER_BATCH_SIZE) {
       const batch = isbnsToCheck.slice(i, i + COVER_BATCH_SIZE);
       
@@ -251,24 +257,42 @@ export async function searchWithProgress(
       });
     }
     
+    // Second pass: Google Books for missing covers
+    const missingCoverIsbns = isbnsToCheck.filter(isbn => !bookcoverUrls.has(isbn));
+    const googleBooksUrls = new Map<string, string>();
+    
+    if (missingCoverIsbns.length > 0) {
+      for (let i = 0; i < missingCoverIsbns.length; i += COVER_BATCH_SIZE) {
+        const batch = missingCoverIsbns.slice(i, i + COVER_BATCH_SIZE);
+        const batchResults = await Promise.all(
+          batch.map(async (isbn) => {
+            const url = await fetchGoogleBooksCoverUrl(isbn);
+            return { isbn, url };
+          })
+        );
+        for (const { isbn, url } of batchResults) {
+          if (url) googleBooksUrls.set(isbn, url);
+        }
+      }
+    }
+    
     onProgress({ type: 'covers:complete' });
     
     // Build final results with Wikipedia data
     if (wikiSeries && wikiSeries.volumes.length > 0) {
-      const seriesResult = await buildSeriesResultFromWikipedia(wikiSeries, availability, bookcoverUrls);
+      const seriesResult = await buildSeriesResultFromWikipedia(wikiSeries, availability, bookcoverUrls, googleBooksUrls);
       result.series.push(seriesResult);
       
-      // Build volume results
-      for (const vol of wikiSeries.volumes) {
-        const volAvail = vol.englishISBN ? availability.get(vol.englishISBN) : undefined;
-        const bookcoverCover = vol.englishISBN ? bookcoverUrls.get(vol.englishISBN) : undefined;
+      // Build volume results (use seriesResult.volumes which have IDs)
+      for (const vol of seriesResult.volumes ?? []) {
         result.volumes.push({
+          id: vol.id,
           title: `${wikiSeries.title}, Vol. ${vol.volumeNumber}${vol.title ? `: ${vol.title}` : ''}`,
           volumeNumber: vol.volumeNumber,
           seriesTitle: wikiSeries.title,
-          isbn: vol.englishISBN,
-          coverImage: getCoverImageUrl(vol.englishISBN, bookcoverCover),
-          availability: volAvail,
+          isbn: vol.primaryIsbn,
+          coverImage: vol.coverImage,
+          availability: vol.availability,
           source: 'wikipedia',
         });
       }
@@ -298,21 +322,21 @@ export async function searchWithProgress(
             wikiSeries.title,
             wikiSeries.author,
             availability, 
-            bookcoverUrls
+            bookcoverUrls,
+            googleBooksUrls
           );
           result.series.push(relatedSeriesResult);
           
-          // Build volume results for related series
-          for (const vol of related.volumes) {
-            const volAvail = vol.englishISBN ? availability.get(vol.englishISBN) : undefined;
-            const bookcoverCover = vol.englishISBN ? bookcoverUrls.get(vol.englishISBN) : undefined;
+          // Build volume results for related series (use relatedSeriesResult.volumes which have IDs)
+          for (const vol of relatedSeriesResult.volumes ?? []) {
             result.volumes.push({
+              id: vol.id,
               title: `${relatedSeriesResult.title}, Vol. ${vol.volumeNumber}${vol.title ? `: ${vol.title}` : ''}`,
               volumeNumber: vol.volumeNumber,
               seriesTitle: relatedSeriesResult.title,
-              isbn: vol.englishISBN,
-              coverImage: getCoverImageUrl(vol.englishISBN, bookcoverCover),
-              availability: volAvail,
+              isbn: vol.primaryIsbn,
+              coverImage: vol.coverImage,
+              availability: vol.availability,
               source: 'wikipedia',
             });
           }
@@ -322,7 +346,7 @@ export async function searchWithProgress(
   } else if (ncCardinalFallbackSeries.length > 0) {
     // Use NC Cardinal fallback
     const allIsbns = ncCardinalFallbackSeries.flatMap(s => 
-      s.volumes?.map(v => v.isbn).filter((isbn): isbn is string => !!isbn) ?? []
+      s.volumes?.map(v => v.primaryIsbn).filter((isbn): isbn is string => !!isbn) ?? []
     );
     
     if (allIsbns.length > 0) {
@@ -331,6 +355,7 @@ export async function searchWithProgress(
       const bookcoverUrls = new Map<string, string>();
       let coversCompleted = 0;
       
+      // First pass: Bookcover API
       for (let i = 0; i < allIsbns.length; i += 5) {
         const batch = allIsbns.slice(i, i + 5);
         const batchResults = await Promise.all(
@@ -348,13 +373,31 @@ export async function searchWithProgress(
         onProgress({ type: 'covers:progress', completed: coversCompleted, total: allIsbns.length });
       }
       
+      // Second pass: Google Books for missing covers
+      const missingIsbns = allIsbns.filter(isbn => !bookcoverUrls.has(isbn));
+      const googleBooksUrls = new Map<string, string>();
+      if (missingIsbns.length > 0) {
+        for (let i = 0; i < missingIsbns.length; i += 5) {
+          const batch = missingIsbns.slice(i, i + 5);
+          const batchResults = await Promise.all(
+            batch.map(async (isbn) => {
+              const url = await fetchGoogleBooksCoverUrl(isbn);
+              return { isbn, url };
+            })
+          );
+          for (const { isbn, url } of batchResults) {
+            if (url) googleBooksUrls.set(isbn, url);
+          }
+        }
+      }
+      
       onProgress({ type: 'covers:complete' });
       
       // Add NC Cardinal series with covers - create entities first
       for (const ncSeries of ncCardinalFallbackSeries) {
         // Determine media type from title
         const ncMediaType: MediaType = ncSeries.title.toLowerCase().includes('light novel') 
-          ? 'light-novel' 
+          ? 'light_novel' 
           : ncSeries.title.toLowerCase().includes('manga') ? 'manga' : 'unknown';
         
         // Create entity to get stable ID
@@ -362,26 +405,39 @@ export async function searchWithProgress(
           ncSeries.title,
           ncSeries.volumes?.map(v => ({
             volumeNumber: v.volumeNumber,
-            isbn: v.isbn,
+            isbn: v.primaryIsbn,
             title: v.title,
           })) ?? [],
           ncMediaType
         );
         
+        const firstIsbn = ncSeries.volumes?.[0]?.primaryIsbn ?? '';
+        
+        // Build volumes with cover images
+        const volumesWithCovers: VolumeInfo[] = (ncSeries.volumes ?? []).map(vol => {
+          const bookcoverCover = vol.primaryIsbn ? bookcoverUrls.get(vol.primaryIsbn) : undefined;
+          const googleBooksCover = vol.primaryIsbn ? googleBooksUrls.get(vol.primaryIsbn) : undefined;
+          return {
+            ...vol,
+            coverImage: getCoverImageUrl(vol.primaryIsbn, bookcoverCover, googleBooksCover),
+          };
+        });
+        
         result.series.push({
           ...ncSeries,
           id: entity.id, // Use entity ID
-          coverImage: bookcoverUrls.get(ncSeries.volumes?.[0]?.isbn ?? ''),
+          coverImage: getCoverImageUrl(firstIsbn, bookcoverUrls.get(firstIsbn), googleBooksUrls.get(firstIsbn)),
+          volumes: volumesWithCovers,
         });
         
-        for (const vol of ncSeries.volumes ?? []) {
-          const bookcoverCover = vol.isbn ? bookcoverUrls.get(vol.isbn) : undefined;
+        for (const vol of volumesWithCovers) {
           result.volumes.push({
+            id: vol.id,
             title: vol.title ?? `${ncSeries.title}, Vol. ${vol.volumeNumber}`,
             volumeNumber: vol.volumeNumber,
             seriesTitle: ncSeries.title,
-            isbn: vol.isbn,
-            coverImage: getCoverImageUrl(vol.isbn, bookcoverCover),
+            isbn: vol.primaryIsbn,
+            coverImage: vol.coverImage,
             availability: vol.availability,
             source: 'nc-cardinal',
           });
@@ -394,7 +450,7 @@ export async function searchWithProgress(
       for (const ncSeries of ncCardinalFallbackSeries) {
         // Determine media type from title
         const ncMediaType: MediaType = ncSeries.title.toLowerCase().includes('light novel') 
-          ? 'light-novel' 
+          ? 'light_novel' 
           : ncSeries.title.toLowerCase().includes('manga') ? 'manga' : 'unknown';
         
         // Create entity to get stable ID
@@ -402,7 +458,7 @@ export async function searchWithProgress(
           ncSeries.title,
           ncSeries.volumes?.map(v => ({
             volumeNumber: v.volumeNumber,
-            isbn: v.isbn,
+            isbn: v.primaryIsbn,
             title: v.title,
           })) ?? [],
           ncMediaType
@@ -414,10 +470,11 @@ export async function searchWithProgress(
         });
         for (const vol of ncSeries.volumes ?? []) {
           result.volumes.push({
+            id: vol.id,
             title: vol.title ?? `${ncSeries.title}, Vol. ${vol.volumeNumber}`,
             volumeNumber: vol.volumeNumber,
             seriesTitle: ncSeries.title,
-            isbn: vol.isbn,
+            isbn: vol.primaryIsbn,
             availability: vol.availability,
             source: 'nc-cardinal',
           });
@@ -455,27 +512,33 @@ async function searchByISBNSingle(isbn: string): Promise<CatalogRecord | null> {
 async function buildSeriesResultFromWikipedia(
   wiki: WikiSeries,
   availability: Map<string, VolumeAvailability>,
-  bookcoverUrls: Map<string, string>
+  bookcoverUrls: Map<string, string>,
+  googleBooksUrls: Map<string, string> = new Map()
 ): Promise<SeriesResult> {
   // Create or update entities to get stable ID
-  const { series: entity } = await createEntitiesFromWikipedia(wiki);
+  const { series: entity, volumes: entityVolumes } = await createEntitiesFromWikipedia(wiki);
   
   let availableVolumes = 0;
   
   const firstVolumeIsbn = wiki.volumes[0]?.englishISBN;
   const firstVolBookcover = firstVolumeIsbn ? bookcoverUrls.get(firstVolumeIsbn) : undefined;
+  const firstVolGoogleBooks = firstVolumeIsbn ? googleBooksUrls.get(firstVolumeIsbn) : undefined;
 
-  const volumes: VolumeInfo[] = wiki.volumes.map(vol => {
-    const volAvail = vol.englishISBN ? availability.get(vol.englishISBN) : undefined;
+  const volumes: VolumeInfo[] = entityVolumes.map(vol => {
+    const primaryIsbn = vol.editions.find(e => e.language === 'en' && e.format === 'physical')?.isbn;
+    const volAvail = primaryIsbn ? availability.get(primaryIsbn) : undefined;
     if (volAvail?.available) {
       availableVolumes++;
     }
-    const bookcoverCover = vol.englishISBN ? bookcoverUrls.get(vol.englishISBN) : undefined;
+    const bookcoverCover = primaryIsbn ? bookcoverUrls.get(primaryIsbn) : undefined;
+    const googleBooksCover = primaryIsbn ? googleBooksUrls.get(primaryIsbn) : undefined;
     return {
+      id: vol.id,
       volumeNumber: vol.volumeNumber,
       title: vol.title,
-      isbn: vol.englishISBN,
-      coverImage: getCoverImageUrl(vol.englishISBN, bookcoverCover),
+      editions: vol.editions,
+      primaryIsbn,
+      coverImage: getCoverImageUrl(primaryIsbn, bookcoverCover, googleBooksCover),
       availability: volAvail,
     };
   });
@@ -483,18 +546,18 @@ async function buildSeriesResultFromWikipedia(
   return {
     id: entity.id,
     title: wiki.title,
-    totalVolumes: wiki.totalVolumes,
+    totalVolumes: entityVolumes.length,
     availableVolumes,
     isComplete: wiki.isComplete,
     author: wiki.author,
-    coverImage: getCoverImageUrl(firstVolumeIsbn, firstVolBookcover),
+    coverImage: getCoverImageUrl(firstVolumeIsbn, firstVolBookcover, firstVolGoogleBooks),
     source: 'wikipedia',
     volumes,
     mediaType: wiki.mediaType,
   };
 }
 
-function detectMediaType(title: string): 'manga' | 'light-novel' | 'unknown' {
+function detectMediaTypeFromTitle(title: string): 'manga' | 'light_novel' | 'unknown' {
   const titleLower = title.toLowerCase();
   
   if (titleLower.includes('(manga)') || 
@@ -508,18 +571,18 @@ function detectMediaType(title: string): 'manga' | 'light-novel' | 'unknown' {
       titleLower.includes('(novel)') ||
       titleLower.includes('[novel]') ||
       titleLower.includes('(ln)')) {
-    return 'light-novel';
+    return 'light_novel';
   }
   
   return 'unknown';
 }
 
-function buildSingleSeriesFromRecords(
+async function buildSingleSeriesFromRecords(
   seriesTitle: string,
   records: CatalogRecord[],
-  mediaType: 'manga' | 'light-novel' | 'mixed',
+  mediaType: 'manga' | 'light_novel' | 'mixed',
   homeLibrary?: string | undefined
-): SeriesResult | null {
+): Promise<SeriesResult | null> {
   let cleanTitle = seriesTitle
     .replace(/\[manga\]/gi, '')
     .replace(/\(manga\)/gi, '')
@@ -540,7 +603,7 @@ function buildSingleSeriesFromRecords(
   
   if (mediaType === 'manga' && !cleanTitle.toLowerCase().includes('manga')) {
     cleanTitle = `${cleanTitle} (Manga)`;
-  } else if (mediaType === 'light-novel' && !cleanTitle.toLowerCase().includes('novel')) {
+  } else if (mediaType === 'light_novel' && !cleanTitle.toLowerCase().includes('novel')) {
     cleanTitle = `${cleanTitle} (Light Novel)`;
   }
   
@@ -605,8 +668,16 @@ function buildSingleSeriesFromRecords(
     }
   }
   
+  // Build preliminary volume data
+  interface PreliminaryVolume {
+    volumeNumber: number;
+    title: string;
+    editions: Array<{ isbn: string; format: 'physical'; language: 'en' }>;
+    primaryIsbn: string | undefined;
+    availability: VolumeAvailability | undefined;
+  }
   const volumeNums = Array.from(volumeRecords.keys()).sort((a, b) => a - b);
-  const volumes: VolumeInfo[] = [];
+  const preliminaryVolumes: PreliminaryVolume[] = [];
   let availableCount = 0;
   
   for (const volNum of volumeNums) {
@@ -618,17 +689,45 @@ function buildSingleSeriesFromRecords(
     
     if (volAvail?.available) availableCount++;
     
-    volumes.push({
+    // Build editions array (NC Cardinal only knows about English physical)
+    const editions: Array<{ isbn: string; format: 'physical'; language: 'en' }> = isbn ? [{
+      isbn,
+      format: 'physical',
+      language: 'en',
+    }] : [];
+    
+    preliminaryVolumes.push({
       volumeNumber: volNum,
       title: `${cleanTitle}, Vol. ${volNum}`,
-      isbn,
+      editions,
+      primaryIsbn: isbn,
       availability: volAvail,
     });
   }
   
-  // Return with temporary ID - will be replaced with entity ID by caller
+  // Create entities in the store to get proper IDs
+  const entityMediaType = mediaType === 'mixed' ? 'unknown' as MediaType : mediaType as MediaType;
+  const { series: entity, volumes: entityVolumes } = await createEntitiesFromNCCardinal(
+    cleanTitle,
+    preliminaryVolumes.map(v => ({
+      volumeNumber: v.volumeNumber,
+      isbn: v.primaryIsbn,
+      title: v.title,
+    })),
+    entityMediaType
+  );
+  
+  // Map entity IDs to volume info
+  const volumes: VolumeInfo[] = preliminaryVolumes.map(vol => {
+    const entityVolume = entityVolumes.find(ev => ev.volumeNumber === vol.volumeNumber);
+    return {
+      ...vol,
+      id: entityVolume?.id ?? `tmp-${vol.volumeNumber}`,
+    };
+  });
+  
   return {
-    id: `temp-nc-${cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    id: entity.id,
     title: cleanTitle,
     totalVolumes: volumes.length,
     availableVolumes: availableCount,
@@ -638,20 +737,20 @@ function buildSingleSeriesFromRecords(
   };
 }
 
-function buildMultipleSeriesFromRecords(
+async function buildMultipleSeriesFromRecords(
   seriesTitle: string,
   records: CatalogRecord[],
   homeLibrary?: string | undefined
-): SeriesResult[] {
+): Promise<SeriesResult[]> {
   const mangaRecords: CatalogRecord[] = [];
   const lightNovelRecords: CatalogRecord[] = [];
   const unknownRecords: CatalogRecord[] = [];
   
   for (const record of records) {
-    const mediaType = detectMediaType(record.title);
+    const mediaType = detectMediaTypeFromTitle(record.title);
     if (mediaType === 'manga') {
       mangaRecords.push(record);
-    } else if (mediaType === 'light-novel') {
+    } else if (mediaType === 'light_novel') {
       lightNovelRecords.push(record);
     } else {
       unknownRecords.push(record);
@@ -661,21 +760,21 @@ function buildMultipleSeriesFromRecords(
   const results: SeriesResult[] = [];
   
   if (mangaRecords.length > 0) {
-    const mangaSeries = buildSingleSeriesFromRecords(seriesTitle, mangaRecords, 'manga', homeLibrary);
+    const mangaSeries = await buildSingleSeriesFromRecords(seriesTitle, mangaRecords, 'manga', homeLibrary);
     if (mangaSeries && mangaSeries.totalVolumes > 0) {
       results.push(mangaSeries);
     }
   }
   
   if (lightNovelRecords.length > 0) {
-    const lnSeries = buildSingleSeriesFromRecords(seriesTitle, lightNovelRecords, 'light-novel', homeLibrary);
+    const lnSeries = await buildSingleSeriesFromRecords(seriesTitle, lightNovelRecords, 'light_novel', homeLibrary);
     if (lnSeries && lnSeries.totalVolumes > 0) {
       results.push(lnSeries);
     }
   }
   
   if (results.length === 0 && unknownRecords.length > 0) {
-    const mixedSeries = buildSingleSeriesFromRecords(seriesTitle, unknownRecords, 'mixed', homeLibrary);
+    const mixedSeries = await buildSingleSeriesFromRecords(seriesTitle, unknownRecords, 'mixed', homeLibrary);
     if (mixedSeries && mixedSeries.totalVolumes > 0) {
       results.push(mixedSeries);
     }

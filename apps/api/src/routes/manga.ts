@@ -4,7 +4,8 @@
  * API endpoints for searching manga and checking library availability:
  * - GET /manga/search?q=query - Search for series and volumes
  * - GET /manga/series/:slug - Get detailed series info with all volumes
- * - GET /manga/books/:isbn - Get info about a specific book by ISBN
+ * - GET /manga/volumes/:id - Get info about a specific volume by entity ID
+ * - GET /manga/books/:isbn - Get info about a specific book by ISBN (legacy)
  */
 
 import type { FastifyPluginAsync } from 'fastify';
@@ -16,6 +17,7 @@ import {
   getSeriesDetails,
   parseQuery,
   fetchBookcoverUrl,
+  fetchGoogleBooksCoverUrl,
   type SearchResult,
   type SeriesDetails,
   type VolumeAvailability,
@@ -51,8 +53,9 @@ import {
 
 import {
   getSeriesEntity,
-  getBookEntity,
-  getSeriesBooks,
+  getVolumeEntity,
+  getVolumeById,
+  getSeriesById,
 } from '../entities/index.js';
 
 import {
@@ -93,10 +96,19 @@ const VolumeAvailabilitySchema = z.object({
   catalogUrl: z.string().optional(),
 });
 
+const EditionSchema = z.object({
+  isbn: z.string(),
+  format: z.enum(['digital', 'physical']),
+  language: z.enum(['ja', 'en']),
+  releaseDate: z.string().optional(),
+});
+
 const VolumeInfoSchema = z.object({
+  id: z.string(),  // Volume entity ID (required)
   volumeNumber: z.number(),
   title: z.string().optional(),
-  isbn: z.string().optional(),
+  editions: z.array(EditionSchema),
+  primaryIsbn: z.string().optional(),  // First English physical ISBN for library lookups
   coverImage: z.string().optional(),
   availability: VolumeAvailabilitySchema.optional(),
 });
@@ -158,6 +170,7 @@ const SeriesResultSchema = z.object({
 });
 
 const VolumeResultSchema = z.object({
+  id: z.string(),  // Volume entity ID (required)
   title: z.string(),
   volumeNumber: z.number().optional(),
   seriesTitle: z.string().optional(),
@@ -1082,7 +1095,175 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   /**
-   * GET /manga/books/:isbn/:slug?
+   * GET /manga/volumes/:id
+   *
+   * Get detailed information about a specific volume by entity ID.
+   * Looks up the volume entity, then fetches NC Cardinal data using the primary ISBN.
+   *
+   * Query params:
+   *   homeLibrary: Library code for local/remote availability breakdown (optional)
+   *
+   * Examples:
+   *   /manga/volumes/v_abc123
+   *   /manga/volumes/v_abc123?homeLibrary=HIGH_POINT_MAIN
+   */
+  app.get(
+    '/volumes/:id',
+    {
+      schema: {
+        params: z.object({
+          id: z.string().min(1).describe('Volume entity ID (e.g., v_abc123)'),
+        }),
+        querystring: z.object({
+          homeLibrary: z.string().optional().describe('Home library code for local/remote breakdown'),
+        }),
+        response: {
+          200: BookDetailsSchema,
+          404: ErrorSchema,
+          500: ErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params;
+      const { homeLibrary } = request.query;
+
+      try {
+        // Look up the volume entity
+        const volume = await getVolumeById(id);
+        if (!volume) {
+          return reply.status(404).send({
+            error: 'volume_not_found',
+            message: `Volume with ID "${id}" not found`,
+          });
+        }
+
+        // Get the series for this volume
+        const series = await getSeriesById(volume.seriesId);
+        if (!series) {
+          return reply.status(404).send({
+            error: 'series_not_found',
+            message: `Series for volume "${id}" not found`,
+          });
+        }
+
+        // Find the primary ISBN (first English physical edition)
+        const englishPhysical = volume.editions.find(e => e.language === 'en' && e.format === 'physical');
+        const englishDigital = volume.editions.find(e => e.language === 'en' && e.format === 'digital');
+        const primaryIsbn = englishPhysical?.isbn ?? englishDigital?.isbn;
+
+        // Build the volume title
+        const volumeTitle = volume.title 
+          ? `${series.title}, Vol. ${volume.volumeNumber}: ${volume.title}`
+          : `${series.title}, Vol. ${volume.volumeNumber}`;
+
+        // If no ISBN, return minimal info (Japan-only volume)
+        if (!primaryIsbn) {
+          return {
+            id: volume.id,
+            title: volumeTitle,
+            authors: series.author ? [series.author] : [],
+            isbns: volume.editions.map(e => e.isbn),
+            subjects: [],
+            coverImage: undefined,
+            holdings: [],
+            availability: {
+              available: false,
+              notInCatalog: true,
+              totalCopies: 0,
+              availableCopies: 0,
+              checkedOutCopies: 0,
+              inTransitCopies: 0,
+              onOrderCopies: 0,
+              onHoldCopies: 0,
+              unavailableCopies: 0,
+              libraries: [],
+            },
+            seriesInfo: {
+              id: series.id,
+              title: series.title,
+              volumeNumber: volume.volumeNumber,
+            },
+            catalogUrl: undefined,
+          };
+        }
+
+        // Fetch NC Cardinal record and cover in parallel
+        const [record, bookcoverUrl] = await Promise.all([
+          searchByISBN(primaryIsbn),
+          fetchBookcoverUrl(primaryIsbn).catch(() => null),
+        ]);
+        
+        // Cover image priority: Bookcover API > Google Books > OpenLibrary
+        let coverImage: string;
+        if (bookcoverUrl) {
+          coverImage = bookcoverUrl;
+        } else {
+          const googleBooksUrl = await fetchGoogleBooksCoverUrl(primaryIsbn).catch(() => null);
+          coverImage = googleBooksUrl ?? `https://covers.openlibrary.org/b/isbn/${primaryIsbn}-M.jpg`;
+        }
+
+        const seriesInfo = {
+          id: series.id,
+          title: series.title,
+          volumeNumber: volume.volumeNumber,
+        };
+
+        if (!record) {
+          // Book not in NC Cardinal catalog
+          return {
+            id: volume.id,
+            title: volumeTitle,
+            authors: series.author ? [series.author] : [],
+            isbns: volume.editions.map(e => e.isbn),
+            subjects: [],
+            coverImage,
+            holdings: [],
+            availability: {
+              available: false,
+              notInCatalog: true,
+              totalCopies: 0,
+              availableCopies: 0,
+              checkedOutCopies: 0,
+              inTransitCopies: 0,
+              onOrderCopies: 0,
+              onHoldCopies: 0,
+              unavailableCopies: 0,
+              libraries: [],
+            },
+            seriesInfo,
+            catalogUrl: undefined,
+          };
+        }
+
+        // Calculate detailed availability with local/remote breakdown
+        const availability = getDetailedAvailabilitySummary(record, homeLibrary);
+
+        return {
+          id: volume.id,
+          title: volumeTitle,
+          authors: record.authors,
+          isbns: [...new Set([...volume.editions.map(e => e.isbn), ...record.isbns])],
+          subjects: record.subjects,
+          summary: record.summary,
+          coverImage,
+          holdings: record.holdings,
+          availability,
+          seriesInfo,
+          catalogUrl: getCatalogUrl(record.id),
+        };
+      } catch (error) {
+        request.log.error(error, 'Volume lookup failed');
+        return reply.status(500).send({
+          error: 'volume_lookup_failed',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
+  );
+
+  /**
+   * GET /manga/books/:isbn/:slug? (LEGACY - prefer /manga/volumes/:id)
    *
    * Get detailed information about a specific book by ISBN.
    * The optional slug is for SEO-friendly URLs and is ignored.
@@ -1118,34 +1299,47 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
       const cleanISBN = isbn.replace(/[-\s]/g, '');
 
       try {
-        // Fetch NC Cardinal record, Bookcover API, and book entity in parallel
-        const [record, bookcoverUrl, bookEntity] = await Promise.all([
+        // Fetch NC Cardinal record, Bookcover API, and volume entity in parallel
+        const [record, bookcoverUrl, volumeEntity] = await Promise.all([
           searchByISBN(cleanISBN),
           fetchBookcoverUrl(cleanISBN).catch(() => null),
-          getBookEntity(cleanISBN).catch(() => null),
+          getVolumeEntity(cleanISBN).catch(() => null),
         ]);
         
-        // Prefer Bookcover API (returns clean 404, no placeholder images)
-        // Fall back to OpenLibrary
-        const coverImage = bookcoverUrl ?? `https://covers.openlibrary.org/b/isbn/${cleanISBN}-M.jpg`;
+        // Cover image priority: Bookcover API > Google Books > OpenLibrary
+        let coverImage: string;
+        if (bookcoverUrl) {
+          coverImage = bookcoverUrl;
+        } else {
+          // Try Google Books as fallback (with placeholder detection)
+          const googleBooksUrl = await fetchGoogleBooksCoverUrl(cleanISBN).catch(() => null);
+          coverImage = googleBooksUrl ?? `https://covers.openlibrary.org/b/isbn/${cleanISBN}-M.jpg`;
+        }
 
         // Build series info from entity (if available) or extract from title
         let seriesInfo: { id?: string; title: string; volumeNumber?: number } | undefined;
         
-        if (bookEntity) {
+        // Build volume title from entity
+        let volumeTitle: string | undefined;
+        
+        if (volumeEntity) {
           // We have entity data - use it for series info
           seriesInfo = {
-            id: bookEntity.series.id,
-            title: bookEntity.series.title,
-            volumeNumber: bookEntity.book.volumeNumber,
+            id: volumeEntity.series.id,
+            title: volumeEntity.series.title,
+            volumeNumber: volumeEntity.volume.volumeNumber,
           };
+          // Build full title: "Series, Vol. N" or "Series, Vol. N: Subtitle"
+          volumeTitle = volumeEntity.volume.title 
+            ? `${volumeEntity.series.title}, Vol. ${volumeEntity.volume.volumeNumber}: ${volumeEntity.volume.title}`
+            : `${volumeEntity.series.title}, Vol. ${volumeEntity.volume.volumeNumber}`;
         }
 
         if (!record) {
           // Book not in NC Cardinal catalog - return minimal info with entity data if available
           return {
             id: `isbn-${cleanISBN}`,
-            title: bookEntity?.book.title ?? `Book (ISBN: ${cleanISBN})`,
+            title: volumeTitle ?? `Book (ISBN: ${cleanISBN})`,
             authors: [],
             isbns: [cleanISBN],
             subjects: [],
@@ -1181,7 +1375,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
 
         return {
           id: record.id,
-          title: bookEntity?.book.title ?? record.title,
+          title: volumeTitle ?? record.title,
           authors: record.authors,
           isbns: record.isbns,
           subjects: record.subjects,

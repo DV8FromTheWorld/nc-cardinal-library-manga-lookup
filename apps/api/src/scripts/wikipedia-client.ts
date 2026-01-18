@@ -16,7 +16,7 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // Parser version - increment when making changes to parsing logic
 // This invalidates parsed series cache while preserving raw wikitext cache
-const PARSER_VERSION = 3;
+const PARSER_VERSION = 4;
 
 // Ensure cache directory exists
 if (!fs.existsSync(CACHE_DIR)) {
