@@ -62,8 +62,8 @@ export function SearchPage(): JSX.Element {
     navigate(`/series/${encodeURIComponent(seriesId)}`);
   }, [navigate]);
 
-  const handleSelectBook = useCallback((isbn: string) => {
-    navigate(`/books/${isbn}`);
+  const handleSelectVolume = useCallback((volumeId: string) => {
+    navigate(`/volumes/${encodeURIComponent(volumeId)}`);
   }, [navigate]);
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
@@ -191,8 +191,8 @@ export function SearchPage(): JSX.Element {
                 <VolumeCard
                   volume={results.bestMatch.volume}
                   onClick={() => {
-                    if (results.bestMatch!.volume!.isbn) {
-                      handleSelectBook(results.bestMatch!.volume!.isbn);
+                    if (results.bestMatch!.volume!.id) {
+                      handleSelectVolume(results.bestMatch!.volume!.id);
                     }
                   }}
                   highlighted
@@ -240,8 +240,8 @@ export function SearchPage(): JSX.Element {
                     key={`${volume.isbn ?? idx}`}
                     volume={volume}
                     onClick={() => {
-                      if (volume.isbn) {
-                        handleSelectBook(volume.isbn);
+                      if (volume.id) {
+                        handleSelectVolume(volume.id);
                       }
                     }}
                   />
@@ -365,13 +365,25 @@ function SeriesCard({ series, onClick, highlighted }: SeriesCardProps): JSX.Elem
               src={series.coverImage} 
               alt={`${series.title} cover`}
               loading="lazy"
+              onLoad={(e) => {
+                // Detect OpenLibrary 1x1 placeholder GIFs and hide them
+                const img = e.target as HTMLImageElement;
+                if (img.naturalWidth < 10 || img.naturalHeight < 10) {
+                  img.style.display = 'none';
+                  // Show the placeholder instead
+                  const placeholder = img.nextElementSibling as HTMLElement;
+                  if (placeholder) placeholder.style.display = 'flex';
+                }
+              }}
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = 'none';
+                // Show the placeholder instead
+                const placeholder = (e.target as HTMLElement).nextElementSibling as HTMLElement;
+                if (placeholder) placeholder.style.display = 'flex';
               }}
             />
-          ) : (
-            <div className={styles.coverPlaceholder}>📚</div>
-          )}
+          ) : null}
+          <div className={styles.coverPlaceholder} style={{ display: series.coverImage ? 'none' : 'flex' }}>📚</div>
         </div>
         <div className={styles.seriesInfo}>
           <div className={styles.seriesHeader}>
@@ -456,13 +468,25 @@ function VolumeCard({ volume, onClick, highlighted }: VolumeCardProps): JSX.Elem
             src={volume.coverImage}
             alt={volume.title}
             loading="lazy"
+            onLoad={(e) => {
+              // Detect OpenLibrary 1x1 placeholder GIFs and hide them
+              const img = e.target as HTMLImageElement;
+              if (img.naturalWidth < 10 || img.naturalHeight < 10) {
+                img.style.display = 'none';
+                // Show the placeholder instead
+                const placeholder = img.nextElementSibling as HTMLElement;
+                if (placeholder) placeholder.style.display = 'flex';
+              }
+            }}
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = 'none';
+              // Show the placeholder instead
+              const placeholder = (e.target as HTMLElement).nextElementSibling as HTMLElement;
+              if (placeholder) placeholder.style.display = 'flex';
             }}
           />
-        ) : (
-          <div className={styles.coverPlaceholder}>📖</div>
-        )}
+        ) : null}
+        <div className={styles.coverPlaceholder} style={{ display: volume.coverImage ? 'none' : 'flex' }}>📖</div>
       </div>
       <Text variant="text-sm/bold" tag="div" className={styles.volumeNumber}>{volume.volumeNumber ?? '?'}</Text>
       <div className={styles.volumeInfo}>

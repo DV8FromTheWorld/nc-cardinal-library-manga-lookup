@@ -1,5 +1,5 @@
 /**
- * Book detail screen component for React Native.
+ * Volume detail screen component for React Native.
  */
 
 import { useState, useCallback } from 'react';
@@ -13,10 +13,11 @@ import {
   useColorScheme,
   SafeAreaView,
   Linking,
+  Text as RNText,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../routing/native/Router';
-import { useBookDetails } from '../hooks/useBookDetails';
+import { useVolumeDetails } from '../hooks/useVolumeDetails';
 import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
 import { DebugPanel } from '../../debug/native/DebugPanel';
 import { clearCacheForBook } from '../../search/services/mangaApi';
@@ -28,20 +29,20 @@ import { groupHoldingsByLibrary, getAvailableCount } from '../../search/utils/av
 import { Text } from '../../../design/components/Text/native/Text';
 import { colors, spacing } from '../../search/native/theme';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Book'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'Volume'>;
 
-export function BookScreen({ navigation, route }: Props): JSX.Element {
+export function VolumeScreen({ navigation, route }: Props): JSX.Element {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const theme = isDark ? colors.dark : colors.light;
 
-  const { isbn } = route.params;
+  const { id } = route.params;
   const { homeLibrary, libraryName: homeLibraryName } = useHomeLibrary();
   const [expandedLibraries, setExpandedLibraries] = useState(false);
   const [imageError, setImageError] = useState(false);
 
-  const { book, isLoading, error } = useBookDetails({
-    isbn,
+  const { volume, isLoading, error } = useVolumeDetails({
+    volumeId: id,
     homeLibrary,
   });
 
@@ -54,18 +55,21 @@ export function BookScreen({ navigation, route }: Props): JSX.Element {
   };
 
   const handleOpenCatalog = () => {
-    if (book?.catalogUrl) {
-      Linking.openURL(book.catalogUrl);
+    if (volume?.catalogUrl) {
+      Linking.openURL(volume.catalogUrl);
     }
   };
 
+  // Get the primary ISBN from the volume for cache clearing
+  const primaryIsbn = volume?.isbns?.[0];
+
   const handleClearCache = useCallback(async () => {
-    if (isbn) {
-      await clearCacheForBook(isbn);
+    if (primaryIsbn) {
+      await clearCacheForBook(primaryIsbn);
       // Navigation will reload the screen with fresh data
-      navigation.replace('Book', { isbn });
+      navigation.replace('Volume', { id });
     }
-  }, [isbn, navigation]);
+  }, [primaryIsbn, navigation, id]);
 
   // Loading State
   if (isLoading) {
@@ -74,7 +78,7 @@ export function BookScreen({ navigation, route }: Props): JSX.Element {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.accent} />
           <Text variant="text-md/normal" color="text-secondary" style={styles.loadingText}>
-            Loading book details...
+            Loading volume details...
           </Text>
         </View>
       </SafeAreaView>
@@ -82,30 +86,30 @@ export function BookScreen({ navigation, route }: Props): JSX.Element {
   }
 
   // Error State
-  if (error || !book) {
+  if (error || !volume) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Text variant="text-md/medium" color="interactive-primary" style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
         <View style={[styles.errorContainer, { backgroundColor: theme.errorBg }]}>
-          <Text variant="text-md/normal" color="error" style={styles.errorText}>⚠ {error ?? 'Book not found'}</Text>
+          <Text variant="text-md/normal" color="error" style={styles.errorText}>⚠ {error ?? 'Volume not found'}</Text>
         </View>
       </SafeAreaView>
     );
   }
 
   // Group holdings by library
-  const holdingsByLibrary = groupHoldingsByLibrary(book.holdings);
+  const holdingsByLibrary = groupHoldingsByLibrary(volume.holdings);
   const libraryNames = Object.keys(holdingsByLibrary).sort();
   const displayLibraries = expandedLibraries ? libraryNames : libraryNames.slice(0, 5);
 
   // Clean up title and author names for display
-  const displayTitle = cleanDisplayTitle(book.title);
-  const displayAuthors = book.authors.map(formatAuthorName);
+  const displayTitle = cleanDisplayTitle(volume.title);
+  const displayAuthors = volume.authors.map(formatAuthorName);
 
   // Get series ID for navigation (if available from entity store)
-  const seriesId = book.seriesInfo?.id;
+  const seriesId = volume.seriesInfo?.id;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
@@ -115,19 +119,19 @@ export function BookScreen({ navigation, route }: Props): JSX.Element {
           <Text variant="text-md/medium" color="interactive-primary" style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
 
-        {/* Book Layout */}
+        {/* Volume Layout */}
         <View style={styles.bookLayout}>
           {/* Cover */}
           <View style={styles.bookCover}>
-            {book.coverImage && !imageError ? (
+            {volume.coverImage && !imageError ? (
               <Image
-                source={{ uri: book.coverImage }}
+                source={{ uri: volume.coverImage }}
                 style={styles.coverImage}
                 onError={() => setImageError(true)}
               />
             ) : (
               <View style={[styles.coverPlaceholder, { backgroundColor: theme.bgSecondary }]}>
-                <Text variant="header-lg/normal" style={styles.coverPlaceholderText}>📖</Text>
+                <RNText style={styles.coverPlaceholderText}>📖</RNText>
               </View>
             )}
           </View>
@@ -142,13 +146,13 @@ export function BookScreen({ navigation, route }: Props): JSX.Element {
               </Text>
             )}
 
-            {book.seriesInfo && seriesId && (
+            {volume.seriesInfo && seriesId && (
               <TouchableOpacity
                 style={[styles.seriesLink, { backgroundColor: theme.bgSecondary }]}
                 onPress={() => handleSelectSeries(seriesId)}
               >
                 <Text variant="text-sm/medium" color="interactive-primary" style={styles.seriesLinkText}>
-                  📚 Part of: {book.seriesInfo.title}
+                  📚 Part of: {volume.seriesInfo.title}
                 </Text>
               </TouchableOpacity>
             )}
@@ -164,31 +168,31 @@ export function BookScreen({ navigation, route }: Props): JSX.Element {
               <View
                 style={[
                   styles.availabilityStatus,
-                  { backgroundColor: book.availability.available ? theme.successBg : theme.errorBg },
+                  { backgroundColor: volume.availability.available ? theme.successBg : theme.errorBg },
                 ]}
               >
                 <View
                   style={[
                     styles.statusIndicator,
-                    { backgroundColor: book.availability.available ? theme.success : theme.error },
+                    { backgroundColor: volume.availability.available ? theme.success : theme.error },
                   ]}
                 />
                 <Text
                   variant="text-sm/semibold"
-                  color={book.availability.available ? 'success' : 'error'}
+                  color={volume.availability.available ? 'success' : 'error'}
                   style={styles.statusLabel}
                 >
-                  {book.availability.available ? 'Available Now' : 'Not Currently Available'}
+                  {volume.availability.available ? 'Available Now' : 'Not Currently Available'}
                 </Text>
               </View>
 
               <View style={styles.copyCount}>
-                <Text variant="header-lg/bold">{book.availability.availableCopies}</Text>
-                <Text variant="text-sm/normal" color="text-secondary"> of {book.availability.totalCopies} copies available</Text>
+                <Text variant="header-lg/bold">{volume.availability.availableCopies}</Text>
+                <Text variant="text-sm/normal" color="text-secondary"> of {volume.availability.totalCopies} copies available</Text>
               </View>
 
               {/* Local vs Remote */}
-              {book.availability.localCopies !== undefined && (
+              {volume.availability.localCopies !== undefined && (
                 <View style={styles.localRemote}>
                   <View style={styles.localStatus}>
                     <View
@@ -196,22 +200,22 @@ export function BookScreen({ navigation, route }: Props): JSX.Element {
                         styles.localDot,
                         {
                           backgroundColor:
-                            (book.availability.localAvailable ?? 0) > 0 ? theme.success : theme.textMuted,
+                            (volume.availability.localAvailable ?? 0) > 0 ? theme.success : theme.textMuted,
                         },
                       ]}
                     />
                     <Text variant="text-sm/normal" color="text-secondary" style={styles.localText}>
                       {homeLibraryName ?? 'Your Library'}:{' '}
-                      {(book.availability.localAvailable ?? 0) > 0
-                        ? `${book.availability.localAvailable} available`
-                        : book.availability.localCopies > 0
+                      {(volume.availability.localAvailable ?? 0) > 0
+                        ? `${volume.availability.localAvailable} available`
+                        : volume.availability.localCopies > 0
                           ? 'All checked out'
                           : 'None'}
                     </Text>
                   </View>
-                  {(book.availability.remoteCopies ?? 0) > 0 && (
+                  {(volume.availability.remoteCopies ?? 0) > 0 && (
                     <Text variant="text-sm/normal" color="text-muted" style={styles.remoteText}>
-                      Other libraries: {book.availability.remoteAvailable ?? 0} available
+                      Other libraries: {volume.availability.remoteAvailable ?? 0} available
                     </Text>
                   )}
                 </View>
@@ -219,7 +223,7 @@ export function BookScreen({ navigation, route }: Props): JSX.Element {
             </View>
 
             {/* Catalog Link */}
-            {book.catalogUrl && (
+            {volume.catalogUrl && (
               <TouchableOpacity style={[styles.catalogLink, { borderTopColor: theme.border }]} onPress={handleOpenCatalog}>
                 <Text variant="text-sm/medium" color="interactive-primary" style={styles.catalogLinkText}>
                   🔗 View in NC Cardinal Catalog
@@ -230,8 +234,8 @@ export function BookScreen({ navigation, route }: Props): JSX.Element {
             {/* Library List */}
             <View style={[styles.libraryList, { borderTopColor: theme.border }]}>
               <Text variant="text-sm/medium" color="text-secondary" style={styles.libraryListTitle}>
-                Available at {book.availability.libraries.length}{' '}
-                {book.availability.libraries.length === 1 ? 'library' : 'libraries'}
+                Available at {volume.availability.libraries.length}{' '}
+                {volume.availability.libraries.length === 1 ? 'library' : 'libraries'}
               </Text>
 
               {displayLibraries.map((libraryName) => {
@@ -282,11 +286,11 @@ export function BookScreen({ navigation, route }: Props): JSX.Element {
         </View>
 
         {/* Subjects */}
-        {book.subjects.length > 0 && (
+        {volume.subjects.length > 0 && (
           <View style={styles.section}>
             <Text variant="header-sm/semibold" style={styles.sectionTitle}>Subjects</Text>
             <View style={styles.subjectTags}>
-              {[...new Set(book.subjects)].slice(0, 10).map((subject, idx) => (
+              {[...new Set(volume.subjects)].slice(0, 10).map((subject, idx) => (
                 <View key={idx} style={[styles.subjectTag, { backgroundColor: theme.bgSecondary }]}>
                   <Text variant="text-xs/normal" color="text-secondary" style={styles.subjectTagText}>
                     {subject.replace(/\.$/, '')}
@@ -301,15 +305,15 @@ export function BookScreen({ navigation, route }: Props): JSX.Element {
         <View style={styles.section}>
           <Text variant="header-sm/semibold" style={styles.sectionTitle}>Identifiers</Text>
           <View style={[styles.identifiers, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}>
-            {book.isbns.map((bookIsbn) => (
-              <View key={bookIsbn} style={styles.identifier}>
+            {volume.isbns.map((isbn) => (
+              <View key={isbn} style={styles.identifier}>
                 <Text variant="text-sm/normal" color="text-muted" style={styles.identifierLabel}>ISBN</Text>
-                <Text variant="code" style={styles.identifierValue}>{bookIsbn}</Text>
+                <Text variant="code" style={styles.identifierValue}>{isbn}</Text>
               </View>
             ))}
             <View style={styles.identifier}>
-              <Text variant="text-sm/normal" color="text-muted" style={styles.identifierLabel}>NC Cardinal ID</Text>
-              <Text variant="code" style={styles.identifierValue}>{book.id}</Text>
+              <Text variant="text-sm/normal" color="text-muted" style={styles.identifierLabel}>Volume ID</Text>
+              <Text variant="code" style={styles.identifierValue}>{volume.id}</Text>
             </View>
           </View>
         </View>
@@ -317,7 +321,7 @@ export function BookScreen({ navigation, route }: Props): JSX.Element {
         {/* Debug Panel */}
         <DebugPanel
           debug={undefined}
-          cacheContext={isbn ? { type: 'book', identifier: isbn } : undefined}
+          cacheContext={primaryIsbn ? { type: 'book', identifier: primaryIsbn } : undefined}
           onClearCache={handleClearCache}
         />
       </ScrollView>

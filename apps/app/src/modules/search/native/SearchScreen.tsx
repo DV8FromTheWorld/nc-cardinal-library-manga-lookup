@@ -75,9 +75,9 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
     [navigation]
   );
 
-  const handleSelectBook = useCallback(
-    (isbn: string) => {
-      navigation.navigate('Book', { isbn });
+  const handleSelectVolume = useCallback(
+    (volumeId: string) => {
+      navigation.navigate('Volume', { id: volumeId });
     },
     [navigation]
   );
@@ -240,7 +240,7 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
             showAllVolumes={showAllVolumes}
             onToggleShowAllVolumes={() => setShowAllVolumes(!showAllVolumes)}
             onSelectSeries={handleSelectSeries}
-            onSelectBook={handleSelectBook}
+            onSelectVolume={handleSelectVolume}
           />
         )}
 
@@ -459,7 +459,7 @@ interface ResultsListProps {
   showAllVolumes: boolean;
   onToggleShowAllVolumes: () => void;
   onSelectSeries: (seriesId: string) => void;
-  onSelectBook: (isbn: string) => void;
+  onSelectVolume: (volumeId: string) => void;
 }
 
 function ResultsList({
@@ -468,7 +468,7 @@ function ResultsList({
   showAllVolumes,
   onToggleShowAllVolumes,
   onSelectSeries,
-  onSelectBook,
+  onSelectVolume,
 }: ResultsListProps): JSX.Element {
   // Build flattened list from results (including section headers as items)
   const items = useMemo((): ResultItem[] => {
@@ -552,8 +552,8 @@ function ResultsList({
               <VolumeCard
                 volume={results.bestMatch.volume}
                 onPress={() => {
-                  if (results.bestMatch!.volume!.isbn) {
-                    onSelectBook(results.bestMatch!.volume!.isbn);
+                  if (results.bestMatch!.volume!.id) {
+                    onSelectVolume(results.bestMatch!.volume!.id);
                   }
                 }}
                 theme={theme}
@@ -575,7 +575,7 @@ function ResultsList({
           return (
             <VolumeCard
               volume={item.volume}
-              onPress={() => item.volume.isbn && onSelectBook(item.volume.isbn)}
+              onPress={() => item.volume.id && onSelectVolume(item.volume.id)}
               theme={theme}
             />
           );
@@ -603,7 +603,7 @@ function ResultsList({
           return null;
       }
     },
-    [results, theme, showAllVolumes, onSelectSeries, onSelectBook, onToggleShowAllVolumes]
+    [results, theme, showAllVolumes, onSelectSeries, onSelectVolume, onToggleShowAllVolumes]
   );
 
   const keyExtractor = useCallback((item: ResultItem) => item.id, []);

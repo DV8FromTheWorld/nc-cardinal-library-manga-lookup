@@ -5,7 +5,7 @@
 export const routes = {
   search: '/',
   series: '/series/:id',
-  book: '/books/:isbn',
+  volume: '/volumes/:id',
 } as const;
 
 export type RouteName = keyof typeof routes;

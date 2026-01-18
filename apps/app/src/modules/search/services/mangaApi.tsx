@@ -90,7 +90,21 @@ export async function getSeriesDetails(
 }
 
 /**
- * Get book details by ISBN
+ * Get volume details by entity ID
+ */
+export async function getVolumeDetails(
+  volumeId: string, 
+  options: { homeLibrary?: string | undefined } = {}
+): Promise<BookDetails> {
+  const encoded = encodeURIComponent(volumeId);
+  const params = new URLSearchParams();
+  if (options.homeLibrary) params.set('homeLibrary', options.homeLibrary);
+  const queryString = params.toString();
+  return fetchApi<BookDetails>(`/manga/volumes/${encoded}${queryString ? `?${queryString}` : ''}`);
+}
+
+/**
+ * Get book details by ISBN (legacy - prefer getVolumeDetails)
  */
 export async function getBookDetails(
   isbn: string, 

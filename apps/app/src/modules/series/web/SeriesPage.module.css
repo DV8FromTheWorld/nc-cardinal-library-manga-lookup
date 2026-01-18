@@ -153,6 +153,18 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
+.coverPlaceholder {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  background-color: var(--color-surface-raised);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
+  color: var(--color-text-muted);
+}
+
 .headerContent {
   flex: 1;
   min-width: 0;
@@ -309,6 +321,25 @@
   margin: 0;
 }
 
+.summaryStats {
+  display: flex;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-md) 0;
+  margin-top: var(--spacing-md);
+  border-top: 1px solid var(--color-border);
+}
+
+.summaryStat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 60px;
+}
+
+.summaryStat > span:first-child {
+  color: var(--color-text-primary);
+}
+
 .missingVolumes {
   margin-top: var(--spacing-lg);
   padding-top: var(--spacing-lg);
@@ -460,28 +491,29 @@
 .volumeStatus {
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
-  min-width: 100px;
+  gap: var(--spacing-sm);
+  min-width: 140px;
 }
 
-.statusDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+.statusIcon {
+  font-size: 1.25rem;
   flex-shrink: 0;
 }
 
-.statusAvailable {
-  background: var(--color-success);
-}
-
-.statusUnavailable {
-  background: var(--color-text-muted);
-}
-
 .statusText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.statusText > span:first-child {
   font-size: 0.8125rem;
   color: var(--color-text-secondary);
+}
+
+.statusText > span:last-child {
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
 }
 
 .viewButton {

@@ -7,7 +7,7 @@ import '../../store/stores'; // Register all store initializers
 import { useStoreInit } from '../../store/useStoreInit';
 import { SearchPage } from '../../search/web/SearchPage';
 import { SeriesPage } from '../../series/web/SeriesPage';
-import { BookPage } from '../../book/web/BookPage';
+import { VolumePage } from '../../book/web/VolumePage';
 import { AccountPage } from '../../account-detail/web/AccountPage';
 
 const router = createBrowserRouter([
@@ -24,8 +24,8 @@ const router = createBrowserRouter([
     element: <SeriesPage />,
   },
   {
-    path: '/books/:isbn',
-    element: <BookPage />,
+    path: '/volumes/:id',
+    element: <VolumePage />,
   },
   {
     path: '/account',

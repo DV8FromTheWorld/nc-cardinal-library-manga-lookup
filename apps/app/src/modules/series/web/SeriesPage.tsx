@@ -3,15 +3,17 @@
  */
 
 import { useParams, useNavigate } from 'react-router-dom';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useSeriesDetails } from '../hooks/useSeriesDetails';
 import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
 import { DebugPanel } from '../../debug/web/DebugPanel';
 import { clearCacheForSeries } from '../../search/services/mangaApi';
 import { getAvailabilityPercent } from '../../search/utils/availability';
+import { getVolumeStatusDisplay, deriveVolumeStatus } from '../../search/utils/volumeStatus';
 import { Text } from '../../../design/components/Text/web/Text';
 import { Heading } from '../../../design/components/Heading/web/Heading';
 import type { VolumeInfo } from '../../search/types';
+import { VolumeStatus } from '../../search/types';
 import styles from './SeriesPage.module.css';
 
 export function SeriesPage(): JSX.Element {
@@ -28,8 +30,8 @@ export function SeriesPage(): JSX.Element {
     navigate(-1);
   };
 
-  const handleSelectBook = (isbn: string) => {
-    navigate(`/books/${isbn}`);
+  const handleSelectVolume = (volumeId: string) => {
+    navigate(`/volumes/${encodeURIComponent(volumeId)}`);
   };
 
   const handleClearCache = useCallback(async () => {
@@ -39,6 +41,24 @@ export function SeriesPage(): JSX.Element {
       window.location.reload();
     }
   }, [id]);
+
+  // Compute summary stats
+  const stats = useMemo(() => {
+    if (!series) return null;
+    
+    const total = series.volumes.length;
+    const withEnglish = series.volumes.filter(v => 
+      deriveVolumeStatus(v.editions) !== VolumeStatus.JapanOnly
+    ).length;
+    const inLibrary = series.volumes.filter(v => 
+      v.availability && !v.availability.notInCatalog
+    ).length;
+    const available = series.volumes.filter(v => 
+      (v.availability?.availableCopies ?? 0) > 0
+    ).length;
+    
+    return { total, withEnglish, inLibrary, available };
+  }, [series]);
 
   if (isLoading) {
     return (
@@ -84,7 +104,7 @@ export function SeriesPage(): JSX.Element {
     );
   }
 
-  const availabilityPercent = getAvailabilityPercent(series.availableCount, series.totalVolumes);
+  const availabilityPercent = stats ? getAvailabilityPercent(stats.available, stats.total) : 0;
 
   return (
     <div className={styles.container}>
@@ -93,17 +113,29 @@ export function SeriesPage(): JSX.Element {
       </button>
 
       <header className={styles.header}>
-        {series.coverImage && (
-          <div className={styles.headerCover}>
+        <div className={styles.headerCover}>
+          {series.coverImage ? (
             <img 
               src={series.coverImage} 
               alt={`${series.title} cover`}
+              onLoad={(e) => {
+                // Detect OpenLibrary 1x1 placeholder GIFs and hide them
+                const img = e.target as HTMLImageElement;
+                if (img.naturalWidth < 10 || img.naturalHeight < 10) {
+                  img.style.display = 'none';
+                  const placeholder = img.nextElementSibling as HTMLElement;
+                  if (placeholder) placeholder.style.display = 'flex';
+                }
+              }}
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = 'none';
+                const placeholder = (e.target as HTMLElement).nextElementSibling as HTMLElement;
+                if (placeholder) placeholder.style.display = 'flex';
               }}
             />
-          </div>
-        )}
+          ) : null}
+          <div className={styles.coverPlaceholder} style={{ display: series.coverImage ? 'none' : 'flex' }}>📚</div>
+        </div>
         <div className={styles.headerContent}>
           <Heading level={1} className={styles.title}>{series.title}</Heading>
           {series.author && (
@@ -113,7 +145,7 @@ export function SeriesPage(): JSX.Element {
             {series.isComplete && (
               <Text variant="text-xs/semibold" className={styles.completeBadge}>✓ Complete Series</Text>
             )}
-            <Text variant="text-xs/medium" className={styles.volumeBadge}>{series.totalVolumes} volumes</Text>
+            <Text variant="text-xs/medium" className={styles.volumeBadge}>{stats?.total} volumes</Text>
           </div>
           <div className={styles.externalLinks}>
             <a 
@@ -144,8 +176,8 @@ export function SeriesPage(): JSX.Element {
         <div className={styles.availabilityCard}>
           <div className={styles.availabilityStats}>
             <div className={styles.statLarge}>
-              <Text variant="header-2xl/bold" className={styles.statNumber}>{series.availableCount}</Text>
-              <Text variant="text-md/normal" color="text-secondary" className={styles.statLabel}>of {series.totalVolumes} available</Text>
+              <Text variant="header-2xl/bold" className={styles.statNumber}>{stats?.available ?? 0}</Text>
+              <Text variant="text-md/normal" color="text-secondary" className={styles.statLabel}>of {stats?.total ?? 0} available</Text>
             </div>
             <div className={styles.availabilityBar}>
               <div 
@@ -155,6 +187,28 @@ export function SeriesPage(): JSX.Element {
             </div>
             <Text variant="text-sm/normal" color="text-secondary" tag="p" className={styles.availabilityPercent}>{availabilityPercent}% in NC Cardinal</Text>
           </div>
+
+          {/* Summary stats breakdown */}
+          {stats && (
+            <div className={styles.summaryStats}>
+              <div className={styles.summaryStat}>
+                <Text variant="text-lg/bold">{stats.total}</Text>
+                <Text variant="text-xs/normal" color="text-secondary">Total volumes</Text>
+              </div>
+              <div className={styles.summaryStat}>
+                <Text variant="text-lg/bold">{stats.withEnglish}</Text>
+                <Text variant="text-xs/normal" color="text-secondary">In English</Text>
+              </div>
+              <div className={styles.summaryStat}>
+                <Text variant="text-lg/bold">{stats.inLibrary}</Text>
+                <Text variant="text-xs/normal" color="text-secondary">In library</Text>
+              </div>
+              <div className={styles.summaryStat}>
+                <Text variant="text-lg/bold">{stats.available}</Text>
+                <Text variant="text-xs/normal" color="text-secondary">Available now</Text>
+              </div>
+            </div>
+          )}
 
           {series.missingVolumes.length > 0 && series.missingVolumes.length <= 10 && (
             <div className={styles.missingVolumes}>
@@ -180,14 +234,10 @@ export function SeriesPage(): JSX.Element {
         <div className={styles.volumeGrid}>
           {series.volumes.map((volume) => (
             <VolumeRow
-              key={volume.volumeNumber}
+              key={volume.id}
               volume={volume}
               seriesTitle={series.title}
-              onClick={() => {
-                if (volume.isbn) {
-                  handleSelectBook(volume.isbn);
-                }
-              }}
+              onClick={() => handleSelectVolume(volume.id)}
             />
           ))}
         </div>
@@ -211,15 +261,14 @@ interface VolumeRowProps {
 }
 
 function VolumeRow({ volume, seriesTitle, onClick }: VolumeRowProps): JSX.Element {
+  const { icon, label, sublabel } = getVolumeStatusDisplay(volume);
   const isAvailable = volume.availability?.available ?? false;
-  const hasISBN = !!volume.isbn;
 
   return (
     <button
       type="button"
       className={`${styles.volumeRow} ${isAvailable ? styles.available : styles.unavailable}`}
       onClick={onClick}
-      disabled={!hasISBN}
     >
       <div className={styles.volumeCover}>
         {volume.coverImage ? (
@@ -227,13 +276,23 @@ function VolumeRow({ volume, seriesTitle, onClick }: VolumeRowProps): JSX.Elemen
             src={volume.coverImage} 
             alt={`${seriesTitle} Vol. ${volume.volumeNumber}`}
             loading="lazy"
+            onLoad={(e) => {
+              // Detect OpenLibrary 1x1 placeholder GIFs and hide them
+              const img = e.target as HTMLImageElement;
+              if (img.naturalWidth < 10 || img.naturalHeight < 10) {
+                img.style.display = 'none';
+                const placeholder = img.nextElementSibling as HTMLElement;
+                if (placeholder) placeholder.style.display = 'flex';
+              }
+            }}
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = 'none';
+              const placeholder = (e.target as HTMLElement).nextElementSibling as HTMLElement;
+              if (placeholder) placeholder.style.display = 'flex';
             }}
           />
-        ) : (
-          <div className={styles.volumeCoverPlaceholder}>📖</div>
-        )}
+        ) : null}
+        <div className={styles.volumeCoverPlaceholder} style={{ display: volume.coverImage ? 'none' : 'flex' }}>📖</div>
       </div>
       <div className={styles.volumeNumber}>
         <Text variant="text-xs/normal" color="text-muted" className={styles.volLabel}>Vol.</Text>
@@ -244,30 +303,22 @@ function VolumeRow({ volume, seriesTitle, onClick }: VolumeRowProps): JSX.Elemen
         {volume.title && (
           <Text variant="text-sm/medium" className={styles.volumeTitle}>{volume.title}</Text>
         )}
-        {volume.isbn && (
-          <Text variant="code" color="text-muted" className={styles.volumeIsbn}>ISBN: {volume.isbn}</Text>
+        {volume.primaryIsbn && (
+          <Text variant="code" color="text-muted" className={styles.volumeIsbn}>ISBN: {volume.primaryIsbn}</Text>
         )}
       </div>
 
       <div className={styles.volumeStatus}>
-        {isAvailable ? (
-          <>
-            <span className={styles.statusDot + ' ' + styles.statusAvailable} />
-            <Text variant="text-sm/normal" className={styles.statusText}>
-              {volume.availability?.totalCopies} {volume.availability?.totalCopies === 1 ? 'copy' : 'copies'}
-            </Text>
-          </>
-        ) : (
-          <>
-            <span className={styles.statusDot + ' ' + styles.statusUnavailable} />
-            <Text variant="text-sm/normal" color="text-muted" className={styles.statusText}>Not available</Text>
-          </>
-        )}
+        <span className={styles.statusIcon}>{icon}</span>
+        <div className={styles.statusText}>
+          <Text variant="text-sm/normal">{label}</Text>
+          {sublabel && (
+            <Text variant="text-xs/normal" color="text-muted">{sublabel}</Text>
+          )}
+        </div>
       </div>
 
-      {hasISBN && (
-        <Text variant="text-sm/medium" color="interactive-primary" className={styles.viewButton}>View →</Text>
-      )}
+      <Text variant="text-sm/medium" color="interactive-primary" className={styles.viewButton}>View →</Text>
     </button>
   );
 }

@@ -8,7 +8,7 @@ import '../../store/stores'; // Register all store initializers
 import { useStoreInit } from '../../store/useStoreInit';
 import { SearchScreen } from '../../search/native/SearchScreen';
 import { SeriesScreen } from '../../series/native/SeriesScreen';
-import { BookScreen } from '../../book/native/BookScreen';
+import { VolumeScreen } from '../../book/native/VolumeScreen';
 import { AccountScreen } from '../../account-detail/native/AccountScreen';
 
 /**
@@ -17,7 +17,7 @@ import { AccountScreen } from '../../account-detail/native/AccountScreen';
 export type RootStackParamList = {
   Search: { query?: string | undefined; skipAnimation?: boolean | undefined } | undefined;
   Series: { id: string };
-  Book: { isbn: string };
+  Volume: { id: string };
   Account: undefined;
 };
 
@@ -45,7 +45,7 @@ export function Router(): JSX.Element {
           })}
         />
         <Stack.Screen name="Series" component={SeriesScreen} />
-        <Stack.Screen name="Book" component={BookScreen} />
+        <Stack.Screen name="Volume" component={VolumeScreen} />
         <Stack.Screen name="Account" component={AccountScreen} />
       </Stack.Navigator>
     </NavigationContainer>

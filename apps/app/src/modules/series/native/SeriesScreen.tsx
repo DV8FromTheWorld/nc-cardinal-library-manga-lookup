@@ -45,8 +45,8 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
     navigation.goBack();
   }, [navigation]);
 
-  const handleSelectBook = useCallback((isbn: string) => {
-    navigation.navigate('Book', { isbn });
+  const handleSelectVolume = useCallback((volumeId: string) => {
+    navigation.navigate('Volume', { id: volumeId });
   }, [navigation]);
 
   const handleClearCache = useCallback(async () => {
@@ -59,7 +59,7 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
   // All hooks must be called before any early returns!
   // Memoize key extractor (doesn't depend on series)
   const keyExtractor = useCallback(
-    (item: VolumeInfo) => String(item.volumeNumber),
+    (item: VolumeInfo) => item.id ?? String(item.volumeNumber),
     []
   );
 
@@ -67,14 +67,14 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
   const renderVolumeItem = useCallback(
     ({ item: volume }: { item: VolumeInfo }) => (
       <VolumeRow
-        key={volume.volumeNumber}
+        key={volume.id}
         volume={volume}
         seriesTitle={series?.title ?? ''}
-        onPress={() => volume.isbn && handleSelectBook(volume.isbn)}
+        onPress={() => handleSelectVolume(volume.id)}
         theme={theme}
       />
     ),
-    [series?.title, handleSelectBook, theme]
+    [series?.title, handleSelectVolume, theme]
   );
 
   const availabilityPercent = series ? getAvailabilityPercent(series.availableCount, series.totalVolumes) : 0;
@@ -267,7 +267,6 @@ interface VolumeRowProps {
 
 function VolumeRow({ volume, seriesTitle, onPress, theme }: VolumeRowProps): JSX.Element {
   const isAvailable = volume.availability?.available ?? false;
-  const hasISBN = !!volume.isbn;
   const [imageError, setImageError] = useState(false);
 
   return (
@@ -275,11 +274,9 @@ function VolumeRow({ volume, seriesTitle, onPress, theme }: VolumeRowProps): JSX
       style={[
         styles.volumeRow,
         { backgroundColor: theme.bgSecondary, borderColor: theme.border },
-        !hasISBN && styles.volumeRowDisabled,
       ]}
       onPress={onPress}
-      activeOpacity={hasISBN ? 0.7 : 1}
-      disabled={!hasISBN}
+      activeOpacity={0.7}
     >
       {/* Cover */}
       <View style={styles.volumeCover}>
@@ -309,8 +306,8 @@ function VolumeRow({ volume, seriesTitle, onPress, theme }: VolumeRowProps): JSX
             {volume.title}
           </Text>
         )}
-        {volume.isbn && (
-          <Text variant="text-xs/normal" color="text-muted" style={styles.volumeIsbn}>ISBN: {volume.isbn}</Text>
+        {volume.primaryIsbn && (
+          <Text variant="text-xs/normal" color="text-muted" style={styles.volumeIsbn}>ISBN: {volume.primaryIsbn}</Text>
         )}
       </View>
 
@@ -330,7 +327,7 @@ function VolumeRow({ volume, seriesTitle, onPress, theme }: VolumeRowProps): JSX
       </View>
 
       {/* View Arrow */}
-      {hasISBN && <Text variant="text-md/semibold" color="accent">→</Text>}
+      <Text variant="text-md/semibold" color="accent">→</Text>
     </TouchableOpacity>
   );
 }

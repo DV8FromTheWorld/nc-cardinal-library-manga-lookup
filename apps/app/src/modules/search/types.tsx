@@ -3,6 +3,30 @@
  * Matches the API response schemas.
  */
 
+export type EditionFormat = 'digital' | 'physical';
+export type EditionLanguage = 'ja' | 'en';
+
+/**
+ * A specific published edition of a volume.
+ */
+export interface Edition {
+  isbn: string;
+  format: EditionFormat;
+  language: EditionLanguage;
+  releaseDate?: string | undefined;
+}
+
+/**
+ * VolumeStatus is derived on the frontend from editions array.
+ * NOT sent from API - computed client-side.
+ */
+export enum VolumeStatus {
+  JapanOnly = 'japan_only',      // No English edition exists
+  Upcoming = 'upcoming',          // English edition exists, release date in future
+  DigitalOnly = 'digital_only',   // Only digital English available  
+  Released = 'released',          // Physical English released
+}
+
 export interface VolumeAvailability {
   available: boolean;
   notInCatalog?: boolean | undefined;
@@ -10,6 +34,9 @@ export interface VolumeAvailability {
   availableCopies: number;
   checkedOutCopies?: number | undefined;
   inTransitCopies?: number | undefined;
+  onOrderCopies?: number | undefined;
+  onHoldCopies?: number | undefined;
+  unavailableCopies?: number | undefined;
   libraries: string[];
   localCopies?: number | undefined;
   localAvailable?: number | undefined;
@@ -19,9 +46,11 @@ export interface VolumeAvailability {
 }
 
 export interface VolumeInfo {
+  id: string;  // Volume entity ID (required)
   volumeNumber: number;
   title?: string | undefined;
-  isbn?: string | undefined;
+  editions: Edition[];  // All known editions
+  primaryIsbn?: string | undefined;  // First English physical ISBN for library lookups
   coverImage?: string | undefined;
   availability?: VolumeAvailability | undefined;
 }
@@ -86,6 +115,7 @@ export interface SeriesResult {
 }
 
 export interface VolumeResult {
+  id: string;  // Volume entity ID (required)
   title: string;
   volumeNumber?: number | undefined;
   seriesTitle?: string | undefined;

@@ -1,10 +1,10 @@
 /**
- * Book detail page component for web.
+ * Volume detail page component for web.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useBookDetails } from '../hooks/useBookDetails';
+import { useVolumeDetails } from '../hooks/useVolumeDetails';
 import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
 import { DebugPanel } from '../../debug/web/DebugPanel';
 import { clearCacheForBook } from '../../search/services/mangaApi';
@@ -17,20 +17,20 @@ import { Text } from '../../../design/components/Text/web/Text';
 import { Heading } from '../../../design/components/Heading/web/Heading';
 import styles from './BookPage.module.css';
 
-export function BookPage(): JSX.Element {
-  const { isbn } = useParams<{ isbn: string }>();
+export function VolumePage(): JSX.Element {
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { homeLibrary, libraryName: homeLibraryName } = useHomeLibrary();
   const [expandedLibraries, setExpandedLibraries] = useState(false);
   const [imageError, setImageError] = useState(false);
 
-  // Reset image error state when ISBN changes
+  // Reset image error state when ID changes
   useEffect(() => {
     setImageError(false);
-  }, [isbn]);
+  }, [id]);
 
-  const { book, isLoading, error } = useBookDetails({
-    isbn: isbn ?? '',
+  const { volume, isLoading, error } = useVolumeDetails({
+    volumeId: id ?? '',
     homeLibrary,
   });
 
@@ -42,26 +42,29 @@ export function BookPage(): JSX.Element {
     navigate(`/series/${encodeURIComponent(seriesId)}`);
   };
 
+  // Get the primary ISBN from the volume for cache clearing and external links
+  const primaryIsbn = volume?.isbns?.[0];
+
   const handleClearCache = useCallback(async () => {
-    if (isbn) {
-      await clearCacheForBook(isbn);
-      // Optionally reload the page to show fresh data
+    if (primaryIsbn) {
+      await clearCacheForBook(primaryIsbn);
+      // Reload the page to show fresh data
       window.location.reload();
     }
-  }, [isbn]);
+  }, [primaryIsbn]);
 
   if (isLoading) {
     return (
       <div className={styles.container}>
         <div className={styles.loadingState}>
           <div className={styles.loadingSpinner} />
-          <Text variant="text-md/normal" color="text-secondary" tag="p">Loading book details...</Text>
+          <Text variant="text-md/normal" color="text-secondary" tag="p">Loading volume details...</Text>
         </div>
       </div>
     );
   }
 
-  if (error || !book) {
+  if (error || !volume) {
     return (
       <div className={styles.container}>
         <button type="button" className={styles.backButton} onClick={handleBack}>
@@ -69,9 +72,9 @@ export function BookPage(): JSX.Element {
         </button>
         <div className={styles.errorContainer}>
           <div className={styles.errorIconLarge}>⚠️</div>
-          <Heading level={2} className={styles.errorTitle}>Unable to load book</Heading>
+          <Heading level={2} className={styles.errorTitle}>Unable to load volume</Heading>
           <Text variant="text-md/normal" color="text-secondary" tag="p" className={styles.errorMessage}>
-            {error ?? 'Book not found'}
+            {error ?? 'Volume not found'}
           </Text>
           <div className={styles.errorActions}>
             <button 
@@ -95,16 +98,16 @@ export function BookPage(): JSX.Element {
   }
 
   // Group holdings by library
-  const holdingsByLibrary = groupHoldingsByLibrary(book.holdings);
+  const holdingsByLibrary = groupHoldingsByLibrary(volume.holdings);
   const libraryNames = Object.keys(holdingsByLibrary).sort();
   const displayLibraries = expandedLibraries ? libraryNames : libraryNames.slice(0, 5);
 
   // Clean up title and author names for display
-  const displayTitle = cleanDisplayTitle(book.title);
-  const displayAuthors = book.authors.map(formatAuthorName);
+  const displayTitle = cleanDisplayTitle(volume.title);
+  const displayAuthors = volume.authors.map(formatAuthorName);
 
   // Get series ID for navigation (if available)
-  const seriesId = book.seriesInfo?.id;
+  const seriesId = volume.seriesInfo?.id;
 
   return (
     <div className={styles.container}>
@@ -114,9 +117,9 @@ export function BookPage(): JSX.Element {
 
       <div className={styles.bookLayout}>
         <div className={styles.bookCover}>
-          {book.coverImage && !imageError ? (
+          {volume.coverImage && !imageError ? (
             <img 
-              src={book.coverImage} 
+              src={volume.coverImage} 
               alt={displayTitle}
               onError={() => setImageError(true)}
             />
@@ -134,14 +137,14 @@ export function BookPage(): JSX.Element {
               </Text>
             )}
 
-            {book.seriesInfo && seriesId && (
+            {volume.seriesInfo && seriesId && (
               <button
                 type="button"
                 className={styles.seriesLink}
                 onClick={() => handleSelectSeries(seriesId)}
               >
                 <Text variant="text-sm/medium">
-                  📚 Part of: {book.seriesInfo.title}
+                  📚 Part of: {volume.seriesInfo.title}
                 </Text>
               </button>
             )}
@@ -151,35 +154,35 @@ export function BookPage(): JSX.Element {
             <Heading level={2} className={styles.sectionTitle}>Availability</Heading>
             <div className={styles.availabilityCard}>
               <div className={styles.availabilitySummary}>
-                <div className={`${styles.availabilityStatus} ${book.availability.available ? styles.available : styles.unavailable}`}>
+                <div className={`${styles.availabilityStatus} ${volume.availability.available ? styles.available : styles.unavailable}`}>
                   <span className={styles.statusIndicator} />
                   <Text variant="text-lg/semibold">
-                    {book.availability.available ? 'Available Now' : 'Not Currently Available'}
+                    {volume.availability.available ? 'Available Now' : 'Not Currently Available'}
                   </Text>
                 </div>
                 <div className={styles.copyCount}>
-                  <Text variant="header-lg/bold" className={styles.copyNumber}>{book.availability.availableCopies}</Text>
+                  <Text variant="header-lg/bold" className={styles.copyNumber}>{volume.availability.availableCopies}</Text>
                   <Text variant="text-md/normal" color="text-secondary" className={styles.copyLabel}>
-                    of {book.availability.totalCopies} copies available
+                    of {volume.availability.totalCopies} copies available
                   </Text>
                 </div>
                 {/* Local vs Remote breakdown */}
-                {book.availability.localCopies !== undefined && (
+                {volume.availability.localCopies !== undefined && (
                   <div className={styles.localRemote}>
                     <div className={styles.localStatus}>
-                      <span className={`${styles.localDot} ${(book.availability.localAvailable ?? 0) > 0 ? styles.available : styles.unavailable}`} />
+                      <span className={`${styles.localDot} ${(volume.availability.localAvailable ?? 0) > 0 ? styles.available : styles.unavailable}`} />
                       <Text variant="text-md/normal">
                         {homeLibraryName ?? 'Your Library'}: 
-                        {(book.availability.localAvailable ?? 0) > 0 
-                          ? ` ${book.availability.localAvailable} available`
-                          : book.availability.localCopies > 0 
+                        {(volume.availability.localAvailable ?? 0) > 0 
+                          ? ` ${volume.availability.localAvailable} available`
+                          : volume.availability.localCopies > 0 
                             ? ' All checked out'
                             : ' None'}
                       </Text>
                     </div>
-                    {(book.availability.remoteCopies ?? 0) > 0 && (
+                    {(volume.availability.remoteCopies ?? 0) > 0 && (
                       <Text variant="text-sm/normal" color="text-secondary" tag="div" className={styles.remoteStatus}>
-                        Other libraries: {book.availability.remoteAvailable ?? 0} available
+                        Other libraries: {volume.availability.remoteAvailable ?? 0} available
                       </Text>
                     )}
                   </div>
@@ -188,9 +191,9 @@ export function BookPage(): JSX.Element {
               
               {/* Catalog and external links */}
               <div className={styles.externalLinks}>
-                {book.catalogUrl && (
+                {volume.catalogUrl && (
                   <a 
-                    href={book.catalogUrl} 
+                    href={volume.catalogUrl} 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className={styles.catalogLink}
@@ -200,9 +203,9 @@ export function BookPage(): JSX.Element {
                   </a>
                 )}
                 <div className={styles.secondaryLinks}>
-                  {isbn && (
+                  {primaryIsbn && (
                     <a 
-                      href={`https://www.amazon.com/dp/${isbn}`} 
+                      href={`https://www.amazon.com/dp/${primaryIsbn}`} 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className={styles.externalLink}
@@ -211,9 +214,9 @@ export function BookPage(): JSX.Element {
                       <Text variant="text-sm/medium">Amazon</Text>
                     </a>
                   )}
-                  {book.seriesInfo && (
+                  {volume.seriesInfo && (
                     <a 
-                      href={`https://myanimelist.net/manga.php?q=${encodeURIComponent(book.seriesInfo.title)}`} 
+                      href={`https://myanimelist.net/manga.php?q=${encodeURIComponent(volume.seriesInfo.title)}`} 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className={styles.externalLink}
@@ -229,7 +232,7 @@ export function BookPage(): JSX.Element {
 
               <div className={styles.libraryList}>
                 <Heading level={3} className={styles.libraryListTitle}>
-                  Available at {book.availability.libraries.length} {book.availability.libraries.length === 1 ? 'library' : 'libraries'}
+                  Available at {volume.availability.libraries.length} {volume.availability.libraries.length === 1 ? 'library' : 'libraries'}
                 </Heading>
                 
                 {displayLibraries.map((libraryName) => {
@@ -273,12 +276,12 @@ export function BookPage(): JSX.Element {
             </div>
           </section>
 
-          {book.subjects.length > 0 && (
+          {volume.subjects.length > 0 && (
             <section className={styles.metaSection}>
               <Heading level={2} className={styles.sectionTitle}>Subjects</Heading>
               <div className={styles.subjectTags}>
                 {/* Dedupe subjects and use index for key to handle duplicates */}
-                {[...new Set(book.subjects)].slice(0, 10).map((subject, idx) => (
+                {[...new Set(volume.subjects)].slice(0, 10).map((subject, idx) => (
                   <Text key={idx} variant="text-xs/normal" color="text-secondary" className={styles.subjectTag}>
                     {subject.replace(/\.$/, '')}
                   </Text>
@@ -290,15 +293,15 @@ export function BookPage(): JSX.Element {
           <section className={styles.metaSection}>
             <Heading level={2} className={styles.sectionTitle}>Identifiers</Heading>
             <div className={styles.identifiers}>
-              {book.isbns.map((bookIsbn) => (
-                <div key={bookIsbn} className={styles.identifier}>
+              {volume.isbns.map((isbn) => (
+                <div key={isbn} className={styles.identifier}>
                   <Text variant="text-xs/medium" color="text-muted" className={styles.identifierLabel}>ISBN</Text>
-                  <Text variant="code" className={styles.identifierValue}>{bookIsbn}</Text>
+                  <Text variant="code" className={styles.identifierValue}>{isbn}</Text>
                 </div>
               ))}
               <div className={styles.identifier}>
-                <Text variant="text-xs/medium" color="text-muted" className={styles.identifierLabel}>NC Cardinal ID</Text>
-                <Text variant="code" className={styles.identifierValue}>{book.id}</Text>
+                <Text variant="text-xs/medium" color="text-muted" className={styles.identifierLabel}>Volume ID</Text>
+                <Text variant="code" className={styles.identifierValue}>{volume.id}</Text>
               </div>
             </div>
           </section>
@@ -308,7 +311,7 @@ export function BookPage(): JSX.Element {
       {/* Debug Panel with cache clearing */}
       <DebugPanel
         debug={undefined}
-        cacheContext={isbn ? { type: 'book', identifier: isbn } : undefined}
+        cacheContext={primaryIsbn ? { type: 'book', identifier: primaryIsbn } : undefined}
         onClearCache={handleClearCache}
       />
     </div>
