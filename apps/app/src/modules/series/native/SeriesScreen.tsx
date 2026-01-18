@@ -177,12 +177,12 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
         <DebugPanel
           debug={series._debug}
           onRefreshWithDebug={!series._debug ? refreshWithDebug : undefined}
-          cacheContext={slug ? { type: 'series', identifier: slug } : undefined}
+          cacheContext={id ? { type: 'series', identifier: id } : undefined}
           onClearCache={handleClearCache}
         />
       </View>
     ) : null,
-    [series, refreshWithDebug, slug, handleClearCache]
+    [series, refreshWithDebug, id, handleClearCache]
   );
 
   // Loading State - AFTER all hooks

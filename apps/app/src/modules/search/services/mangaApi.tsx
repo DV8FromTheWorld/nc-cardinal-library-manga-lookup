@@ -78,10 +78,10 @@ export async function searchManga(
  * Get detailed series information with all volumes
  */
 export async function getSeriesDetails(
-  seriesSlug: string, 
+  seriesId: string, 
   options: { debug?: boolean | undefined; homeLibrary?: string | undefined } = {}
 ): Promise<SeriesDetails> {
-  const encoded = encodeURIComponent(seriesSlug);
+  const encoded = encodeURIComponent(seriesId);
   const params = new URLSearchParams();
   if (options.debug) params.set('debug', 'true');
   if (options.homeLibrary) params.set('homeLibrary', options.homeLibrary);
@@ -94,15 +94,12 @@ export async function getSeriesDetails(
  */
 export async function getBookDetails(
   isbn: string, 
-  options: { slug?: string | undefined; homeLibrary?: string | undefined } = {}
+  options: { homeLibrary?: string | undefined } = {}
 ): Promise<BookDetails> {
-  const path = options.slug 
-    ? `/manga/books/${isbn}/${encodeURIComponent(options.slug)}` 
-    : `/manga/books/${isbn}`;
   const params = new URLSearchParams();
   if (options.homeLibrary) params.set('homeLibrary', options.homeLibrary);
   const queryString = params.toString();
-  return fetchApi<BookDetails>(`${path}${queryString ? `?${queryString}` : ''}`);
+  return fetchApi<BookDetails>(`/manga/books/${isbn}${queryString ? `?${queryString}` : ''}`);
 }
 
 // ============================================================================
@@ -177,8 +174,8 @@ export async function clearCacheForBook(isbn: string): Promise<CacheClearResult>
 /**
  * Clear cache for a specific series
  */
-export async function clearCacheForSeries(slug: string): Promise<CacheClearResult> {
-  const url = `${env.apiUrl}/manga/cache/series/${encodeURIComponent(slug)}`;
+export async function clearCacheForSeries(seriesId: string): Promise<CacheClearResult> {
+  const url = `${env.apiUrl}/manga/cache/series/${encodeURIComponent(seriesId)}`;
   const response = await fetch(url, { method: 'DELETE' });
   const data = await response.json();
   if (!response.ok) {

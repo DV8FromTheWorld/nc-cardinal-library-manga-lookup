@@ -21,11 +21,12 @@ import {
 import { FlashList } from '@shopify/flash-list';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../routing/native/Router';
-import { useSearch } from '../hooks/useSearch';
+import { useStreamingSearch } from '../hooks/useStreamingSearch';
 import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
 import { DebugPanel } from '../../debug/native/DebugPanel';
 import { clearCacheForSearch } from '../services/mangaApi';
 import { getAvailabilityPercent, getAvailabilityDisplayInfo } from '../utils/availability';
+import { SearchProgressIndicator } from './SearchProgressIndicator';
 import type { SeriesResult, VolumeResult } from '../types';
 import { Text } from '../../../design/components/Text/native/Text';
 import { Heading } from '../../../design/components/Heading/native/Heading';
@@ -53,7 +54,7 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
     [navigation]
   );
 
-  const { query, setQuery, results, isLoading, error, search, clearResults, refreshWithDebug } = useSearch({
+  const { query, setQuery, results, isLoading, error, progress, search, clearResults } = useStreamingSearch({
     initialQuery,
     homeLibrary,
     onQueryChange: handleQueryChange,
@@ -226,14 +227,9 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
           </View>
         )}
 
-        {/* Loading State */}
+        {/* Loading State with Progress */}
         {isLoading && (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={theme.accent} />
-            <Text variant="text-md/normal" color="text-secondary" style={styles.loadingText}>
-              Searching libraries...
-            </Text>
-          </View>
+          <SearchProgressIndicator progress={progress} />
         )}
 
         {/* Results */}
@@ -276,7 +272,6 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
         {/* Debug Panel */}
         <DebugPanel
           debug={results?._debug}
-          onRefreshWithDebug={results && !results._debug ? refreshWithDebug : undefined}
           cacheContext={results?.query ? { type: 'search', identifier: results.query } : undefined}
           onClearCache={handleClearCache}
         />
@@ -761,14 +756,6 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: 8,
     marginBottom: spacing.md,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: spacing.md,
   },
   results: {
     flex: 1,

@@ -12,7 +12,6 @@ export type SeriesParams = {
 
 export type BookParams = {
   isbn: string;
-  slug?: string | undefined;
 };
 
 export type RouteParams = {
