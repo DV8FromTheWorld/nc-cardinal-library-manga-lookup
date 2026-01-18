@@ -8,6 +8,12 @@ dist/
 # Cache
 .cache/
 
+# Entity store (generated data)
+.data/
+
+# Cursor IDE
+.cursor/
+
 # Environment variables
 .env
 .env.local
