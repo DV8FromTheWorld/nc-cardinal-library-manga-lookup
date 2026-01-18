@@ -25,6 +25,8 @@
 - [ ] Implement a way for users to refresh on mobile, potentially by pulling down.
 - [ ] When the API is down we should better communicate that to the user rather than things just breaking
 - [x] We need to fix book titles. They often are wrong. Every volume in Bleach except the first one is wrong. One piece is the same way. It shows the right names on the search page / series page, but the book detail page is wrong.
+- [ ] Use an actual icon system instead of using emojis
+- [ ] Fix the MAL icon. We should download and use the official one.
 
 
 ## Technical Debt / Improvements
