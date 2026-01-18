@@ -1397,6 +1397,12 @@ export async function buildRelatedSeriesResult(
     relatedTitle = `${parentTitle}: ${related.title}`;
   }
   
+  // Add media type suffix for light novels to distinguish from manga with same title
+  // Use related.mediaType directly since detectMediaType may not have correct hints
+  if (related.mediaType === 'light_novel' && !relatedTitle.toLowerCase().includes('light novel')) {
+    relatedTitle = `${relatedTitle} (Light Novel)`;
+  }
+  
   // Create/find entity using title (not Wikipedia ID) to get unique ID
   const entity = await findOrCreateSeriesByTitle({
     title: relatedTitle,

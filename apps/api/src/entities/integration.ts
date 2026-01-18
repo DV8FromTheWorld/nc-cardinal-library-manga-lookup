@@ -47,11 +47,13 @@ export async function createEntitiesFromWikipedia(
   for (const vol of wikiSeries.volumes) {
     if (vol.englishISBN) {
       bookIds.push(vol.englishISBN);
+      // Build full title: "Series, Vol. N" or "Series, Vol. N: Subtitle"
+      const fullTitle = `${wikiSeries.title}, Vol. ${vol.volumeNumber}${vol.title ? `: ${vol.title}` : ''}`;
       bookInputs.push({
         id: vol.englishISBN,
         seriesId: series.id,
         volumeNumber: vol.volumeNumber,
-        title: vol.title ?? `${wikiSeries.title}, Vol. ${vol.volumeNumber}`,
+        title: fullTitle,
         mediaType,
         releaseDate: (vol as { englishDate?: string }).englishDate,
       });
@@ -123,6 +125,12 @@ async function createRelatedSeriesEntity(
     relatedTitle = `${parentTitle}: ${related.title}`;
   }
   
+  // Add media type suffix for light novels to distinguish from manga with same title
+  // Use related.mediaType directly since it's more reliable than detectMediaType
+  if (related.mediaType === 'light_novel' && !relatedTitle.toLowerCase().includes('light novel')) {
+    relatedTitle = `${relatedTitle} (Light Novel)`;
+  }
+  
   // Create the related series entity
   const relatedSeries = await findOrCreateSeriesByTitle({
     title: relatedTitle,
@@ -141,11 +149,13 @@ async function createRelatedSeriesEntity(
   for (const vol of related.volumes) {
     if (vol.englishISBN) {
       bookIds.push(vol.englishISBN);
+      // Build full title: "Series, Vol. N" or "Series, Vol. N: Subtitle"
+      const fullTitle = `${relatedTitle}, Vol. ${vol.volumeNumber}${vol.title ? `: ${vol.title}` : ''}`;
       bookInputs.push({
         id: vol.englishISBN,
         seriesId: relatedSeries.id,
         volumeNumber: vol.volumeNumber,
-        title: vol.title ?? `${relatedTitle}, Vol. ${vol.volumeNumber}`,
+        title: fullTitle,
         mediaType: relatedMediaType,
         releaseDate: (vol as { englishDate?: string }).englishDate,
       });

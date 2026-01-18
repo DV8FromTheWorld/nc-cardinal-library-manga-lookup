@@ -689,7 +689,11 @@ function parseVolumeListWithSections(wikitext: string, mainSeriesTitle: string =
       currentVolume.japaneseReleaseDate = value;
     } else if (fieldLower === 'licensedreldate') {
       currentVolume.englishReleaseDate = value;
-    } else if (fieldLower === 'licensedtitle' || fieldLower === 'originaltitle' || fieldLower === 'title') {
+    } else if (fieldLower === 'licensedtitle') {
+      // LicensedTitle is the official English title - always prefer it
+      currentVolume.title = value;
+    } else if (fieldLower === 'translittitle' || fieldLower === 'originaltitle' || fieldLower === 'title') {
+      // Use transliterated/original title as fallback if no licensed title yet
       if (!currentVolume.title) {
         currentVolume.title = value;
       }
@@ -1149,20 +1153,39 @@ export async function getSeries(query: string): Promise<WikiSeries | null> {
     return a.volumeNumber - b.volumeNumber;
   });
   
-  // Build related series array from related sections
-  const relatedSeries: WikiRelatedSeries[] = [];
+  // Build related series array from related sections, deduplicating by title + media type
+  // (same title can exist for both manga and light novel versions)
+  const relatedSeriesMap = new Map<string, WikiRelatedSeries>();
   
   for (const section of relatedSections) {
     if (section.volumes.length === 0) continue;
     if (section.relationship === 'main') continue; // Skip main (shouldn't happen but be safe)
     
-    relatedSeries.push({
-      title: section.name,
-      relationship: section.relationship,
-      volumes: section.volumes,
-      mediaType: section.mediaType,
-    });
+    // Use title + media type as key to allow separate manga/light novel versions
+    const key = `${section.name}|${section.mediaType}`;
+    const existing = relatedSeriesMap.get(key);
+    if (existing) {
+      // Merge volumes, avoiding duplicates by volume number
+      const existingVolNums = new Set(existing.volumes.map(v => v.volumeNumber));
+      for (const vol of section.volumes) {
+        if (!existingVolNums.has(vol.volumeNumber)) {
+          existing.volumes.push(vol);
+          existingVolNums.add(vol.volumeNumber);
+        }
+      }
+      // Sort merged volumes by volume number
+      existing.volumes.sort((a, b) => a.volumeNumber - b.volumeNumber);
+    } else {
+      relatedSeriesMap.set(key, {
+        title: section.name,
+        relationship: section.relationship,
+        volumes: [...section.volumes],
+        mediaType: section.mediaType,
+      });
+    }
   }
+  
+  const relatedSeries = Array.from(relatedSeriesMap.values());
   
   if (relatedSeries.length > 0) {
     console.log(`[Wikipedia] Found ${relatedSeries.length} related series: ${relatedSeries.map(r => r.title).join(', ')}`);

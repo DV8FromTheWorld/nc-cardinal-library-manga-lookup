@@ -149,7 +149,6 @@ export function BookScreen({ navigation, route }: Props): JSX.Element {
               >
                 <Text variant="text-sm/medium" color="interactive-primary" style={styles.seriesLinkText}>
                   📚 Part of: {book.seriesInfo.title}
-                  {book.seriesInfo.volumeNumber && ` (Vol. ${book.seriesInfo.volumeNumber})`}
                 </Text>
               </TouchableOpacity>
             )}

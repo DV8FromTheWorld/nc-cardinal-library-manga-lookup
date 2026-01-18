@@ -17,14 +17,14 @@
 - [x] Search loading progress indicator - Implemented SSE streaming with step-by-step progress
 - [ ] Debug data capture without refetch - Debug info should persist from initial request
 - [ ] Search → Book instant navigation - Pre-populate book-detail cache from search results
-- [ ] Manga vs Light Novel differentiation - Allow series like Ascendance of a Bookworm to show both
+- [x] Manga vs Light Novel differentiation - Allow series like Ascendance of a Bookworm to show both
 - [ ] Fix the search loading indicator to not jump around when changing between categories
 - [ ] Research how the hold/reserve system works so we can implement it into our app instead of requiring the user open the library website
 - [ ] Fix the amazon links as they're broken
 - [ ] Update the homepage to have more recommendations for series
 - [ ] Implement a way for users to refresh on mobile, potentially by pulling down.
 - [ ] When the API is down we should better communicate that to the user rather than things just breaking
-- [ ] We need to fix book titles. They often are wrong. Every volume in Bleach except the first one is wrong. One piece is the same way. It shows the right names on the search page / series page, but the book detail page is wrong.
+- [x] We need to fix book titles. They often are wrong. Every volume in Bleach except the first one is wrong. One piece is the same way. It shows the right names on the search page / series page, but the book detail page is wrong.
 
 
 ## Technical Debt / Improvements

@@ -142,7 +142,6 @@ export function BookPage(): JSX.Element {
               >
                 <Text variant="text-sm/medium">
                   📚 Part of: {book.seriesInfo.title}
-                  {book.seriesInfo.volumeNumber && ` (Vol. ${book.seriesInfo.volumeNumber})`}
                 </Text>
               </button>
             )}

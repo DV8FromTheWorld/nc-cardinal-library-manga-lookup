@@ -1181,7 +1181,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
 
         return {
           id: record.id,
-          title: record.title,
+          title: bookEntity?.book.title ?? record.title,
           authors: record.authors,
           isbns: record.isbns,
           subjects: record.subjects,
