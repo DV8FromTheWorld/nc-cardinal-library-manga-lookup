@@ -179,6 +179,7 @@ export interface BestMatch {
 export interface SeriesDetails {
   id: string;  // Entity ID (e.g., "s_V1StGXR8Z") - stable across data source updates
   title: string;
+  description?: string | undefined;  // Series description/preamble from Vol 1
   totalVolumes: number;
   isComplete: boolean;
   author?: string | undefined;
@@ -1383,6 +1384,7 @@ export async function getSeriesDetails(
   const result: SeriesDetails = {
     id: entity.id,
     title: wikiSeries.title,
+    description: entity.description,  // Series description/preamble from Vol 1
     totalVolumes: entityVolumes.length,
     isComplete: wikiSeries.isComplete,
     author: wikiSeries.author,
@@ -1492,6 +1494,7 @@ async function getSeriesDetailsFromEntity(
   const result: SeriesDetails = {
     id: entity.id,
     title: entity.title,
+    description: entity.description,  // Series description/preamble from Vol 1
     totalVolumes: volumes.length,
     isComplete: entity.status === 'completed',
     author: entity.author,

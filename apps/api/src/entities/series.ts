@@ -35,6 +35,7 @@ export async function createSeries(input: CreateSeriesInput): Promise<Series> {
     relatedSeriesIds: input.relatedSeriesIds,
     parentSeriesId: input.parentSeriesId,
     relationship: input.relationship,
+    description: input.description,
     createdAt: now,
     updatedAt: now,
   };
@@ -114,6 +115,31 @@ export async function updateSeriesVolumes(
   
   await saveSeries(series);
   console.log(`[Series] Updated volumes for ${seriesId}: ${volumeIds.length} volumes`);
+}
+
+/**
+ * Update series description
+ * Only updates if series doesn't have a description yet
+ */
+export async function updateSeriesDescription(
+  seriesId: string,
+  description: string
+): Promise<void> {
+  const { getSeriesById } = await import('./store.js');
+  const series = await getSeriesById(seriesId);
+  
+  if (!series) {
+    console.warn(`[Series] Cannot update description - series not found: ${seriesId}`);
+    return;
+  }
+  
+  // Only set if not already present
+  if (!series.description) {
+    series.description = description;
+    series.updatedAt = new Date().toISOString();
+    await saveSeries(series);
+    console.log(`[Series] Updated description for ${seriesId}: ${description.slice(0, 50)}...`);
+  }
 }
 
 /**

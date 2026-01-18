@@ -36,10 +36,11 @@ import {
   type CatalogRecord,
 } from '../scripts/opensearch-client.js';
 
-// DISABLED: Google Books as a source - relying on Bookcover API + OpenLibrary for covers
-// import {
-//   searchByISBN as searchGoogleBooksByISBN,
-// } from '../scripts/google-books-client.js';
+// Google Books for descriptions
+import { getDescriptionByISBN, extractUniqueVolumeDescription, findCommonPreamble } from '../scripts/google-books-client.js';
+
+// Series description management
+import { updateSeriesDescription } from '../entities/series.js';
 
 import {
   getAllCacheStats,
@@ -56,6 +57,7 @@ import {
   getVolumeEntity,
   getVolumeById,
   getSeriesById,
+  getVolumesBySeriesId,
 } from '../entities/index.js';
 
 import {
@@ -204,6 +206,7 @@ const SearchResultSchema = z.object({
 const SeriesDetailsSchema = z.object({
   id: z.string(),
   title: z.string(),
+  description: z.string().nullish(),  // Series description/preamble from Vol 1
   totalVolumes: z.number(),
   coverImage: z.string().optional(),
   isComplete: z.boolean(),
@@ -1188,10 +1191,11 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
           };
         }
 
-        // Fetch NC Cardinal record and cover in parallel
-        const [record, bookcoverUrl] = await Promise.all([
+        // Fetch NC Cardinal record, cover, and Google Books description in parallel
+        const [record, bookcoverUrl, googleBooksDescription] = await Promise.all([
           searchByISBN(primaryIsbn),
           fetchBookcoverUrl(primaryIsbn).catch(() => null),
+          getDescriptionByISBN(primaryIsbn),
         ]);
         
         // Cover image priority: Bookcover API > Google Books > OpenLibrary
@@ -1203,6 +1207,61 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
           coverImage = googleBooksUrl ?? `https://covers.openlibrary.org/b/isbn/${primaryIsbn}-M.jpg`;
         }
 
+        // Description handling:
+        // 1. Use Google Books description, falling back to NC Cardinal summary
+        // 2. If series has no description, compare with another volume to find common preamble
+        // 3. Extract unique portion by stripping series preamble
+        const fullDescription = googleBooksDescription ?? record?.summary;
+        let volumeDescription: string | undefined;
+        
+        if (fullDescription) {
+          // If series doesn't have a description yet, we need to find the true preamble
+          // by comparing with another volume's description
+          if (!series.description) {
+            // Get all volumes for this series to find another one to compare
+            const allVolumes = await getVolumesBySeriesId(series.id);
+            
+            // Find a different volume (prefer Vol 1 or Vol 2 for consistency)
+            const compareVolume = volume.volumeNumber === 1
+              ? allVolumes.find(v => v.volumeNumber === 2)
+              : allVolumes.find(v => v.volumeNumber === 1);
+            
+            // Try to get the comparison volume's description
+            let compareDescription: string | null = null;
+            if (compareVolume) {
+              const compareIsbn = compareVolume.editions.find(e => e.language === 'en' && e.format === 'physical')?.isbn
+                ?? compareVolume.editions.find(e => e.language === 'en' && e.format === 'digital')?.isbn;
+              
+              if (compareIsbn) {
+                compareDescription = await getDescriptionByISBN(compareIsbn);
+              }
+            }
+            
+            if (compareDescription) {
+              // Found another volume's description - extract the common preamble
+              const preamble = findCommonPreamble(fullDescription, compareDescription);
+              
+              if (preamble) {
+                // Save the common preamble as series description
+                await updateSeriesDescription(series.id, preamble);
+                // Extract unique part from this volume
+                volumeDescription = extractUniqueVolumeDescription(fullDescription, preamble);
+              } else {
+                // No common preamble found - use full description
+                volumeDescription = fullDescription;
+              }
+            } else {
+              // Couldn't get comparison description - save full as preamble for now
+              // (will be updated when another volume is fetched and compared)
+              await updateSeriesDescription(series.id, fullDescription);
+              volumeDescription = fullDescription;
+            }
+          } else {
+            // Series has a preamble - extract the unique volume-specific part
+            volumeDescription = extractUniqueVolumeDescription(fullDescription, series.description);
+          }
+        }
+
         const seriesInfo = {
           id: series.id,
           title: series.title,
@@ -1210,13 +1269,14 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
         };
 
         if (!record) {
-          // Book not in NC Cardinal catalog
+          // Book not in NC Cardinal catalog - still include Google Books description
           return {
             id: volume.id,
             title: volumeTitle,
             authors: series.author ? [series.author] : [],
             isbns: volume.editions.map(e => e.isbn),
             subjects: [],
+            summary: volumeDescription,
             coverImage,
             holdings: [],
             availability: {
@@ -1245,7 +1305,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
           authors: record.authors,
           isbns: [...new Set([...volume.editions.map(e => e.isbn), ...record.isbns])],
           subjects: record.subjects,
-          summary: record.summary,
+          summary: volumeDescription,
           coverImage,
           holdings: record.holdings,
           availability,

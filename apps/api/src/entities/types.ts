@@ -85,6 +85,9 @@ export interface Series {
   /** Relationship type if this is a related series */
   relationship?: SeriesRelationship | undefined;
   
+  /** Series description (the common preamble from volume descriptions) */
+  description?: string | undefined;
+  
   /** ISO timestamp when entity was created */
   createdAt: string;
   
@@ -159,6 +162,7 @@ export interface CreateSeriesInput {
   relatedSeriesIds?: string[] | undefined;
   parentSeriesId?: string | undefined;
   relationship?: SeriesRelationship | undefined;
+  description?: string | undefined;
 }
 
 /**

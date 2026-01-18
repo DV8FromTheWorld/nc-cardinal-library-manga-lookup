@@ -399,6 +399,143 @@ export async function searchByISBN(isbn: string): Promise<GoogleBooksVolume | nu
   return result.volumes[0] ?? null;
 }
 
+/**
+ * Get description for a book by ISBN.
+ * Returns the description from Google Books, or null if not found.
+ * Results are cached via the underlying searchVolumes cache (24 hours).
+ */
+export async function getDescriptionByISBN(isbn: string): Promise<string | null> {
+  try {
+    const volume = await searchByISBN(isbn);
+    return volume?.description ?? null;
+  } catch (error) {
+    console.error(`[GoogleBooks] Failed to fetch description for ISBN ${isbn}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Find the common prefix (preamble) between two volume descriptions.
+ * This identifies the series overview that appears at the start of all volume descriptions.
+ * 
+ * @param desc1 - First volume description (typically Vol 1)
+ * @param desc2 - Second volume description (typically Vol 2)
+ * @returns The common prefix (preamble), or null if no significant common prefix
+ */
+export function findCommonPreamble(
+  desc1: string,
+  desc2: string
+): string | null {
+  if (!desc1 || !desc2) {
+    return null;
+  }
+  
+  // Find the longest common prefix character by character
+  const minLength = Math.min(desc1.length, desc2.length);
+  let commonPrefixEnd = 0;
+  
+  for (let i = 0; i < minLength; i++) {
+    if (desc1[i] === desc2[i]) {
+      commonPrefixEnd = i + 1;
+    } else {
+      break;
+    }
+  }
+  
+  // Need at least 50 characters of common prefix to be meaningful
+  if (commonPrefixEnd < 50) {
+    return null;
+  }
+  
+  // Find the last complete sentence boundary within the common prefix
+  const commonPart = desc1.slice(0, commonPrefixEnd);
+  
+  // Look for sentence endings (. ! ?) followed by space or end of string
+  const sentenceEndPattern = /[.!?](?:\s|$)/g;
+  let lastSentenceEnd = -1;
+  let match;
+  
+  while ((match = sentenceEndPattern.exec(commonPart)) !== null) {
+    // Only count as sentence end if there's more text after or it's end of common part
+    lastSentenceEnd = match.index + 1;
+  }
+  
+  // If we found a sentence boundary, use it
+  if (lastSentenceEnd > 50) {
+    return desc1.slice(0, lastSentenceEnd).trim();
+  }
+  
+  // Otherwise, no good preamble found
+  return null;
+}
+
+/**
+ * Extract the unique portion of a volume description by removing the series preamble.
+ * 
+ * Many manga volumes have descriptions that start with the same series overview
+ * (4-5 sentences) followed by volume-specific content.
+ * 
+ * This function finds where the volume description diverges from the series preamble
+ * and returns only the unique portion.
+ * 
+ * @param volumeDescription - The full description for a specific volume
+ * @param seriesPreamble - The series description (common prefix across volumes)
+ * @returns The unique portion of the volume description, or the full description if no common prefix
+ */
+export function extractUniqueVolumeDescription(
+  volumeDescription: string,
+  seriesPreamble: string | undefined
+): string {
+  if (!seriesPreamble || !volumeDescription) {
+    return volumeDescription;
+  }
+  
+  // Check if volume description starts with the preamble
+  if (!volumeDescription.startsWith(seriesPreamble)) {
+    // Descriptions don't share the preamble exactly - check for partial match
+    const minLength = Math.min(volumeDescription.length, seriesPreamble.length);
+    let matchEnd = 0;
+    
+    for (let i = 0; i < minLength; i++) {
+      if (volumeDescription[i] === seriesPreamble[i]) {
+        matchEnd = i + 1;
+      } else {
+        break;
+      }
+    }
+    
+    // If less than 80% matches, return full description
+    if (matchEnd < seriesPreamble.length * 0.8) {
+      return volumeDescription;
+    }
+    
+    // Find sentence boundary near match end
+    const partialMatch = volumeDescription.slice(0, matchEnd);
+    const lastSentenceEnd = Math.max(
+      partialMatch.lastIndexOf('. '),
+      partialMatch.lastIndexOf('! '),
+      partialMatch.lastIndexOf('? ')
+    );
+    
+    if (lastSentenceEnd > 50) {
+      return volumeDescription.slice(lastSentenceEnd + 2).trim();
+    }
+    
+    return volumeDescription;
+  }
+  
+  // Volume description starts with the exact preamble - extract unique part
+  const uniquePart = volumeDescription.slice(seriesPreamble.length).trim();
+  
+  // If the unique part is empty or very short, return full description
+  if (!uniquePart || uniquePart.length < 20) {
+    return volumeDescription;
+  }
+  
+  return uniquePart;
+}
+
+
 // ============================================================================
 // Test/Demo execution
 // ============================================================================
