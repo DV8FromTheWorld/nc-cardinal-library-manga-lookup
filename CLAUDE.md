@@ -9,19 +9,29 @@ NC Cardinal Manga helps users find manga in North Carolina public libraries. It:
 
 ## Quick Start
 
+All commands run from repo root:
+
 ```bash
 # Install
 pnpm install
 
-# Run API (port 3001)
-cd apps/api && pnpm dev
+# Start API (port 3001)
+pnpm api
 
-# Run web app (port 3000)  
-cd apps/app && pnpm dev
+# Start web app (port 3000)
+pnpm app
 
-# Test
+# Start React Native dev server
+pnpm native
+
+# Build and run iOS app (in separate terminal)
+pnpm ios
+
+# Test API
 curl "http://localhost:3001/manga/search?q=one+piece" | jq
 ```
+
+**Note:** For any frontend/shared code changes, test BOTH web and native. See "Cross-Platform Testing" section below.
 
 ## Project Structure
 
@@ -156,3 +166,20 @@ When making changes:
 - **Propose the commit message** with a clear, conventional format (e.g., `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`)
 - **Ask for confirmation** before actually creating the commit
 - Don't batch unrelated changes into a single commit
+
+## Cross-Platform Testing
+
+**CRITICAL**: This is a web + React Native app. Any changes to shared code (`apps/app/src/modules/*/`) MUST be tested on BOTH platforms.
+
+```bash
+# Web testing
+pnpm api    # Terminal 1: Start API
+pnpm app    # Terminal 2: Start web app → http://localhost:3000
+
+# React Native testing
+pnpm api    # Terminal 1: Start API (if not already running)
+pnpm native # Terminal 2: Start Metro/Expo JS server (keep running)
+pnpm ios    # Terminal 3: Build and launch iOS app (once)
+```
+
+For iOS Simulator automation, see `llm-context/IOS-SIMULATOR-AUTOMATION.md`.

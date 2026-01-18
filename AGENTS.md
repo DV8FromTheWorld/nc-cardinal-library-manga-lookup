@@ -120,12 +120,14 @@ Each module follows this structure:
 
 ## Testing Changes
 
-```bash
-# Start API
-cd apps/api && pnpm dev
+All commands run from repo root:
 
-# Start web app
-cd apps/app && pnpm dev
+```bash
+# Start API (port 3001)
+pnpm api
+
+# Start web app (port 3000)
+pnpm app
 
 # Test search
 curl "http://localhost:3001/manga/search?q=one+piece" | jq
@@ -136,6 +138,57 @@ curl "http://localhost:3001/manga/books/9781569319017" | jq
 # Clear all caches
 rm -rf apps/api/.cache/*
 ```
+
+## Cross-Platform Testing Requirements
+
+**CRITICAL**: This is a web + React Native app. Any frontend changes MUST be tested on BOTH platforms.
+
+### When to test both platforms
+- Any change to `apps/app/src/modules/*/` (shared code)
+- Any change to `apps/app/src/design/` (UI components)
+- Any change to routing, navigation, or screens
+
+### When single-platform testing is OK
+- API-only changes (`apps/api/`)
+- Web-specific changes (`modules/*/web/`)
+- Native-specific changes (`modules/*/native/`)
+
+### How to test (all commands from repo root)
+
+**Web testing:**
+
+```bash
+# Terminal 1: Start API
+pnpm api
+
+# Terminal 2: Start web app
+pnpm app
+# Test at http://localhost:3000
+```
+
+**React Native testing:**
+
+```bash
+# Terminal 1: Start API (if not already running)
+pnpm api
+
+# Terminal 2: Start React Native JS server (Metro/Expo)
+pnpm native
+
+# Terminal 3: Build and launch iOS app (first time or after native changes)
+pnpm ios
+```
+
+**Note:** `pnpm native` starts the Metro bundler that serves JS to the app. Keep it running while testing. `pnpm ios` builds the native app and installs it on the simulator - you only need to run this once unless native code changes.
+
+For iOS Simulator automation (clicking, screenshots), see `llm-context/IOS-SIMULATOR-AUTOMATION.md`.
+
+### Verification checklist
+
+1. Feature works on web (browser)
+2. Feature works on iOS Simulator
+3. No TypeScript errors in either platform
+4. UI looks correct on both platforms
 
 ## iOS Simulator Testing
 

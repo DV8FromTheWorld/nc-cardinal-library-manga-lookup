@@ -30,8 +30,37 @@ This is a manga library search app using Wikipedia for series data and NC Cardin
 - Filter out spin-offs based on title patterns
 
 ## Testing
+
+All commands run from repo root.
+
+**Frontend changes require testing BOTH platforms:**
+
 ```bash
-# Quick API test
+# API (always needed)
+pnpm api
+
+# Web app
+pnpm app
+
+# React Native (need both - JS server + iOS build)
+pnpm native   # Start Metro/Expo JS server (keep running)
+pnpm ios      # Build and launch iOS app (once)
+```
+
+For iOS Simulator automation (clicking, screenshots), see `llm-context/IOS-SIMULATOR-AUTOMATION.md`.
+
+### When to test both
+- Changes to `apps/app/src/modules/*/` (shared code)
+- Changes to design components
+- Any routing or navigation changes
+
+### Single-platform OK
+- API changes: just test with curl
+- Web-only files (`modules/*/web/`): just test web
+- Native-only files (`modules/*/native/`): just test native
+
+### Quick API test
+```bash
 curl "http://localhost:3001/manga/search?q=demon+slayer" | jq
 
 # Clear cache for fresh data

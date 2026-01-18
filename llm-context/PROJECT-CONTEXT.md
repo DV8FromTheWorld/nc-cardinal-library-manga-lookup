@@ -572,19 +572,60 @@ const BookDetailsSchema = z.object({
 
 ## Running the Project
 
+All commands run from repo root:
+
 ```bash
 # Install dependencies
 pnpm install
 
 # Start API (port 3001)
-cd apps/api && pnpm dev
+pnpm api
 
 # Start web app (port 3000)
-cd apps/app && pnpm dev
+pnpm app
+
+# Start React Native dev server (Metro/Expo)
+pnpm native
+
+# Build and run iOS app (separate terminal)
+pnpm ios
 
 # Clear caches (useful for debugging)
 rm -rf apps/api/.cache/*
 ```
+
+## Cross-Platform Testing
+
+**CRITICAL**: This is a web + React Native app. Any changes to shared frontend code MUST be tested on BOTH platforms.
+
+### When to test both platforms
+- Any change to `apps/app/src/modules/*/` (shared code)
+- Any change to `apps/app/src/design/` (UI components)
+- Any change to routing, navigation, or screens
+
+### When single-platform testing is OK
+- API-only changes (`apps/api/`)
+- Web-specific changes (`modules/*/web/`)
+- Native-specific changes (`modules/*/native/`)
+
+### How to test
+
+**Web testing:**
+```bash
+pnpm api    # Terminal 1: Start API
+pnpm app    # Terminal 2: Start web app → http://localhost:3000
+```
+
+**React Native testing:**
+```bash
+pnpm api    # Terminal 1: Start API (if not already running)
+pnpm native # Terminal 2: Start Metro/Expo JS server (keep running)
+pnpm ios    # Terminal 3: Build and launch iOS app (once)
+```
+
+**Note:** `pnpm native` starts the Metro bundler that serves JS to the app. Keep it running while testing. `pnpm ios` builds the native app and installs it on the simulator - you only need to run this once unless native code changes.
+
+For iOS Simulator automation (clicking, screenshots), see `IOS-SIMULATOR-AUTOMATION.md`.
 
 ## Testing Scripts
 
