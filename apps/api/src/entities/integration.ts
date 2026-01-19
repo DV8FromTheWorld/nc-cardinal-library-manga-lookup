@@ -6,7 +6,7 @@
  */
 
 import type { WikiSeries, WikiRelatedSeries } from '../scripts/wikipedia-client.js';
-import type { Series, Volume, Edition, MediaType, CreateVolumeInput } from './types.js';
+import type { Series, Volume, Edition, MediaType, CreateVolumeInput, CreateEditionInput, EditionData } from './types.js';
 import {
   findOrCreateSeriesByWikipedia,
   findOrCreateSeriesByTitle,
@@ -15,7 +15,8 @@ import {
   detectMediaType,
 } from './series.js';
 import { findOrCreateVolumes, getVolumeWithSeries } from './volumes.js';
-import { getSeriesById, getSeriesByTitle, getVolumesBySeriesId } from './store.js';
+import { findOrCreateEditions } from './editions.js';
+import { getSeriesById, getSeriesByTitle, getVolumesBySeriesId, getEditionsByVolumeId, getVolumeById, generateVolumeId } from './store.js';
 
 /**
  * Create or update entities from Wikipedia series data
@@ -39,40 +40,14 @@ export async function createEntitiesFromWikipedia(
     status: wikiSeries.isComplete ? 'completed' : 'ongoing',
   });
 
-  // Create volumes for ALL volumes (including Japan-only)
-  const volumeInputs: CreateVolumeInput[] = [];
-
-  for (const vol of wikiSeries.volumes) {
-    const editions: Edition[] = [];
-    
-    // Add Japanese edition if we have ISBN
-    if (vol.japaneseISBN) {
-      editions.push({
-        isbn: vol.japaneseISBN,
-        format: 'physical',
-        language: 'ja',
-        releaseDate: vol.japaneseReleaseDate,
-      });
-    }
-    
-    // Add English edition if we have ISBN (assume physical for now)
-    if (vol.englishISBN) {
-      editions.push({
-        isbn: vol.englishISBN,
-        format: 'physical',
-        language: 'en',
-        releaseDate: vol.englishReleaseDate,
-      });
-    }
-    
-    // Build full title: "Subtitle" (we'll prefix with series title when displaying)
-    volumeInputs.push({
-      seriesId: series.id,
-      volumeNumber: vol.volumeNumber,
-      title: vol.title,
-      editions,  // Can be empty for volumes with no known ISBNs
-    });
-  }
+  // First pass: Create volumes without edition links
+  // We need volume IDs before we can create editions that reference them
+  const volumeInputs: CreateVolumeInput[] = wikiSeries.volumes.map(vol => ({
+    seriesId: series.id,
+    volumeNumber: vol.volumeNumber,
+    title: vol.title,
+    editionIds: [], // Will be linked after editions are created
+  }));
 
   // Create/find volumes
   const volumes = await findOrCreateVolumes(volumeInputs);
@@ -81,7 +56,50 @@ export async function createEntitiesFromWikipedia(
   // Update series with volume IDs (in order)
   await updateSeriesVolumes(series.id, volumeIds);
 
-  console.log(`[EntityIntegration] Created/updated: Series "${series.title}" (${series.id}) with ${volumes.length} volumes`);
+  // Second pass: Create editions and link them to volumes
+  // Build a map of volume number -> volume ID for linking
+  const volumeByNumber = new Map<number, Volume>();
+  for (const vol of volumes) {
+    volumeByNumber.set(vol.volumeNumber, vol);
+  }
+
+  // Collect all edition inputs, grouping by ISBN to detect omnibus editions
+  const editionInputs: CreateEditionInput[] = [];
+  
+  for (const wikiVol of wikiSeries.volumes) {
+    const volume = volumeByNumber.get(wikiVol.volumeNumber);
+    if (!volume) continue;
+
+    // Add Japanese edition if we have ISBN
+    if (wikiVol.japaneseISBN) {
+      editionInputs.push({
+        isbn: wikiVol.japaneseISBN,
+        format: 'physical',
+        language: 'ja',
+        volumeIds: [volume.id],
+        releaseDate: wikiVol.japaneseReleaseDate,
+      });
+    }
+    
+    // Add English edition if we have ISBN
+    if (wikiVol.englishISBN) {
+      editionInputs.push({
+        isbn: wikiVol.englishISBN,
+        format: 'physical',
+        language: 'en',
+        volumeIds: [volume.id],
+        releaseDate: wikiVol.englishReleaseDate,
+      });
+    }
+  }
+
+  // Create editions (findOrCreateEditions handles deduplication and omnibus detection)
+  const editions = await findOrCreateEditions(editionInputs);
+
+  // Link editions back to volumes
+  await linkEditionsToVolumes(editions, volumes);
+
+  console.log(`[EntityIntegration] Created/updated: Series "${series.title}" (${series.id}) with ${volumes.length} volumes and ${editions.length} editions`);
 
   // Process related series if present
   const relatedSeriesEntities: Series[] = [];
@@ -115,6 +133,33 @@ export async function createEntitiesFromWikipedia(
     volumes, 
     relatedSeries: relatedSeriesEntities.length > 0 ? relatedSeriesEntities : undefined 
   };
+}
+
+/**
+ * Link editions to their volumes (bidirectional)
+ * Updates volume.editionIds based on edition.volumeIds
+ */
+async function linkEditionsToVolumes(editions: Edition[], volumes: Volume[]): Promise<void> {
+  const { saveVolumes } = await import('./store.js');
+  
+  // Build a map of volume ID -> volume for quick lookup
+  const volumeMap = new Map<string, Volume>();
+  for (const vol of volumes) {
+    volumeMap.set(vol.id, vol);
+  }
+
+  // For each edition, add it to the editionIds of all its volumes
+  for (const edition of editions) {
+    for (const volumeId of edition.volumeIds) {
+      const volume = volumeMap.get(volumeId);
+      if (volume && !volume.editionIds.includes(edition.id)) {
+        volume.editionIds.push(edition.id);
+      }
+    }
+  }
+
+  // Save all updated volumes
+  await saveVolumes(volumes);
 }
 
 /**
@@ -156,47 +201,57 @@ async function createRelatedSeriesEntity(
     relationship: related.relationship,
   });
   
-  // Create volumes for related series
-  const volumeInputs: CreateVolumeInput[] = [];
-  
-  for (const vol of related.volumes) {
-    const editions: Edition[] = [];
-    
-    // Add Japanese edition if we have ISBN
-    if (vol.japaneseISBN) {
-      editions.push({
-        isbn: vol.japaneseISBN,
-        format: 'physical',
-        language: 'ja',
-        releaseDate: vol.japaneseReleaseDate,
-      });
-    }
-    
-    // Add English edition if we have ISBN
-    if (vol.englishISBN) {
-      editions.push({
-        isbn: vol.englishISBN,
-        format: 'physical',
-        language: 'en',
-        releaseDate: vol.englishReleaseDate,
-      });
-    }
-    
-    volumeInputs.push({
-      seriesId: relatedSeries.id,
-      volumeNumber: vol.volumeNumber,
-      title: vol.title,
-      editions,
-    });
-  }
+  // First pass: Create volumes without edition links
+  const volumeInputs: CreateVolumeInput[] = related.volumes.map(vol => ({
+    seriesId: relatedSeries.id,
+    volumeNumber: vol.volumeNumber,
+    title: vol.title,
+    editionIds: [],
+  }));
   
   const volumes = await findOrCreateVolumes(volumeInputs);
   const volumeIds = volumes.map(v => v.id);
   
   await updateSeriesVolumes(relatedSeries.id, volumeIds);
   
-  const englishVolumeCount = volumes.filter(v => v.editions.some(e => e.language === 'en')).length;
-  console.log(`[EntityIntegration] Created related series "${relatedSeries.title}" (${relatedSeries.relationship}) with ${volumes.length} volumes (${englishVolumeCount} with English ISBNs)`);
+  // Second pass: Create editions and link
+  const volumeByNumber = new Map<number, Volume>();
+  for (const vol of volumes) {
+    volumeByNumber.set(vol.volumeNumber, vol);
+  }
+
+  const editionInputs: CreateEditionInput[] = [];
+  
+  for (const wikiVol of related.volumes) {
+    const volume = volumeByNumber.get(wikiVol.volumeNumber);
+    if (!volume) continue;
+
+    if (wikiVol.japaneseISBN) {
+      editionInputs.push({
+        isbn: wikiVol.japaneseISBN,
+        format: 'physical',
+        language: 'ja',
+        volumeIds: [volume.id],
+        releaseDate: wikiVol.japaneseReleaseDate,
+      });
+    }
+    
+    if (wikiVol.englishISBN) {
+      editionInputs.push({
+        isbn: wikiVol.englishISBN,
+        format: 'physical',
+        language: 'en',
+        volumeIds: [volume.id],
+        releaseDate: wikiVol.englishReleaseDate,
+      });
+    }
+  }
+
+  const editions = await findOrCreateEditions(editionInputs);
+  await linkEditionsToVolumes(editions, volumes);
+
+  const englishEditionCount = editions.filter(e => e.language === 'en').length;
+  console.log(`[EntityIntegration] Created related series "${relatedSeries.title}" (${relatedSeries.relationship}) with ${volumes.length} volumes (${englishEditionCount} English editions)`);
   
   return { series: relatedSeries, volumes };
 }
@@ -207,7 +262,7 @@ async function createRelatedSeriesEntity(
  */
 export async function createEntitiesFromNCCardinal(
   seriesTitle: string,
-  volumes: Array<{
+  volumeData: Array<{
     volumeNumber: number;
     isbn?: string | undefined;
     title?: string | undefined;
@@ -221,38 +276,51 @@ export async function createEntitiesFromNCCardinal(
     status: 'unknown',
   });
 
-  // Create volumes for volumes with ISBNs
-  const volumeInputs: CreateVolumeInput[] = [];
-
-  for (const vol of volumes) {
-    const editions: Edition[] = [];
-    
-    if (vol.isbn) {
-      editions.push({
-        isbn: vol.isbn,
-        format: 'physical',
-        language: 'en',
-      });
-    }
-    
-    volumeInputs.push({
-      seriesId: series.id,
-      volumeNumber: vol.volumeNumber,
-      title: vol.title,
-      editions,
-    });
-  }
+  // First pass: Create volumes without edition links
+  const volumeInputs: CreateVolumeInput[] = volumeData.map(vol => ({
+    seriesId: series.id,
+    volumeNumber: vol.volumeNumber,
+    title: vol.title,
+    editionIds: [],
+  }));
 
   // Create/find volumes
-  const createdVolumes = await findOrCreateVolumes(volumeInputs);
-  const volumeIds = createdVolumes.map(v => v.id);
+  const volumes = await findOrCreateVolumes(volumeInputs);
+  const volumeIds = volumes.map(v => v.id);
 
   // Update series with volume IDs
   await updateSeriesVolumes(series.id, volumeIds);
 
-  console.log(`[EntityIntegration] Created/updated from NC Cardinal: Series "${series.title}" (${series.id}) with ${createdVolumes.length} volumes`);
+  // Second pass: Create editions for volumes with ISBNs
+  const volumeByNumber = new Map<number, Volume>();
+  for (const vol of volumes) {
+    volumeByNumber.set(vol.volumeNumber, vol);
+  }
 
-  return { series, volumes: createdVolumes };
+  const editionInputs: CreateEditionInput[] = [];
+  
+  for (const volData of volumeData) {
+    if (!volData.isbn) continue;
+    
+    const volume = volumeByNumber.get(volData.volumeNumber);
+    if (!volume) continue;
+
+    editionInputs.push({
+      isbn: volData.isbn,
+      format: 'physical',
+      language: 'en', // NC Cardinal only has English editions
+      volumeIds: [volume.id],
+    });
+  }
+
+  if (editionInputs.length > 0) {
+    const editions = await findOrCreateEditions(editionInputs);
+    await linkEditionsToVolumes(editions, volumes);
+  }
+
+  console.log(`[EntityIntegration] Created/updated from NC Cardinal: Series "${series.title}" (${series.id}) with ${volumes.length} volumes`);
+
+  return { series, volumes };
 }
 
 /**
@@ -271,13 +339,13 @@ export async function getSeriesEntity(idOrTitle: string): Promise<Series | null>
 }
 
 /**
- * Get volume by ISBN with its series (for route handlers)
+ * Get volume by ID with its series (for route handlers)
  */
-export async function getVolumeEntity(isbn: string): Promise<{
+export async function getVolumeEntity(volumeId: string): Promise<{
   volume: Volume;
   series: Series;
 } | null> {
-  return getVolumeWithSeries(isbn);
+  return getVolumeWithSeries(volumeId);
 }
 
 /**
@@ -285,6 +353,34 @@ export async function getVolumeEntity(isbn: string): Promise<{
  */
 export async function getSeriesVolumes(seriesId: string): Promise<Volume[]> {
   return getVolumesBySeriesId(seriesId);
+}
+
+/**
+ * Get editions for a volume as EditionData (embedded format for API responses)
+ */
+export async function getVolumeEditionData(volumeId: string): Promise<EditionData[]> {
+  const editions = await getEditionsByVolumeId(volumeId);
+  return editions.map(e => ({
+    isbn: e.isbn,
+    format: e.format,
+    language: e.language,
+    releaseDate: e.releaseDate,
+  }));
+}
+
+/**
+ * Resolve editions for multiple volumes efficiently
+ * Returns a map of volume ID -> EditionData[]
+ */
+export async function resolveEditionsForVolumes(volumeIds: string[]): Promise<Map<string, EditionData[]>> {
+  const result = new Map<string, EditionData[]>();
+  
+  for (const volumeId of volumeIds) {
+    const editionData = await getVolumeEditionData(volumeId);
+    result.set(volumeId, editionData);
+  }
+  
+  return result;
 }
 
 /**

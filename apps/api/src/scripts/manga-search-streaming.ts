@@ -32,8 +32,9 @@ import {
 import {
   createEntitiesFromWikipedia,
   createEntitiesFromNCCardinal,
+  getVolumeEditionData,
 } from '../entities/integration.js';
-import type { MediaType } from '../entities/types.js';
+import type { MediaType, EditionData, Volume as EntityVolume } from '../entities/types.js';
 
 // ============================================================================
 // Types
@@ -509,6 +510,27 @@ async function searchByISBNSingle(isbn: string): Promise<CatalogRecord | null> {
   return searchByISBN(isbn);
 }
 
+/**
+ * Resolve editions for a batch of entity volumes
+ */
+async function resolveEditionsForVolumes(volumes: EntityVolume[]): Promise<Map<string, EditionData[]>> {
+  const result = new Map<string, EditionData[]>();
+  
+  for (const vol of volumes) {
+    const editions = await getVolumeEditionData(vol.id);
+    result.set(vol.id, editions);
+  }
+  
+  return result;
+}
+
+/**
+ * Get the primary ISBN (first English physical) from resolved edition data
+ */
+function getPrimaryIsbn(editions: EditionData[]): string | undefined {
+  return editions.find(e => e.language === 'en' && e.format === 'physical')?.isbn;
+}
+
 async function buildSeriesResultFromWikipedia(
   wiki: WikiSeries,
   availability: Map<string, VolumeAvailability>,
@@ -518,6 +540,9 @@ async function buildSeriesResultFromWikipedia(
   // Create or update entities to get stable ID
   const { series: entity, volumes: entityVolumes } = await createEntitiesFromWikipedia(wiki);
   
+  // Resolve editions for all volumes
+  const editionsMap = await resolveEditionsForVolumes(entityVolumes);
+  
   let availableVolumes = 0;
   
   const firstVolumeIsbn = wiki.volumes[0]?.englishISBN;
@@ -525,7 +550,8 @@ async function buildSeriesResultFromWikipedia(
   const firstVolGoogleBooks = firstVolumeIsbn ? googleBooksUrls.get(firstVolumeIsbn) : undefined;
 
   const volumes: VolumeInfo[] = entityVolumes.map(vol => {
-    const primaryIsbn = vol.editions.find(e => e.language === 'en' && e.format === 'physical')?.isbn;
+    const editions = editionsMap.get(vol.id) ?? [];
+    const primaryIsbn = getPrimaryIsbn(editions);
     const volAvail = primaryIsbn ? availability.get(primaryIsbn) : undefined;
     if (volAvail?.available) {
       availableVolumes++;
@@ -536,7 +562,7 @@ async function buildSeriesResultFromWikipedia(
       id: vol.id,
       volumeNumber: vol.volumeNumber,
       title: vol.title,
-      editions: vol.editions,
+      editions,
       primaryIsbn,
       coverImage: getCoverImageUrl(primaryIsbn, bookcoverCover, googleBooksCover),
       availability: volAvail,

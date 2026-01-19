@@ -2,14 +2,15 @@
  * Volume entity operations
  */
 
-import type { Volume, Edition, CreateVolumeInput, Series } from './types.js';
+import type { Volume, CreateVolumeInput, Series } from './types.js';
 import {
-  getVolumeByIsbn,
   getVolumeBySeriesAndNumber,
+  getVolumeById,
   saveVolume,
   saveVolumes,
   getSeriesById,
   generateVolumeId,
+  addEditionToVolume,
 } from './store.js';
 
 /**
@@ -23,7 +24,7 @@ export async function createVolume(input: CreateVolumeInput): Promise<Volume> {
     seriesId: input.seriesId,
     volumeNumber: input.volumeNumber,
     title: input.title,
-    editions: input.editions,
+    editionIds: input.editionIds ?? [],
     createdAt: now,
     updatedAt: now,
   };
@@ -43,13 +44,19 @@ export async function findOrCreateVolume(input: CreateVolumeInput): Promise<Volu
   if (existing) {
     console.log(`[Volume] Found existing volume: ${existing.id} - Vol. ${existing.volumeNumber}`);
     
-    // Merge any new editions
-    const merged = mergeEditions(existing.editions, input.editions);
-    if (merged.length !== existing.editions.length) {
-      existing.editions = merged;
+    // Add any new edition IDs
+    let updated = false;
+    for (const editionId of input.editionIds ?? []) {
+      if (!existing.editionIds.includes(editionId)) {
+        existing.editionIds.push(editionId);
+        updated = true;
+      }
+    }
+    
+    if (updated) {
       existing.updatedAt = new Date().toISOString();
       await saveVolume(existing);
-      console.log(`[Volume] Merged editions for ${existing.id}: now has ${merged.length} editions`);
+      console.log(`[Volume] Updated edition links for ${existing.id}: now has ${existing.editionIds.length} editions`);
     }
     
     return existing;
@@ -69,12 +76,12 @@ export async function findOrCreateVolumes(inputs: CreateVolumeInput[]): Promise<
   for (const input of inputs) {
     const existing = await getVolumeBySeriesAndNumber(input.seriesId, input.volumeNumber);
     if (existing) {
-      // Merge any new editions
-      const merged = mergeEditions(existing.editions, input.editions);
-      if (merged.length !== existing.editions.length) {
-        existing.editions = merged;
-        existing.updatedAt = new Date().toISOString();
-        // Will be saved in batch below
+      // Add any new edition IDs
+      for (const editionId of input.editionIds ?? []) {
+        if (!existing.editionIds.includes(editionId)) {
+          existing.editionIds.push(editionId);
+          existing.updatedAt = new Date().toISOString();
+        }
       }
       results.push(existing);
     } else {
@@ -90,7 +97,7 @@ export async function findOrCreateVolumes(inputs: CreateVolumeInput[]): Promise<
       seriesId: input.seriesId,
       volumeNumber: input.volumeNumber,
       title: input.title,
-      editions: input.editions,
+      editionIds: input.editionIds ?? [],
       createdAt: now,
       updatedAt: now,
     }));
@@ -108,36 +115,28 @@ export async function findOrCreateVolumes(inputs: CreateVolumeInput[]): Promise<
 }
 
 /**
- * Merge editions, avoiding duplicates by ISBN
+ * Link an edition to a volume
  */
-export function mergeEditions(existing: Edition[], incoming: Edition[]): Edition[] {
-  const merged = [...existing];
-  
-  for (const edition of incoming) {
-    const exists = merged.some(e => e.isbn === edition.isbn);
-    if (!exists) {
-      merged.push(edition);
-    }
-  }
-  
-  return merged;
+export async function linkEditionToVolume(volumeId: string, editionId: string): Promise<void> {
+  await addEditionToVolume(volumeId, editionId);
+  console.log(`[Volume] Linked edition ${editionId} to volume ${volumeId}`);
 }
 
 /**
  * Get volume with its series info
  */
-export async function getVolumeWithSeries(isbn: string): Promise<{
+export async function getVolumeWithSeries(volumeId: string): Promise<{
   volume: Volume;
   series: Series;
 } | null> {
-  const volume = await getVolumeByIsbn(isbn);
+  const volume = await getVolumeById(volumeId);
   if (!volume) {
     return null;
   }
   
   const series = await getSeriesById(volume.seriesId);
   if (!series) {
-    console.warn(`[Volume] Volume ${isbn} has invalid seriesId: ${volume.seriesId}`);
+    console.warn(`[Volume] Volume ${volumeId} has invalid seriesId: ${volume.seriesId}`);
     return null;
   }
   

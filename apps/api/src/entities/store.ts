@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { nanoid } from 'nanoid';
-import type { EntityStore, Series, Volume } from './types.js';
+import type { EntityStore, Series, Volume, Edition } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, '../../.data');
@@ -23,6 +23,7 @@ function createEmptyStore(): EntityStore {
   return {
     series: {},
     volumes: {},
+    editions: {},
     isbnIndex: {},
     wikipediaIndex: {},
     titleIndex: {},
@@ -30,11 +31,14 @@ function createEmptyStore(): EntityStore {
 }
 
 /**
- * Normalize a title for index lookup
+ * Normalize a title for index lookup.
+ * Strips common suffixes like "(Manga)" and "(Light Novel)" to prevent duplicate series.
  */
 export function normalizeTitle(title: string): string {
   return title
     .toLowerCase()
+    .replace(/\s*\(manga\)\s*$/i, '')        // Strip (Manga) suffix
+    .replace(/\s*\(light novel\)\s*$/i, '')  // Strip (Light Novel) suffix
     .replace(/[^a-z0-9]/g, '')
     .trim();
 }
@@ -44,6 +48,13 @@ export function normalizeTitle(title: string): string {
  */
 export function generateVolumeId(): string {
   return `v_${nanoid(10)}`;
+}
+
+/**
+ * Generate a new edition ID
+ */
+export function generateEditionId(): string {
+  return `e_${nanoid(10)}`;
 }
 
 /**
@@ -71,6 +82,16 @@ export async function loadStore(): Promise<EntityStore> {
       return storeCache;
     }
     
+    // Check for old embedded-editions format (volumes have 'editions' array instead of 'editionIds')
+    // If so, start fresh - the new format uses Edition entities
+    const sampleVolume = Object.values(loaded.volumes ?? {})[0] as Record<string, unknown> | undefined;
+    if (sampleVolume && 'editions' in sampleVolume && !('editionIds' in sampleVolume)) {
+      console.warn('[EntityStore] Old embedded-editions format detected. Starting fresh with Edition entities.');
+      console.warn('[EntityStore] Delete .data/entities.json to clear this warning.');
+      storeCache = createEmptyStore();
+      return storeCache;
+    }
+    
     // Validate that loaded data has the required structure
     if (!loaded.series || !loaded.volumes) {
       console.warn('[EntityStore] Invalid store format detected. Starting fresh.');
@@ -80,8 +101,9 @@ export async function loadStore(): Promise<EntityStore> {
     
     storeCache = loaded as unknown as EntityStore;
     
-    // Ensure all required fields exist
+    // Ensure all required fields exist (backwards compatibility)
     storeCache.volumes = storeCache.volumes ?? {};
+    storeCache.editions = storeCache.editions ?? {};
     storeCache.isbnIndex = storeCache.isbnIndex ?? {};
     
     return storeCache;
@@ -112,6 +134,10 @@ export async function saveStore(): Promise<void> {
     throw error;
   }
 }
+
+// ============================================================================
+// Series functions
+// ============================================================================
 
 /**
  * Get a series by ID
@@ -165,7 +191,7 @@ export async function saveSeries(series: Series): Promise<void> {
 }
 
 // ============================================================================
-// Volume functions (replaces Book functions)
+// Volume functions
 // ============================================================================
 
 /**
@@ -174,16 +200,6 @@ export async function saveSeries(series: Series): Promise<void> {
 export async function getVolumeById(id: string): Promise<Volume | null> {
   const store = await loadStore();
   return store.volumes[id] ?? null;
-}
-
-/**
- * Get a volume by any of its ISBNs
- */
-export async function getVolumeByIsbn(isbn: string): Promise<Volume | null> {
-  const store = await loadStore();
-  const volumeId = store.isbnIndex[isbn];
-  if (!volumeId) return null;
-  return store.volumes[volumeId] ?? null;
 }
 
 /**
@@ -225,17 +241,11 @@ export async function getVolumesBySeriesId(seriesId: string): Promise<Volume[]> 
 }
 
 /**
- * Save a volume and update ISBN index
+ * Save a volume (no longer updates ISBN index - that's handled by editions now)
  */
 export async function saveVolume(volume: Volume): Promise<void> {
   const store = await loadStore();
   store.volumes[volume.id] = volume;
-  
-  // Update ISBN index for all editions
-  for (const edition of volume.editions) {
-    store.isbnIndex[edition.isbn] = volume.id;
-  }
-  
   await saveStore();
 }
 
@@ -246,11 +256,6 @@ export async function saveVolumes(volumes: Volume[]): Promise<void> {
   const store = await loadStore();
   for (const volume of volumes) {
     store.volumes[volume.id] = volume;
-    
-    // Update ISBN index for all editions
-    for (const edition of volume.editions) {
-      store.isbnIndex[edition.isbn] = volume.id;
-    }
   }
   await saveStore();
 }
@@ -273,6 +278,117 @@ export async function addVolumeToSeries(seriesId: string, volumeId: string): Pro
   }
 }
 
+// ============================================================================
+// Edition functions
+// ============================================================================
+
+/**
+ * Get an edition by its ID
+ */
+export async function getEditionById(id: string): Promise<Edition | null> {
+  const store = await loadStore();
+  return store.editions[id] ?? null;
+}
+
+/**
+ * Get an edition by ISBN
+ */
+export async function getEditionByIsbn(isbn: string): Promise<Edition | null> {
+  const store = await loadStore();
+  const editionId = store.isbnIndex[isbn];
+  if (!editionId) return null;
+  return store.editions[editionId] ?? null;
+}
+
+/**
+ * Get all editions for a volume
+ */
+export async function getEditionsByVolumeId(volumeId: string): Promise<Edition[]> {
+  const store = await loadStore();
+  const volume = store.volumes[volumeId];
+  
+  if (!volume) {
+    return [];
+  }
+  
+  return volume.editionIds
+    .map(id => store.editions[id])
+    .filter((edition): edition is Edition => edition !== undefined);
+}
+
+/**
+ * Get all editions that contain a specific volume ID
+ * (Useful for finding all editions that include a volume)
+ */
+export async function getEditionsContainingVolume(volumeId: string): Promise<Edition[]> {
+  const store = await loadStore();
+  return Object.values(store.editions).filter(edition => 
+    edition.volumeIds.includes(volumeId)
+  );
+}
+
+/**
+ * Save an edition and update ISBN index
+ */
+export async function saveEdition(edition: Edition): Promise<void> {
+  const store = await loadStore();
+  store.editions[edition.id] = edition;
+  store.isbnIndex[edition.isbn] = edition.id;
+  await saveStore();
+}
+
+/**
+ * Save multiple editions at once (more efficient)
+ */
+export async function saveEditions(editions: Edition[]): Promise<void> {
+  const store = await loadStore();
+  for (const edition of editions) {
+    store.editions[edition.id] = edition;
+    store.isbnIndex[edition.isbn] = edition.id;
+  }
+  await saveStore();
+}
+
+/**
+ * Add a volume to an edition (updates edition's volumeIds)
+ */
+export async function addVolumeToEdition(editionId: string, volumeId: string): Promise<void> {
+  const store = await loadStore();
+  const edition = store.editions[editionId];
+  
+  if (!edition) {
+    throw new Error(`Edition not found: ${editionId}`);
+  }
+  
+  if (!edition.volumeIds.includes(volumeId)) {
+    edition.volumeIds.push(volumeId);
+    edition.updatedAt = new Date().toISOString();
+    await saveStore();
+  }
+}
+
+/**
+ * Add an edition to a volume (updates volume's editionIds)
+ */
+export async function addEditionToVolume(volumeId: string, editionId: string): Promise<void> {
+  const store = await loadStore();
+  const volume = store.volumes[volumeId];
+  
+  if (!volume) {
+    throw new Error(`Volume not found: ${volumeId}`);
+  }
+  
+  if (!volume.editionIds.includes(editionId)) {
+    volume.editionIds.push(editionId);
+    volume.updatedAt = new Date().toISOString();
+    await saveStore();
+  }
+}
+
+// ============================================================================
+// Admin/Debug functions
+// ============================================================================
+
 /**
  * Get all series (for debugging/admin)
  */
@@ -287,6 +403,7 @@ export async function getAllSeries(): Promise<Series[]> {
 export async function getStoreStats(): Promise<{
   seriesCount: number;
   volumeCount: number;
+  editionCount: number;
   isbnIndexCount: number;
   wikipediaIndexCount: number;
   titleIndexCount: number;
@@ -295,6 +412,7 @@ export async function getStoreStats(): Promise<{
   return {
     seriesCount: Object.keys(store.series).length,
     volumeCount: Object.keys(store.volumes).length,
+    editionCount: Object.keys(store.editions).length,
     isbnIndexCount: Object.keys(store.isbnIndex).length,
     wikipediaIndexCount: Object.keys(store.wikipediaIndex).length,
     titleIndexCount: Object.keys(store.titleIndex).length,

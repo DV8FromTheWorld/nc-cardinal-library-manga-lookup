@@ -33,9 +33,10 @@ import {
   detectMediaType,
   getSeriesById,
   getVolumesBySeriesId,
+  getVolumeEditionData,
   type Series as EntitySeries,
   type Volume as EntityVolume,
-  type Edition,
+  type EditionData,
   type MediaType,
 } from '../entities/index.js';
 
@@ -134,7 +135,7 @@ export interface VolumeInfo {
   id: string;  // Volume entity ID (required)
   volumeNumber: number;
   title?: string | undefined;
-  editions: Edition[];  // All known editions (JP, EN digital, EN physical)
+  editions: EditionData[];  // All known editions (JP, EN digital, EN physical)
   primaryIsbn?: string | undefined;  // First English physical ISBN for library lookups
   coverImage?: string | undefined;
   availability?: VolumeAvailability | undefined;
@@ -572,7 +573,7 @@ async function buildSingleSeriesFromRecords(
   interface PreliminaryVolume {
     volumeNumber: number;
     title: string;
-    editions: Edition[];
+    editions: EditionData[];
     primaryIsbn: string | undefined;
     availability: VolumeAvailability | undefined;
   }
@@ -591,7 +592,7 @@ async function buildSingleSeriesFromRecords(
     }
     
     // Build editions array (NC Cardinal only knows about English physical)
-    const editions: Edition[] = isbn ? [{
+    const editions: EditionData[] = isbn ? [{
       isbn,
       format: 'physical',
       language: 'en',
@@ -738,6 +739,28 @@ function getCoverImageUrl(
   }
   
   return undefined;
+}
+
+/**
+ * Resolve editions for a batch of entity volumes
+ * Returns a map of volumeId -> EditionData[]
+ */
+async function resolveEditionsForVolumes(volumes: EntityVolume[]): Promise<Map<string, EditionData[]>> {
+  const result = new Map<string, EditionData[]>();
+  
+  for (const vol of volumes) {
+    const editions = await getVolumeEditionData(vol.id);
+    result.set(vol.id, editions);
+  }
+  
+  return result;
+}
+
+/**
+ * Get the primary ISBN (first English physical) from resolved edition data
+ */
+function getPrimaryIsbn(editions: EditionData[]): string | undefined {
+  return editions.find(e => e.language === 'en' && e.format === 'physical')?.isbn;
 }
 
 /**
@@ -1403,8 +1426,11 @@ export async function getSeriesDetails(
   // Get first volume's ISBN for cover image
   const firstVolumeIsbn = wikiSeries.volumes[0]?.englishISBN;
 
-  // Create/update entities - now returns volumes with editions
+  // Create/update entities - now returns volumes with edition references
   const { series: entity, volumes: entityVolumes } = await createEntitiesFromWikipedia(wikiSeries);
+
+  // Resolve editions for all volumes
+  const editionsMap = await resolveEditionsForVolumes(entityVolumes);
 
   // Get series cover from first volume
   const firstVolBookcover = firstVolumeIsbn ? bookcoverUrls.get(firstVolumeIsbn) : undefined;
@@ -1412,7 +1438,8 @@ export async function getSeriesDetails(
 
   // Build volume info with covers from Bookcover API, Google Books, or OpenLibrary fallback
   const volumes: VolumeInfo[] = entityVolumes.map(vol => {
-    const primaryIsbn = vol.editions.find(e => e.language === 'en' && e.format === 'physical')?.isbn;
+    const editions = editionsMap.get(vol.id) ?? [];
+    const primaryIsbn = getPrimaryIsbn(editions);
     const bookcoverCover = primaryIsbn ? bookcoverUrls.get(primaryIsbn) : undefined;
     const googleBooksCover = primaryIsbn ? googleBooksUrls.get(primaryIsbn) : undefined;
     
@@ -1420,7 +1447,7 @@ export async function getSeriesDetails(
       id: vol.id,
       volumeNumber: vol.volumeNumber,
       title: vol.title,
-      editions: vol.editions,
+      editions,
       primaryIsbn,
       coverImage: getCoverImageUrl(primaryIsbn, bookcoverCover, googleBooksCover),
       availability: primaryIsbn ? availability.get(primaryIsbn) : undefined,
@@ -1485,11 +1512,18 @@ async function getSeriesDetailsFromEntity(
   
   debug.sources.push('entity-store');
   
+  // Resolve editions for all volumes
+  const editionsMap = await resolveEditionsForVolumes(entityVolumes);
+  
   // Collect English physical ISBNs for availability lookup
-  const isbns = entityVolumes
-    .flatMap(v => v.editions)
-    .filter(e => e.language === 'en' && e.format === 'physical')
-    .map(e => e.isbn);
+  const isbns: string[] = [];
+  for (const editions of editionsMap.values()) {
+    for (const e of editions) {
+      if (e.language === 'en' && e.format === 'physical') {
+        isbns.push(e.isbn);
+      }
+    }
+  }
   
   // Fetch availability and covers
   console.log(`[MangaSearch] Loading from entity: ${entity.title} (${entityVolumes.length} volumes, ${isbns.length} with English ISBNs)`);
@@ -1518,14 +1552,15 @@ async function getSeriesDetailsFromEntity(
   // Build volume info from entity volumes
   const sortedVolumes = [...entityVolumes].sort((a, b) => a.volumeNumber - b.volumeNumber);
   const volumes: VolumeInfo[] = sortedVolumes.map(vol => {
-    const primaryIsbn = vol.editions.find(e => e.language === 'en' && e.format === 'physical')?.isbn;
+    const editions = editionsMap.get(vol.id) ?? [];
+    const primaryIsbn = getPrimaryIsbn(editions);
     const bookcoverCover = primaryIsbn ? bookcoverUrls.get(primaryIsbn) : undefined;
     const googleBooksCover = primaryIsbn ? googleBooksUrls.get(primaryIsbn) : undefined;
     return {
       id: vol.id,
       volumeNumber: vol.volumeNumber,
       title: vol.title,
-      editions: vol.editions,
+      editions,
       primaryIsbn,
       coverImage: getCoverImageUrl(primaryIsbn, bookcoverCover, googleBooksCover),
       availability: primaryIsbn ? availability.get(primaryIsbn) : undefined,
@@ -1581,8 +1616,11 @@ async function buildSeriesResultFromWikipedia(
 ): Promise<SeriesResult> {
   let availableVolumes = 0;
   
-  // Create/update entities - now returns volumes with editions
+  // Create/update entities - now returns volumes with edition references
   const { series: entity, volumes: entityVolumes } = await createEntitiesFromWikipedia(wiki);
+  
+  // Resolve editions for all volumes
+  const editionsMap = await resolveEditionsForVolumes(entityVolumes);
   
   // Get first volume's English ISBN for cover image
   const firstVolumeIsbn = wiki.volumes[0]?.englishISBN;
@@ -1591,8 +1629,9 @@ async function buildSeriesResultFromWikipedia(
 
   // Build VolumeInfo from entity volumes (includes all volumes, even Japan-only)
   const volumes: VolumeInfo[] = entityVolumes.map(vol => {
+    const editions = editionsMap.get(vol.id) ?? [];
     // Find primary English physical ISBN for library lookup
-    const primaryIsbn = vol.editions.find(e => e.language === 'en' && e.format === 'physical')?.isbn;
+    const primaryIsbn = getPrimaryIsbn(editions);
     const volAvail = primaryIsbn ? availability.get(primaryIsbn) : undefined;
     if (volAvail?.available) {
       availableVolumes++;
@@ -1603,7 +1642,7 @@ async function buildSeriesResultFromWikipedia(
       id: vol.id,
       volumeNumber: vol.volumeNumber,
       title: vol.title,
-      editions: vol.editions,
+      editions,
       primaryIsbn,
       coverImage: getCoverImageUrl(primaryIsbn, bookcoverCover, googleBooksCover),
       availability: volAvail,
@@ -1671,16 +1710,54 @@ export async function buildRelatedSeriesResult(
   // If no entity volumes exist, create them from related.volumes
   if (entityVolumes.length === 0 && related.volumes.length > 0) {
     const { findOrCreateVolumes } = await import('../entities/volumes.js');
+    const { findOrCreateEditions } = await import('../entities/editions.js');
+    
+    // First create volumes without edition links
     entityVolumes = await findOrCreateVolumes(related.volumes.map(vol => ({
       seriesId: entity.id,
       volumeNumber: vol.volumeNumber,
       title: vol.title,
-      editions: [
-        ...(vol.japaneseISBN ? [{ isbn: vol.japaneseISBN, format: 'physical' as const, language: 'ja' as const, releaseDate: vol.japaneseReleaseDate }] : []),
-        ...(vol.englishISBN ? [{ isbn: vol.englishISBN, format: 'physical' as const, language: 'en' as const, releaseDate: vol.englishReleaseDate }] : []),
-      ],
+      editionIds: [],
     })));
+    
+    // Build a map of volume number -> volume ID for linking
+    const volumeByNumber = new Map<number, string>();
+    for (const vol of entityVolumes) {
+      volumeByNumber.set(vol.volumeNumber, vol.id);
+    }
+    
+    // Create editions and link them to volumes
+    const editionInputs: Array<{isbn: string; format: 'physical'; language: 'ja' | 'en'; volumeIds: string[]; releaseDate?: string}> = [];
+    for (const relVol of related.volumes) {
+      const volumeId = volumeByNumber.get(relVol.volumeNumber);
+      if (!volumeId) continue;
+      
+      if (relVol.japaneseISBN) {
+        editionInputs.push({ isbn: relVol.japaneseISBN, format: 'physical', language: 'ja', volumeIds: [volumeId], releaseDate: relVol.japaneseReleaseDate });
+      }
+      if (relVol.englishISBN) {
+        editionInputs.push({ isbn: relVol.englishISBN, format: 'physical', language: 'en', volumeIds: [volumeId], releaseDate: relVol.englishReleaseDate });
+      }
+    }
+    
+    if (editionInputs.length > 0) {
+      const editions = await findOrCreateEditions(editionInputs);
+      // Link editions back to volumes
+      const { saveVolumes } = await import('../entities/store.js');
+      for (const edition of editions) {
+        for (const volumeId of edition.volumeIds) {
+          const vol = entityVolumes.find(v => v.id === volumeId);
+          if (vol && !vol.editionIds.includes(edition.id)) {
+            vol.editionIds.push(edition.id);
+          }
+        }
+      }
+      await saveVolumes(entityVolumes);
+    }
   }
+  
+  // Resolve editions for all volumes
+  const editionsMap = await resolveEditionsForVolumes(entityVolumes);
   
   // Get first volume's ISBN for cover image
   const firstVolumeIsbn = related.volumes[0]?.englishISBN;
@@ -1689,7 +1766,8 @@ export async function buildRelatedSeriesResult(
 
   // Build VolumeInfo from entity volumes
   const volumes: VolumeInfo[] = entityVolumes.map(vol => {
-    const primaryIsbn = vol.editions.find(e => e.language === 'en' && e.format === 'physical')?.isbn;
+    const editions = editionsMap.get(vol.id) ?? [];
+    const primaryIsbn = getPrimaryIsbn(editions);
     const volAvail = primaryIsbn ? availability.get(primaryIsbn) : undefined;
     if (volAvail?.available) {
       availableVolumes++;
@@ -1700,7 +1778,7 @@ export async function buildRelatedSeriesResult(
       id: vol.id,
       volumeNumber: vol.volumeNumber,
       title: vol.title,
-      editions: vol.editions,
+      editions,
       primaryIsbn,
       coverImage: getCoverImageUrl(primaryIsbn, bookcoverCover, googleBooksCover),
       availability: volAvail,

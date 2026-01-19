@@ -58,6 +58,7 @@ import {
   getVolumeById,
   getSeriesById,
   getVolumesBySeriesId,
+  getVolumeEditionData,
 } from '../entities/index.js';
 
 import {
@@ -1262,9 +1263,12 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
           });
         }
 
+        // Resolve editions for this volume
+        const editions = await getVolumeEditionData(volume.id);
+
         // Find the primary ISBN (first English physical edition)
-        const englishPhysical = volume.editions.find(e => e.language === 'en' && e.format === 'physical');
-        const englishDigital = volume.editions.find(e => e.language === 'en' && e.format === 'digital');
+        const englishPhysical = editions.find(e => e.language === 'en' && e.format === 'physical');
+        const englishDigital = editions.find(e => e.language === 'en' && e.format === 'digital');
         const primaryIsbn = englishPhysical?.isbn ?? englishDigital?.isbn;
 
         // Build the volume title
@@ -1278,7 +1282,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
             id: volume.id,
             title: volumeTitle,
             authors: series.author ? [series.author] : [],
-            isbns: volume.editions.map(e => e.isbn),
+            isbns: editions.map(e => e.isbn),
             subjects: [],
             coverImage: undefined,
             holdings: [],
@@ -1341,8 +1345,9 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
             // Try to get the comparison volume's description
             let compareDescription: string | null = null;
             if (compareVolume) {
-              const compareIsbn = compareVolume.editions.find(e => e.language === 'en' && e.format === 'physical')?.isbn
-                ?? compareVolume.editions.find(e => e.language === 'en' && e.format === 'digital')?.isbn;
+              const compareEditions = await getVolumeEditionData(compareVolume.id);
+              const compareIsbn = compareEditions.find(e => e.language === 'en' && e.format === 'physical')?.isbn
+                ?? compareEditions.find(e => e.language === 'en' && e.format === 'digital')?.isbn;
               
               if (compareIsbn) {
                 compareDescription = await getDescriptionByISBN(compareIsbn);
@@ -1386,7 +1391,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
             id: volume.id,
             title: volumeTitle,
             authors: series.author ? [series.author] : [],
-            isbns: volume.editions.map(e => e.isbn),
+            isbns: editions.map(e => e.isbn),
             subjects: [],
             summary: volumeDescription,
             coverImage,
@@ -1415,7 +1420,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
           id: volume.id,
           title: volumeTitle,
           authors: record.authors,
-          isbns: [...new Set([...volume.editions.map(e => e.isbn), ...record.isbns])],
+          isbns: [...new Set([...editions.map(e => e.isbn), ...record.isbns])],
           subjects: record.subjects,
           summary: volumeDescription,
           coverImage,

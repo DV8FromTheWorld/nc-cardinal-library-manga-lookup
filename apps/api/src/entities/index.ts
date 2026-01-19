@@ -1,8 +1,9 @@
 /**
  * Entity data layer
  * 
- * This module provides stable IDs for series and volumes, persisted to disk.
- * Series get generated IDs, volumes get generated IDs with ISBN index for lookups.
+ * This module provides stable IDs for series, volumes, and editions, persisted to disk.
+ * Series, volumes, and editions all get generated IDs.
+ * ISBN index maps to Edition IDs for lookups.
  */
 
 // Types
@@ -14,11 +15,13 @@ export type {
   EditionFormat,
   EditionLanguage,
   Edition,
+  EditionData,
   Series,
   Volume,
   EntityStore,
   CreateSeriesInput,
   CreateVolumeInput,
+  CreateEditionInput,
 } from './types.js';
 
 // Store operations
@@ -27,17 +30,25 @@ export {
   saveStore,
   normalizeTitle,
   generateVolumeId,
+  generateEditionId,
   getSeriesById,
   getSeriesByWikipediaId,
   getSeriesByTitle,
   saveSeries,
   getVolumeById,
-  getVolumeByIsbn,
   getVolumeBySeriesAndNumber,
   getVolumesBySeriesId,
   saveVolume,
   saveVolumes,
   addVolumeToSeries,
+  getEditionById,
+  getEditionByIsbn,
+  getEditionsByVolumeId,
+  getEditionsContainingVolume,
+  saveEdition,
+  saveEditions,
+  addVolumeToEdition,
+  addEditionToVolume,
   getAllSeries,
   getStoreStats,
   clearCache,
@@ -58,9 +69,17 @@ export {
   createVolume,
   findOrCreateVolume,
   findOrCreateVolumes,
+  linkEditionToVolume,
   getVolumeWithSeries,
-  mergeEditions,
 } from './volumes.js';
+
+// Edition operations
+export {
+  createEdition,
+  findOrCreateEdition,
+  findOrCreateEditions,
+  linkVolumeToEdition,
+} from './editions.js';
 
 // Integration with existing services
 export {
@@ -69,5 +88,7 @@ export {
   getSeriesEntity,
   getVolumeEntity,
   getSeriesVolumes,
+  getVolumeEditionData,
+  resolveEditionsForVolumes,
   hasSeriesEntity,
 } from './integration.js';

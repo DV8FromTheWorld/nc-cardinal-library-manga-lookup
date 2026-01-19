@@ -2,7 +2,8 @@
  * Entity types for the manga data layer
  * 
  * These entities provide stable IDs that persist across data source updates.
- * Series get generated IDs, volumes get generated IDs with ISBN index for lookups.
+ * Series get generated IDs, volumes get generated IDs, editions get generated IDs.
+ * ISBN index maps to Edition IDs for lookups.
  */
 
 export type MediaType = 'manga' | 'light_novel' | 'artbook' | 'guidebook' | 'unknown';
@@ -28,10 +29,10 @@ export interface SeriesExternalIds {
 }
 
 /**
- * A specific published edition of a volume.
- * Each format/language combination gets its own ISBN.
+ * Edition data structure for API responses (embedded, not an entity).
+ * Used when returning edition info without the full entity structure.
  */
-export interface Edition {
+export interface EditionData {
   /** ISBN-13 for this edition */
   isbn: string;
   
@@ -41,8 +42,42 @@ export interface Edition {
   /** Language of this edition */
   language: EditionLanguage;
   
-  /** Release date (ISO format) */
+  /** Release date (ISO format or free text from Wikipedia) */
   releaseDate?: string | undefined;
+}
+
+/**
+ * An Edition entity - a specific published product (book) with an ISBN.
+ * Can contain content from one or more volumes (e.g., omnibus editions).
+ */
+export interface Edition {
+  /** Generated ID: "e_abc123" */
+  id: string;
+  
+  /** ISBN-13 for this edition */
+  isbn: string;
+  
+  /** Physical book or ebook */
+  format: EditionFormat;
+  
+  /** Language of this edition */
+  language: EditionLanguage;
+  
+  /** 
+   * Volume IDs that this edition contains.
+   * Single volume: ["v_abc"]
+   * Omnibus (2-in-1): ["v_abc", "v_def"]
+   */
+  volumeIds: string[];
+  
+  /** Release date (ISO format or free text from Wikipedia) */
+  releaseDate?: string | undefined;
+  
+  /** ISO timestamp when entity was created */
+  createdAt: string;
+  
+  /** ISO timestamp when entity was last updated */
+  updatedAt: string;
 }
 
 /**
@@ -112,11 +147,11 @@ export interface Volume {
   title?: string | undefined;
   
   /** 
-   * All known editions of this volume.
+   * Edition IDs that include this volume.
+   * References Edition entities by ID.
    * Can be empty (Japan-only, no ISBN known yet).
-   * Can have 1-4+ entries (JP digital, JP physical, EN digital, EN physical).
    */
-  editions: Edition[];
+  editionIds: string[];
   
   /** ISO timestamp when entity was created */
   createdAt: string;
@@ -135,9 +170,12 @@ export interface EntityStore {
   /** All volumes, keyed by volume ID */
   volumes: Record<string, Volume>;
   
+  /** All editions, keyed by edition ID */
+  editions: Record<string, Edition>;
+  
   /** 
-   * Index from ISBN to Volume ID.
-   * Allows lookups like "given ISBN 978-xxx, which volume is this?"
+   * Index from ISBN to Edition ID.
+   * Allows lookups like "given ISBN 978-xxx, which edition is this?"
    */
   isbnIndex: Record<string, string>;
   
@@ -172,5 +210,18 @@ export interface CreateVolumeInput {
   seriesId: string;
   volumeNumber: number;
   title?: string | undefined;
-  editions: Edition[];
+  /** Edition IDs to link to this volume */
+  editionIds?: string[] | undefined;
+}
+
+/**
+ * Input for creating a new edition (without auto-generated fields)
+ */
+export interface CreateEditionInput {
+  isbn: string;
+  format: EditionFormat;
+  language: EditionLanguage;
+  /** Volume IDs that this edition contains */
+  volumeIds: string[];
+  releaseDate?: string | undefined;
 }
