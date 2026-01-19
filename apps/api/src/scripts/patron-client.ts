@@ -15,7 +15,7 @@
 import * as cheerio from 'cheerio';
 
 const BASE_URL =
-  process.env.NC_CARDINAL_BASE_URL || 'https://nccardinal.org';
+  process.env.NC_CARDINAL_BASE_URL ?? 'https://nccardinal.org';
 
 // ============================================================================
 // Types
@@ -126,13 +126,13 @@ function parseCookiesFromHeaders(headers: Headers, jar: CookieJar): void {
   for (const cookie of setCookies) {
     const [nameValue] = cookie.split(';');
     const [name, value] = nameValue?.split('=') ?? [];
-    if (name && value) {
+    if (name != null && name !== '' && value != null && value !== '') {
       jar.cookies.set(name.trim(), value.trim());
     }
   }
 }
 
-function getCookieHeader(jar: CookieJar): string {
+function _getCookieHeader(jar: CookieJar): string {
   return Array.from(jar.cookies.entries())
     .map(([name, value]) => `${name}=${value}`)
     .join('; ');
@@ -163,20 +163,20 @@ async function fetchDisplayName(sessionToken: string): Promise<string | null> {
     
     // Try to find the name in the patron summary section
     const patronName = $('#patron_name').text().trim();
-    if (patronName) return patronName;
+    if (patronName !== '') return patronName;
 
     // Try the welcome text pattern
     const welcomeText = $('*:contains("Welcome,")').last().text();
     const welcomeMatch = welcomeText.match(/Welcome,?\s+([^!.\n]+)/i);
-    if (welcomeMatch?.[1]) return welcomeMatch[1].trim();
+    if (welcomeMatch?.[1] != null) return welcomeMatch[1].trim();
 
     // Try the account header
     const headerName = $('.patron-name, .account-name, #acct_name').first().text().trim();
-    if (headerName) return headerName;
+    if (headerName !== '') return headerName;
 
     // Try looking in dash_user or patron info sections
     const dashUser = $('#dash_user').text().trim();
-    if (dashUser) return dashUser;
+    if (dashUser !== '') return dashUser;
 
     return null;
   } catch {
@@ -218,7 +218,7 @@ export async function login(
     const sessionToken = jar.cookies.get('ses');
     const loggedIn = jar.cookies.get('eg_loggedin') === '1';
 
-    if (!sessionToken || !loggedIn) {
+    if (sessionToken == null || loggedIn !== true) {
       // Try to detect error message from response
       const text = await response.text();
       if (text.includes('Login failed') || text.includes('Invalid')) {
@@ -247,7 +247,7 @@ export async function login(
     // Fetch user's display name from account page
     try {
       const displayName = await fetchDisplayName(sessionToken);
-      if (displayName) {
+      if (displayName != null) {
         session.displayName = displayName;
         storeSession(sessionId, session);
       }
@@ -299,9 +299,9 @@ export async function logout(sessionId: string): Promise<boolean> {
  */
 export function isSessionValid(sessionId: string): boolean {
   const session = getSession(sessionId);
-  if (!session) return false;
-  if (!session.loggedIn) return false;
-  if (session.expiresAt && Date.now() > session.expiresAt) return false;
+  if (session == null) return false;
+  if (session.loggedIn !== true) return false;
+  if (session.expiresAt != null && Date.now() > session.expiresAt) return false;
   return true;
 }
 
@@ -375,14 +375,15 @@ function parseCheckoutsPage(html: string): PatronCheckouts {
     const recordMatch = recordHref.match(/\/eg\/opac\/record\/(\d+)/);
     const recordId = recordMatch?.[1] ?? '';
 
-    if (!recordId) return;
+    if (recordId === '') return;
 
     // Extract title - it's in the record link
     const title = recordLink.text().trim();
 
     // Extract author - typically in a separate link with author query
     const authorLink = $row.find('a[href*="qtype=author"]').first();
-    const author = authorLink.text().trim() || undefined;
+    const authorText = authorLink.text().trim();
+    const author = authorText !== '' ? authorText : undefined;
 
     // Extract due date - look for date pattern
     let dueDate = '';
@@ -391,7 +392,7 @@ function parseCheckoutsPage(html: string): PatronCheckouts {
       const text = $(td).text().trim();
       // Match date patterns like "01/15/2026" or "January 15, 2026"
       const dateMatch = text.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
-      if (dateMatch) {
+      if (dateMatch != null && dateMatch[1] != null) {
         dueDate = dateMatch[1];
         // Check if overdue
         overdue = $(td).hasClass('overdue') || text.toLowerCase().includes('overdue');
@@ -413,7 +414,7 @@ function parseCheckoutsPage(html: string): PatronCheckouts {
     $row.find('td').each((_, td) => {
       const text = $(td).text().trim();
       // Call numbers often contain letters and numbers like "FIC Braun" or "GN/YA/Demon"
-      if (text.match(/^[A-Z]{2,}[\s\/]/) || text.match(/^[\d\.]+\s+[A-Z]/)) {
+      if (text.match(/^[A-Z]{2,}[\s/]/) != null || text.match(/^[\d.]+\s+[A-Z]/) != null) {
         callNumber = text;
       }
     });
@@ -433,9 +434,9 @@ function parseCheckoutsPage(html: string): PatronCheckouts {
   // Get total count from the dashboard if available
   let totalCount = items.length;
   const dashText = $('#dash_checked').text().trim();
-  if (dashText) {
+  if (dashText !== '') {
     const dashCount = parseInt(dashText, 10);
-    if (!isNaN(dashCount)) {
+    if (!Number.isNaN(dashCount)) {
       totalCount = dashCount;
     }
   }
@@ -504,14 +505,15 @@ function parseHistoryPage(
     const recordMatch = recordHref.match(/\/eg\/opac\/record\/(\d+)/);
     const recordId = recordMatch?.[1] ?? '';
 
-    if (!recordId) return;
+    if (recordId === '') return;
 
     // Extract title
     const title = recordLink.text().trim();
 
     // Extract author
     const authorLink = $row.find('a[href*="qtype=author"]').first();
-    const author = authorLink.text().trim() || undefined;
+    const histAuthorText = authorLink.text().trim();
+    const author = histAuthorText !== '' ? histAuthorText : undefined;
 
     // Extract dates from cells
     const tds = $row.find('td');
@@ -519,16 +521,16 @@ function parseHistoryPage(
     let dueDate = '';
     let returnDate: string | undefined;
 
-    tds.each((i, td) => {
+    tds.each((_i, td) => {
       const text = $(td).text().trim();
       const dateMatch = text.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
-      if (dateMatch) {
+      if (dateMatch != null && dateMatch[1] != null) {
         // Dates are typically in order: checkout, due, return
-        if (!checkoutDate) {
+        if (checkoutDate === '') {
           checkoutDate = dateMatch[1];
-        } else if (!dueDate) {
+        } else if (dueDate === '') {
           dueDate = dateMatch[1];
-        } else if (!returnDate) {
+        } else if (returnDate == null) {
           returnDate = dateMatch[1];
         }
       }
@@ -547,7 +549,7 @@ function parseHistoryPage(
     let callNumber: string | undefined;
     tds.each((_, td) => {
       const text = $(td).text().trim();
-      if (text.match(/^[A-Z]{2,}[\s\/]/) || text.match(/^[\d\.]+\s+[A-Z]/)) {
+      if (text.match(/^[A-Z]{2,}[\s/]/) != null || text.match(/^[\d.]+\s+[A-Z]/) != null) {
         callNumber = text;
       }
     });
@@ -567,7 +569,7 @@ function parseHistoryPage(
 
   // Check for pagination - look for next page link
   const hasMore = $('a[href*="circ_history?"]')
-    .filter((_, el) => $(el).text().includes('Next') || $(el).attr('href')?.includes(`offset=${offset + limit}`))
+    .filter((_, el) => $(el).text().includes('Next') || ($(el).attr('href')?.includes(`offset=${offset + limit}`) === true))
     .length > 0;
 
   return {
@@ -599,7 +601,10 @@ export async function isHistoryEnabled(sessionId: string): Promise<boolean> {
   const checkbox = $('input#history\\.circ\\.retention_start');
   
   // Check if the checkbox has a 'checked' attribute
-  return checkbox.attr('checked') !== undefined || checkbox.prop('checked') === true;
+  const checkedAttr = checkbox.attr('checked');
+  const checkedProp = checkbox.prop('checked');
+  // Cheerio's .prop() returns string | undefined for attributes like 'checked'
+  return checkedAttr !== undefined || checkedProp === 'checked' || checkedProp === '';
 }
 
 // ============================================================================
@@ -651,11 +656,12 @@ function parseHoldsPage(html: string): { items: HoldItem[]; totalCount: number }
     const recordMatch = recordHref.match(/\/eg\/opac\/record\/(\d+)/);
     const recordId = recordMatch?.[1] ?? '';
 
-    if (!recordId) return;
+    if (recordId === '') return;
 
     const title = recordLink.text().trim();
     const authorLink = $row.find('a[href*="qtype=author"]').first();
-    const author = authorLink.text().trim() || undefined;
+    const holdAuthorText = authorLink.text().trim();
+    const author = holdAuthorText !== '' ? holdAuthorText : undefined;
 
     // Extract status and other details
     let status = '';
@@ -668,18 +674,18 @@ function parseHoldsPage(html: string): { items: HoldItem[]; totalCount: number }
       
       // Hold date
       const dateMatch = text.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
-      if (dateMatch && !holdDate) {
+      if (dateMatch != null && dateMatch[1] != null && holdDate === '') {
         holdDate = dateMatch[1];
       }
 
       // Position in queue
       const posMatch = text.match(/Position:\s*(\d+)/i);
-      if (posMatch) {
+      if (posMatch != null && posMatch[1] != null) {
         position = parseInt(posMatch[1], 10);
       }
 
       // Status (e.g., "Waiting", "Ready for Pickup", "In Transit")
-      if (text.match(/^(Waiting|Ready|In Transit|Suspended)/i)) {
+      if (text.match(/^(Waiting|Ready|In Transit|Suspended)/i) != null) {
         status = text;
       }
     });
@@ -698,9 +704,9 @@ function parseHoldsPage(html: string): { items: HoldItem[]; totalCount: number }
 
   let totalCount = items.length;
   const dashText = $('#dash_holds').text().trim();
-  if (dashText) {
+  if (dashText !== '') {
     const dashCount = parseInt(dashText, 10);
-    if (!isNaN(dashCount)) {
+    if (!Number.isNaN(dashCount)) {
       totalCount = dashCount;
     }
   }
@@ -741,10 +747,10 @@ export async function enrichCheckoutsWithISBNs(
         const text = $(td).text();
         // Match ISBN-10 or ISBN-13 patterns
         const isbnMatches = text.match(/(?:ISBN[:\s]*)?(\d{10}|\d{13})/gi);
-        if (isbnMatches) {
+        if (isbnMatches != null) {
           for (const match of isbnMatches) {
             const isbn = match.replace(/ISBN[:\s]*/i, '').trim();
-            if (isbn && !isbns.includes(isbn)) {
+            if (isbn !== '' && !isbns.includes(isbn)) {
               isbns.push(isbn);
             }
           }

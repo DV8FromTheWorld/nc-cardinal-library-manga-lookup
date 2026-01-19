@@ -20,9 +20,9 @@ import * as anilist from './anilist-client.js';
 import * as opensearch from './opensearch-client.js';
 
 // Try to import librarything (may fail if API key not set)
-let librarything: typeof import('./librarything-client.js') | null = null;
+let _librarything: typeof import('./librarything-client.js') | null = null;
 try {
-  librarything = await import('./librarything-client.js');
+  _librarything = await import('./librarything-client.js');
 } catch {
   console.warn('⚠️  LibraryThing client not available (missing API key?)');
 }
@@ -172,7 +172,7 @@ export async function searchManga(
     const matchedSeries = findMatchingSeries(record.title, series);
     
     // Get volume number from MARC data first, then try extracting from title
-    let volumeNumber = record.volumeNumber ? parseInt(record.volumeNumber, 10) : null;
+    let volumeNumber = record.volumeNumber != null ? parseInt(record.volumeNumber, 10) : null;
     if (volumeNumber === null || isNaN(volumeNumber)) {
       volumeNumber = extractVolumeNumber(record.title);
     }
@@ -270,7 +270,7 @@ export async function getSeriesBooks(
 
   for (const record of ncResults.records) {
     // Get volume number from MARC data first, then try extracting from title
-    let volNum = record.volumeNumber ? parseInt(record.volumeNumber, 10) : null;
+    let volNum = record.volumeNumber != null ? parseInt(record.volumeNumber, 10) : null;
     if (volNum === null || isNaN(volNum)) {
       volNum = extractVolumeNumber(record.title);
     }
@@ -317,7 +317,7 @@ export async function getSeriesBooks(
 
   // Calculate missing volumes
   const missingVolumes: number[] = [];
-  if (seriesInfo.volumes) {
+  if (seriesInfo.volumes != null && seriesInfo.volumes > 0) {
     const foundVolumes = new Set(volumes.map((v) => v.volumeNumber));
     for (let i = 1; i <= seriesInfo.volumes; i++) {
       if (!foundVolumes.has(i)) {
@@ -398,7 +398,7 @@ function extractVolumeNumber(title: string): number | null {
 
   for (const pattern of patterns) {
     const match = title.match(pattern);
-    if (match && match[1]) {
+    if (match != null && match[1] != null) {
       return parseInt(match[1], 10);
     }
   }
@@ -468,8 +468,8 @@ async function main() {
 
     console.log('\nBooks in NC Cardinal:');
     for (const book of searchResults.books.slice(0, 5)) {
-      const seriesInfo = book.series ? ` (${book.series.name})` : '';
-      const volInfo = book.volumeNumber ? `Vol ${book.volumeNumber}` : '';
+      const seriesInfo = book.series != null ? ` (${book.series.name})` : '';
+      const volInfo = book.volumeNumber != null ? `Vol ${book.volumeNumber}` : '';
       console.log(`  📖 ${book.title}`);
       console.log(`    ${volInfo}${seriesInfo}`);
       if (book.availability) {

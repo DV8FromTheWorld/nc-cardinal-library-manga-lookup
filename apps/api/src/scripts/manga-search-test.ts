@@ -12,8 +12,6 @@ import {
   search,
   getSeriesDetails,
   parseQuery,
-  type SearchResult,
-  type SeriesDetails,
 } from './manga-search.js';
 
 // ============================================================================
@@ -49,7 +47,7 @@ async function runTest(test: TestCase): Promise<{ passed: boolean; message: stri
     }
 
     // Check series title
-    if (test.expected.seriesTitle) {
+    if (test.expected.seriesTitle != null) {
       const title = result.series[0]?.title?.toLowerCase() ?? '';
       const expectedTitle = test.expected.seriesTitle.toLowerCase();
       if (!title.includes(expectedTitle)) {
@@ -271,11 +269,11 @@ async function testSeriesDetails(): Promise<void> {
 
       const checks: string[] = [];
       
-      if (test.expectedVolumes && details.totalVolumes !== test.expectedVolumes) {
+      if (test.expectedVolumes != null && details.totalVolumes !== test.expectedVolumes) {
         checks.push(`volumes: expected ${test.expectedVolumes}, got ${details.totalVolumes}`);
       }
       
-      if (test.minVolumes && details.totalVolumes < test.minVolumes) {
+      if (test.minVolumes != null && details.totalVolumes < test.minVolumes) {
         checks.push(`volumes: expected >= ${test.minVolumes}, got ${details.totalVolumes}`);
       }
 

@@ -13,7 +13,7 @@
 import * as cheerio from 'cheerio';
 
 const BASE_URL =
-  process.env.NC_CARDINAL_BASE_URL || 'https://highpoint.nccardinal.org';
+  process.env.NC_CARDINAL_BASE_URL ?? 'https://highpoint.nccardinal.org';
 
 // Known library organization IDs (locg parameter)
 // These will need to be discovered/verified
@@ -89,7 +89,7 @@ export function parseMARCXML(xml: string): MARCRecord | null {
   const $ = cheerio.load(xml, { xmlMode: true });
 
   const record = $('record').first();
-  if (!record.length) {
+  if (record.length === 0) {
     return null;
   }
 
@@ -106,31 +106,31 @@ export function parseMARCXML(xml: string): MARCRecord | null {
   const isbns: string[] = [];
   record.find('datafield[tag="020"] subfield[code="a"]').each((_, el) => {
     const isbn = $(el).text().trim().split(' ')[0]; // Often has qualifiers after ISBN
-    if (isbn) isbns.push(isbn);
+    if (isbn !== '' && isbn != null) isbns.push(isbn);
   });
 
   // 490 - Series Statement
   const series = record.find('datafield[tag="490"] subfield[code="a"]').text().trim();
 
   // 260/264 - Publication info
-  const publicationInfo =
-    record.find('datafield[tag="264"] subfield[code="c"]').text().trim() ||
-    record.find('datafield[tag="260"] subfield[code="c"]').text().trim();
+  const pub264 = record.find('datafield[tag="264"] subfield[code="c"]').text().trim();
+  const pub260 = record.find('datafield[tag="260"] subfield[code="c"]').text().trim();
+  const publicationInfo = pub264 !== '' ? pub264 : pub260;
 
   // 650 - Subject headings
   const subjects: string[] = [];
   record.find('datafield[tag="650"]').each((_, el) => {
     const subject = $(el).find('subfield[code="a"]').text().trim();
-    if (subject) subjects.push(subject);
+    if (subject !== '') subjects.push(subject);
   });
 
   return {
-    id: id || 'unknown',
-    title: title || undefined,
-    author: author || undefined,
+    id: id !== '' ? id : 'unknown',
+    title: title !== '' ? title : undefined,
+    author: author !== '' ? author : undefined,
     isbn: isbns.length > 0 ? isbns : undefined,
-    series: series || undefined,
-    publicationInfo: publicationInfo || undefined,
+    series: series !== '' ? series : undefined,
+    publicationInfo: publicationInfo !== '' ? publicationInfo : undefined,
     subjects: subjects.length > 0 ? subjects : undefined,
     rawXml: xml,
   };
@@ -167,7 +167,7 @@ export async function searchOPAC(
 
   const params = new URLSearchParams({
     query: query,
-    qtype: qtypeMap[searchType] || 'keyword',
+    qtype: qtypeMap[searchType] ?? 'keyword',
     locg: libraryOrg.toString(),
     limit: limit.toString(),
   });
@@ -197,16 +197,16 @@ function parseOPACResults(html: string): SearchResult[] {
 
     // Find the main title link which contains the record ID
     const titleLink = $el.find('a.search_link[id^="record_"]').first();
-    const href = titleLink.attr('href') || '';
+    const href = titleLink.attr('href') ?? '';
     const recordMatch = href.match(/\/record\/(\d+)/);
-    const id = recordMatch ? recordMatch[1] : '';
+    const id = recordMatch != null ? recordMatch[1] : '';
 
-    if (!id) return;
+    if (id === '' || id == null) return;
 
     // Extract title from the link's text content or title attribute
     const titleAttr = titleLink.attr('title') ?? '';
     const titleMatch = titleAttr.match(/Display record details for "(.+)"/);
-    const title = titleMatch?.[1]
+    const title = titleMatch?.[1] != null
       ? titleMatch[1].replace(/"/g, '')
       : titleLink.text().trim().replace(/\s+/g, ' ');
 
@@ -220,8 +220,8 @@ function parseOPACResults(html: string): SearchResult[] {
     results.push({
       id,
       title,
-      author: author || undefined,
-      format: format || undefined,
+      author: author !== '' ? author : undefined,
+      format: format !== '' ? format : undefined,
     });
   });
 
@@ -263,12 +263,17 @@ function parseAtomHoldings(xml: string): AvailabilityInfo[] {
   $('holdings volume, holding').each((_, el) => {
     const $el = $(el);
 
+    const libraryText = $el.find('owning_lib, library').text().trim();
+    const locationText = $el.find('location').text().trim();
+    const callNumberText = $el.find('call_number, callnumber').text().trim();
+    const statusText = $el.find('status').text().trim();
+    const copiesNum = parseInt($el.find('copies, count').text());
     holdings.push({
-      library: $el.find('owning_lib, library').text().trim() || 'Unknown',
-      location: $el.find('location').text().trim() || 'Unknown',
-      callNumber: $el.find('call_number, callnumber').text().trim() || undefined,
-      status: $el.find('status').text().trim() || 'Unknown',
-      copies: parseInt($el.find('copies, count').text()) || undefined,
+      library: libraryText !== '' ? libraryText : 'Unknown',
+      location: locationText !== '' ? locationText : 'Unknown',
+      callNumber: callNumberText !== '' ? callNumberText : undefined,
+      status: statusText !== '' ? statusText : 'Unknown',
+      copies: !Number.isNaN(copiesNum) ? copiesNum : undefined,
     });
   });
 
@@ -312,7 +317,7 @@ async function main() {
     });
     console.log(`Found ${searchResults.length} results:`);
     searchResults.forEach((r, i) => {
-      console.log(`  ${i + 1}. [${r.id}] ${r.title} ${r.author ? `by ${r.author}` : ''}`);
+      console.log(`  ${i + 1}. [${r.id}] ${r.title} ${r.author != null ? `by ${r.author}` : ''}`);
     });
 
     // Test 2: If we found results, get details for the first one
@@ -325,20 +330,20 @@ async function main() {
 
         if (details.record) {
           console.log('Record Info:');
-          console.log(`  Title: ${details.record.title}`);
-          console.log(`  Author: ${details.record.author}`);
-          console.log(`  ISBNs: ${details.record.isbn?.join(', ') || 'N/A'}`);
-          console.log(`  Series: ${details.record.series || 'N/A'}`);
-          console.log(`  Publication: ${details.record.publicationInfo || 'N/A'}`);
-          console.log(`  Subjects: ${details.record.subjects?.join(', ') || 'N/A'}`);
+          console.log(`  Title: ${details.record.title ?? 'N/A'}`);
+          console.log(`  Author: ${details.record.author ?? 'N/A'}`);
+          console.log(`  ISBNs: ${details.record.isbn?.join(', ') ?? 'N/A'}`);
+          console.log(`  Series: ${details.record.series ?? 'N/A'}`);
+          console.log(`  Publication: ${details.record.publicationInfo ?? 'N/A'}`);
+          console.log(`  Subjects: ${details.record.subjects?.join(', ') ?? 'N/A'}`);
         }
 
         console.log(`\nHoldings (${details.holdings.length} locations):`);
         details.holdings.forEach((h) => {
           console.log(`  - ${h.library} / ${h.location}: ${h.status}`);
         });
-      } catch (err) {
-        console.log(`  Could not fetch details: ${err}`);
+      } catch (err: unknown) {
+        console.log(`  Could not fetch details: ${String(err)}`);
       }
     }
 

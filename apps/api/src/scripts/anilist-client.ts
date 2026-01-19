@@ -327,7 +327,7 @@ export async function searchManga(
 
   const series: SeriesInfo[] = data.Page.media.map((media) => ({
     id: media.id,
-    title: media.title.english || media.title.romaji,
+    title: media.title.english ?? media.title.romaji,
     titleRomaji: media.title.romaji,
     titleNative: media.title.native,
     volumes: media.volumes,
@@ -425,7 +425,7 @@ export async function getPopularManga(
     
     items.push({
       anilistId: media.id,
-      title: media.title.english || media.title.romaji,
+      title: media.title.english ?? media.title.romaji,
       titleRomaji: media.title.romaji,
       format: media.format ?? 'MANGA',
       volumes: media.volumes,
@@ -487,7 +487,7 @@ export async function getSuggestions(
 
   const items: SuggestionItem[] = data.Page.media.map((media) => ({
     anilistId: media.id,
-    title: media.title.english || media.title.romaji,
+    title: media.title.english ?? media.title.romaji,
     titleRomaji: media.title.romaji,
     format: media.format ?? 'MANGA',
     volumes: media.volumes,
@@ -526,11 +526,11 @@ export async function getMangaById(
     const media = data.Media;
 
     // Extract related manga series (not anime)
-    const relatedSeries: RelatedSeries[] = (media.relations?.edges || [])
+    const relatedSeries: RelatedSeries[] = (media.relations?.edges ?? [])
       .filter((edge) => edge.node.type === 'MANGA')
       .map((edge) => ({
         id: edge.node.id,
-        title: edge.node.title.english || edge.node.title.romaji,
+        title: edge.node.title.english ?? edge.node.title.romaji,
         relationType: edge.relationType,
         volumes: edge.node.volumes,
         status: edge.node.status,
@@ -538,7 +538,7 @@ export async function getMangaById(
 
     const result: SeriesInfo = {
       id: media.id,
-      title: media.title.english || media.title.romaji,
+      title: media.title.english ?? media.title.romaji,
       titleRomaji: media.title.romaji,
       titleNative: media.title.native,
       volumes: media.volumes,
@@ -616,7 +616,7 @@ export async function findMainSeries(id: number): Promise<SeriesInfo | null> {
  * Determine if a manga is a main series (not a spin-off, gaiden, etc.)
  */
 function determineIfMainSeries(media: AniListMedia): boolean {
-  const title = (media.title.english || media.title.romaji).toLowerCase();
+  const title = (media.title.english ?? media.title.romaji).toLowerCase();
   
   // Check for common spin-off indicators
   const spinOffIndicators = [
@@ -649,12 +649,12 @@ function determineIfMainSeries(media: AniListMedia): boolean {
   }
 
   // If it has a high volume count, it's likely a main series
-  if (media.volumes && media.volumes >= 5) {
+  if (media.volumes != null && media.volumes >= 5) {
     return true;
   }
 
   // If it has many chapters, it's likely a main series
-  if (media.chapters && media.chapters >= 20) {
+  if (media.chapters != null && media.chapters >= 20) {
     return true;
   }
 
@@ -665,7 +665,7 @@ function determineIfMainSeries(media: AniListMedia): boolean {
  * Get the best title for display
  */
 export function getDisplayTitle(series: SeriesInfo): string {
-  return series.title || series.titleRomaji;
+  return series.title !== '' ? series.title : series.titleRomaji;
 }
 
 /**

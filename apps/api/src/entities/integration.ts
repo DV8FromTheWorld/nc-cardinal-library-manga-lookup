@@ -16,7 +16,7 @@ import {
 } from './series.js';
 import { findOrCreateVolumes, getVolumeWithSeries } from './volumes.js';
 import { findOrCreateEditions } from './editions.js';
-import { getSeriesById, getSeriesByTitle, getVolumesBySeriesId, getEditionsByVolumeId, getVolumeById, generateVolumeId } from './store.js';
+import { getSeriesById, getSeriesByTitle, getVolumesBySeriesId, getEditionsByVolumeId } from './store.js';
 
 /**
  * Create or update entities from Wikipedia series data
@@ -71,7 +71,7 @@ export async function createEntitiesFromWikipedia(
     if (!volume) continue;
 
     // Add Japanese edition if we have ISBN
-    if (wikiVol.japaneseISBN) {
+    if (wikiVol.japaneseISBN != null) {
       editionInputs.push({
         isbn: wikiVol.japaneseISBN,
         format: 'physical',
@@ -82,7 +82,7 @@ export async function createEntitiesFromWikipedia(
     }
     
     // Add English edition if we have ISBN
-    if (wikiVol.englishISBN) {
+    if (wikiVol.englishISBN != null) {
       editionInputs.push({
         isbn: wikiVol.englishISBN,
         format: 'physical',
@@ -226,7 +226,7 @@ async function createRelatedSeriesEntity(
     const volume = volumeByNumber.get(wikiVol.volumeNumber);
     if (!volume) continue;
 
-    if (wikiVol.japaneseISBN) {
+    if (wikiVol.japaneseISBN != null) {
       editionInputs.push({
         isbn: wikiVol.japaneseISBN,
         format: 'physical',
@@ -236,7 +236,7 @@ async function createRelatedSeriesEntity(
       });
     }
     
-    if (wikiVol.englishISBN) {
+    if (wikiVol.englishISBN != null) {
       editionInputs.push({
         isbn: wikiVol.englishISBN,
         format: 'physical',
@@ -300,7 +300,7 @@ export async function createEntitiesFromNCCardinal(
   const editionInputs: CreateEditionInput[] = [];
   
   for (const volData of volumeData) {
-    if (!volData.isbn) continue;
+    if (volData.isbn == null) continue;
     
     const volume = volumeByNumber.get(volData.volumeNumber);
     if (!volume) continue;
@@ -389,13 +389,13 @@ export async function resolveEditionsForVolumes(volumeIds: string[]): Promise<Ma
 export async function hasSeriesEntity(
   options: { wikipediaId?: number; title?: string }
 ): Promise<Series | null> {
-  if (options.wikipediaId) {
+  if (options.wikipediaId != null) {
     const { getSeriesByWikipediaId } = await import('./store.js');
     const series = await getSeriesByWikipediaId(options.wikipediaId);
     if (series) return series;
   }
 
-  if (options.title) {
+  if (options.title != null) {
     return getSeriesByTitle(options.title);
   }
 

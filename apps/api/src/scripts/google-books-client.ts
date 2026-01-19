@@ -170,7 +170,7 @@ export async function searchVolumes(
  */
 function parseVolume(item: GoogleBooksAPIItem): GoogleBooksVolume | null {
   const info = item.volumeInfo;
-  if (!info?.title) return null;
+  if (info?.title == null) return null;
 
   // Extract ISBNs
   let isbn10: string | undefined;
@@ -186,7 +186,7 @@ function parseVolume(item: GoogleBooksAPIItem): GoogleBooksVolume | null {
 
   // Extract series info
   const seriesInfo = info.seriesInfo?.volumeSeries?.[0];
-  const volumeNumber = info.seriesInfo?.bookDisplayNumber 
+  const volumeNumber = info.seriesInfo?.bookDisplayNumber != null
     ? parseInt(info.seriesInfo.bookDisplayNumber, 10) 
     : undefined;
 
@@ -242,7 +242,7 @@ function extractVolumeNumber(title: string): number | undefined {
   
   for (const pattern of patterns) {
     const match = title.match(pattern);
-    if (match?.[1]) {
+    if (match?.[1] != null) {
       const num = parseInt(match[1], 10);
       if (num > 0 && num < 1000) return num;
     }
@@ -284,7 +284,7 @@ export async function searchMangaVolumes(
     
     // Determine grouping key: prefer seriesId, fall back to title pattern
     let groupKey: string;
-    if (volume.seriesId) {
+    if (volume.seriesId != null) {
       groupKey = `id:${volume.seriesId}`;
     } else {
       // Use normalized title as grouping key
@@ -324,7 +324,7 @@ export async function searchMangaVolumes(
     
     // Derive series title from the first volume's title
     const firstVolume = dedupedVolumes[0];
-    let title = firstVolume ? extractSeriesTitle(firstVolume.title) : seriesTitle;
+    const title = firstVolume != null ? extractSeriesTitle(firstVolume.title) : seriesTitle;
     
     // Use actual seriesId if available, otherwise generate one from title
     const seriesId = groupKey.startsWith('id:') 
@@ -379,7 +379,7 @@ export async function getSeriesISBNs(
   
   for (const v of volumes) {
     const isbn = prefer13 ? (v.isbn13 ?? v.isbn10) : (v.isbn10 ?? v.isbn13);
-    if (isbn) {
+    if (isbn != null) {
       results.push({ volumeNumber: v.volumeNumber, isbn });
     }
   }
@@ -426,7 +426,7 @@ export function findCommonPreamble(
   desc1: string,
   desc2: string
 ): string | null {
-  if (!desc1 || !desc2) {
+  if (desc1 === '' || desc2 === '') {
     return null;
   }
   
@@ -486,7 +486,7 @@ export function extractUniqueVolumeDescription(
   volumeDescription: string,
   seriesPreamble: string | undefined
 ): string {
-  if (!seriesPreamble || !volumeDescription) {
+  if (seriesPreamble == null || seriesPreamble === '' || volumeDescription === '') {
     return volumeDescription;
   }
   
@@ -528,7 +528,7 @@ export function extractUniqueVolumeDescription(
   const uniquePart = volumeDescription.slice(seriesPreamble.length).trim();
   
   // If the unique part is empty or very short, return full description
-  if (!uniquePart || uniquePart.length < 20) {
+  if (uniquePart === '' || uniquePart.length < 20) {
     return volumeDescription;
   }
   

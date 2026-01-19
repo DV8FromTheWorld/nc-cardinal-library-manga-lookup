@@ -211,7 +211,7 @@ export async function searchSeries(query: string, limit: number = 10): Promise<W
   for (let i = 0; i < titles.length; i++) {
     // Filter to likely manga results
     const title = titles[i];
-    if (!title) continue;
+    if (title == null) continue;
     
     results.push({
       title,
@@ -272,7 +272,7 @@ export async function searchSeriesChapterList(seriesTitle: string): Promise<Wiki
 /**
  * Fetch the wikitext content of a page
  */
-async function getPageContent(pageid: number): Promise<WikiPageContent | null> {
+async function _getPageContent(pageid: number): Promise<WikiPageContent | null> {
   const cacheKey = getCacheKey('page', pageid.toString());
   const cached = readCache<WikiPageContent>(cacheKey);
   if (cached) {
@@ -308,7 +308,7 @@ async function getPageContent(pageid: number): Promise<WikiPageContent | null> {
   };
 
   const page = data.query?.pages?.[pageid.toString()];
-  if (!page?.revisions?.[0]?.slots?.main?.['*']) {
+  if (page?.revisions?.[0]?.slots?.main?.['*'] == null) {
     return null;
   }
 
@@ -363,19 +363,19 @@ async function getPageContentByTitle(title: string): Promise<WikiPageContent | n
   };
 
   // Log if we followed a redirect
-  if (data.query?.redirects?.length) {
+  if (data.query?.redirects != null && data.query.redirects.length > 0) {
     console.log(`[Wikipedia] Followed redirect: "${data.query.redirects[0]?.from}" → "${data.query.redirects[0]?.to}"`);
   }
 
   const pages = data.query?.pages;
-  if (!pages) return null;
+  if (pages == null) return null;
 
   // Get the first (and should be only) page
   const pageId = Object.keys(pages)[0];
-  if (!pageId || pageId === '-1') return null;
+  if (pageId == null || pageId === '-1') return null;
 
   const page = pages[pageId];
-  if (!page?.revisions?.[0]?.slots?.main?.['*']) {
+  if (page?.revisions?.[0]?.slots?.main?.['*'] == null) {
     return null;
   }
 
@@ -411,7 +411,7 @@ function detectMediaType(header: string): MediaType {
  * Check if a volume title indicates it's a spin-off/side story
  */
 function isSpinoffTitle(title: string | undefined): boolean {
-  if (!title) return false;
+  if (title == null) return false;
   const lower = title.toLowerCase();
   return (
     lower.includes('short story') ||
@@ -484,13 +484,13 @@ function classifySection(
   }
   
   // 7. Nested under media type but completely different title (Hannelore's Fifth Year under Light novels)
-  if (parentSection) {
+  if (parentSection != null) {
     const parentLower = parentSection.toLowerCase();
     const isUnderMediaType = parentLower.includes('manga') || 
                              parentLower.includes('novel') ||
                              parentLower === 'media';
     
-    if (isUnderMediaType && mainBase && !lower.includes(mainBase)) {
+    if (isUnderMediaType && mainBase !== '' && !lower.includes(mainBase)) {
       // Different title under a media type section = likely a spin-off
       return 'spinoff';
     }
@@ -500,7 +500,7 @@ function classifySection(
   if (isSpinoffTitle(sectionName)) return 'spinoff';
   
   // 9. If section name matches or contains main series name, it's the main series
-  if (mainBase && lower.includes(mainBase)) return 'main';
+  if (mainBase !== '' && lower.includes(mainBase)) return 'main';
   
   // Default to main if we can't determine otherwise
   return 'main';
@@ -531,7 +531,7 @@ function parseVolumeListWithSections(wikitext: string, mainSeriesTitle: string =
   // Track section hierarchy
   let l2Section: string | undefined;
   let l3Section: string | undefined;
-  let l4Section: string | undefined;
+  let _l4Section: string | undefined;
   
   // Current parsing state
   let currentVolume: Partial<WikiVolume> | null = null;
@@ -545,7 +545,7 @@ function parseVolumeListWithSections(wikitext: string, mainSeriesTitle: string =
   
   // Helper to save current volume to current section
   const saveCurrentVolume = () => {
-    if (!currentVolume?.volumeNumber) return;
+    if (currentVolume?.volumeNumber == null) return;
     
     const adjustedVolumeNumber = currentPartNumber !== undefined 
       ? currentVolume.volumeNumber + partVolumeOffset 
@@ -568,7 +568,7 @@ function parseVolumeListWithSections(wikitext: string, mainSeriesTitle: string =
     } else {
       // Create a default section if we haven't seen any section headers yet
       currentSection = {
-        name: mainSeriesTitle || 'Main',
+        name: mainSeriesTitle !== '' ? mainSeriesTitle : 'Main',
         level: 2,
         mediaType: currentMediaType,
         relationship: 'main',
@@ -587,12 +587,12 @@ function parseVolumeListWithSections(wikitext: string, mainSeriesTitle: string =
     if (level === 2) {
       l2Section = cleanName;
       l3Section = undefined;
-      l4Section = undefined;
+      _l4Section = undefined;
     } else if (level === 3) {
       l3Section = cleanName;
-      l4Section = undefined;
+      _l4Section = undefined;
     } else if (level === 4) {
-      l4Section = cleanName;
+      _l4Section = cleanName;
     }
     
     // Detect media type from section name
@@ -660,10 +660,10 @@ function parseVolumeListWithSections(wikitext: string, mainSeriesTitle: string =
     
     // Extract field values from lines like "| FieldName = value"
     const fieldMatch = line.match(/^\s*\|\s*(\w+)\s*=\s*(.+)/);
-    if (!fieldMatch) continue;
+    if (fieldMatch == null) continue;
     
     const [, fieldName, rawValue] = fieldMatch;
-    if (!fieldName || !rawValue) continue;
+    if (fieldName == null || rawValue == null) continue;
     
     // Clean the value - remove refs, templates, wiki links
     const value = rawValue
@@ -694,7 +694,7 @@ function parseVolumeListWithSections(wikitext: string, mainSeriesTitle: string =
       currentVolume.title = value;
     } else if (fieldLower === 'translittitle' || fieldLower === 'originaltitle' || fieldLower === 'title') {
       // Use transliterated/original title as fallback if no licensed title yet
-      if (!currentVolume.title) {
+      if (currentVolume.title == null) {
         currentVolume.title = value;
       }
     }
@@ -735,10 +735,10 @@ export function parseVolumeList(wikitext: string): WikiVolume[] {
     const key = `${vol.mediaType ?? 'unknown'}-${vol.volumeNumber}`;
     const existing = seenByTypeAndNumber.get(key);
     
-    if (!existing) {
+    if (existing == null) {
       seenByTypeAndNumber.set(key, vol);
       deduplicatedVolumes.push(vol);
-    } else if (!existing.englishISBN && vol.englishISBN) {
+    } else if (existing.englishISBN == null && vol.englishISBN != null) {
       const idx = deduplicatedVolumes.indexOf(existing);
       if (idx >= 0) {
         deduplicatedVolumes[idx] = vol;
@@ -765,7 +765,7 @@ export function parseVolumeList(wikitext: string): WikiVolume[] {
  * Clean ISBN - normalize to just digits and convert ISBN-10 to ISBN-13
  */
 function cleanISBN(isbn: string | undefined): string | undefined {
-  if (!isbn) return undefined;
+  if (isbn == null) return undefined;
   // Keep only digits and X, remove hyphens and spaces
   let cleaned = isbn.replace(/[^0-9Xx]/g, '');
   
@@ -835,7 +835,7 @@ function extractAuthor(wikitext: string): string | undefined {
   
   for (const pattern of patterns) {
     const match = wikitext.match(pattern);
-    if (match?.[1]) {
+    if (match?.[1] != null) {
       return match[1].trim();
     }
   }
@@ -1008,7 +1008,7 @@ export async function getSeries(query: string): Promise<WikiSeries | null> {
     
     // Also try without subtitles (e.g., "Demon Slayer" from "Demon Slayer: Kimetsu no Yaiba")
     const baseTitle = cleanTitle.split(':')[0]?.trim();
-    if (baseTitle && baseTitle !== cleanTitle) {
+    if (baseTitle != null && baseTitle !== '' && baseTitle !== cleanTitle) {
       const baseTitlePages = [
         `List of ${baseTitle} chapters`,
         `List of ${baseTitle} manga volumes`,
@@ -1068,10 +1068,10 @@ export async function getSeries(query: string): Promise<WikiSeries | null> {
     // Combine and deduplicate page titles
     const transcludedPages = new Set<string>();
     for (const match of directTransclusionMatches) {
-      if (match[1]) transcludedPages.add(match[1]);
+      if (match[1] != null) transcludedPages.add(match[1]);
     }
     for (const match of sectionTransclusionMatches) {
-      if (match[1]) transcludedPages.add(match[1]);
+      if (match[1] != null) transcludedPages.add(match[1]);
     }
     
     if (transcludedPages.size > 0) {
@@ -1116,7 +1116,7 @@ export async function getSeries(query: string): Promise<WikiSeries | null> {
   const author = extractAuthor(bestFullWikitext);
   
   // Determine the canonical series title
-  let baseSeriesTitle = bestPage.title
+  const baseSeriesTitle = bestPage.title
     .replace(/^List of /, '')
     .replace(/ chapters?$/i, '')
     .replace(/ manga volumes?$/i, '')
@@ -1152,10 +1152,10 @@ export async function getSeries(query: string): Promise<WikiSeries | null> {
     const key = `${vol.mediaType ?? 'unknown'}-${vol.volumeNumber}`;
     const existing = seenByTypeAndNumber.get(key);
     
-    if (!existing) {
+    if (existing == null) {
       seenByTypeAndNumber.set(key, vol);
       deduplicatedMain.push(vol);
-    } else if (!existing.englishISBN && vol.englishISBN) {
+    } else if (existing.englishISBN == null && vol.englishISBN != null) {
       const idx = deduplicatedMain.indexOf(existing);
       if (idx >= 0) {
         deduplicatedMain[idx] = vol;
@@ -1317,10 +1317,10 @@ export async function getAllSeriesFromPage(query: string): Promise<WikiSeries[]>
   
   const transcludedPages = new Set<string>();
   for (const match of directTransclusions) {
-    if (match[1]) transcludedPages.add(match[1]);
+    if (match[1] != null) transcludedPages.add(match[1]);
   }
   for (const match of sectionTransclusions) {
-    if (match[1]) transcludedPages.add(match[1]);
+    if (match[1] != null) transcludedPages.add(match[1]);
   }
   
   for (const subpageTitle of transcludedPages) {

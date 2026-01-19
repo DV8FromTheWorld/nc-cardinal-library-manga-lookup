@@ -49,13 +49,14 @@ async function getVolumeInfo(recordId: string): Promise<VolumeInfo> {
   const titleField = $('datafield[tag="245"]');
   const mainTitle = titleField.find('subfield[code="a"]').text().trim();
   const rawVolumeNumber = titleField.find('subfield[code="n"]').text().trim();
-  const volumeTitle = titleField.find('subfield[code="p"]').text().trim() || null;
+  const volumeTitleRaw = titleField.find('subfield[code="p"]').text().trim();
+  const volumeTitle = volumeTitleRaw !== '' ? volumeTitleRaw : null;
   
   // Normalize volume number: "06 /" -> "6", "Vol. 6" -> "6", "Volume 5" -> "5"
   let volumeNumber: string | null = null;
-  if (rawVolumeNumber) {
+  if (rawVolumeNumber !== '') {
     const match = rawVolumeNumber.match(/(\d+)/);
-    if (match && match[1]) {
+    if (match != null && match[1] != null) {
       // Remove leading zeros: "01" -> "1"
       volumeNumber = parseInt(match[1], 10).toString();
     }
@@ -65,7 +66,7 @@ async function getVolumeInfo(recordId: string): Promise<VolumeInfo> {
   const isbns: string[] = [];
   $('datafield[tag="020"] subfield[code="a"]').each((_, el) => {
     const isbn = $(el).text().trim().split(' ')[0]; // Remove qualifiers like "(paperback)"
-    if (isbn) isbns.push(isbn);
+    if (isbn != null && isbn !== '') isbns.push(isbn);
   });
   
   // Get holdings info from OpenSearch
@@ -84,8 +85,8 @@ async function getVolumeInfo(recordId: string): Promise<VolumeInfo> {
   });
   
   let fullTitle = mainTitle;
-  if (volumeNumber) fullTitle += ` Vol. ${volumeNumber}`;
-  if (volumeTitle) fullTitle += `: ${volumeTitle}`;
+  if (volumeNumber != null) fullTitle += ` Vol. ${volumeNumber}`;
+  if (volumeTitle != null) fullTitle += `: ${volumeTitle}`;
   
   return {
     recordId,
@@ -116,7 +117,7 @@ async function analyzeSeriesInNCCardinal(
   
   if (fs.existsSync(cachePath)) {
     console.log(`📁 Loading from cache: ${cacheKey}`);
-    const cached = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+    const cached = JSON.parse(fs.readFileSync(cachePath, 'utf-8')) as SeriesAnalysis;
     return cached;
   }
   
@@ -138,7 +139,8 @@ async function analyzeSeriesInNCCardinal(
     const $ = cheerio.load(xml, { xmlMode: true });
     
     if (startIndex === 1) {
-      totalResults = parseInt($('totalResults').text()) || 0;
+      const totalResultsNum = parseInt($('totalResults').text());
+      totalResults = !Number.isNaN(totalResultsNum) ? totalResultsNum : 0;
       console.log(`Found ${totalResults} total records`);
     }
     
@@ -147,7 +149,7 @@ async function analyzeSeriesInNCCardinal(
     $('id').each((_, el) => {
       const text = $(el).text();
       const match = text.match(/urn:tcn:(\d+)/);
-      if (match && match[1] && !recordIds.includes(match[1])) {
+      if (match != null && match[1] != null && !recordIds.includes(match[1])) {
         recordIds.push(match[1]);
         foundOnPage++;
       }
@@ -175,7 +177,7 @@ async function analyzeSeriesInNCCardinal(
       const vol = await getVolumeInfo(id);
       volumes.push(vol);
       console.log(` Vol ${vol.volumeNumber ?? '?'} ✅`);
-    } catch (error) {
+    } catch {
       console.log(` Error ❌`);
     }
     
@@ -198,8 +200,8 @@ async function analyzeSeriesInNCCardinal(
   )].sort((a, b) => parseInt(a) - parseInt(b));
   
   // Find missing volumes if expected count provided
-  let missingVolumes: string[] = [];
-  if (expectedVolumes > 0) {
+  const missingVolumes: string[] = [];
+  if (expectedVolumes !== 0) {
     for (let i = 1; i <= expectedVolumes; i++) {
       if (!volumeNumbers.includes(i.toString())) {
         missingVolumes.push(i.toString());
@@ -244,7 +246,7 @@ function displayResults(analysis: SeriesAnalysis): void {
   
   for (const vol of analysis.volumes) {
     const status = vol.availableCopies > 0 ? '✅' : '📕';
-    const volNum = vol.volumeNumber ? `Vol ${vol.volumeNumber.padStart(2)}` : 'Vol ??';
+    const volNum = vol.volumeNumber != null ? `Vol ${vol.volumeNumber.padStart(2)}` : 'Vol ??';
     console.log(`\n${status} ${volNum}: ${vol.volumeTitle ?? vol.fullTitle}`);
     console.log(`   Record: ${vol.recordId}`);
     console.log(`   Availability: ${vol.availableCopies}/${vol.totalCopies}`);
@@ -261,8 +263,8 @@ function displayResults(analysis: SeriesAnalysis): void {
 // ============================================================================
 
 async function main() {
-  const searchTerm = process.argv[2] || 'Demon Slayer Kimetsu no Yaiba manga';
-  const expectedVolumes = parseInt(process.argv[3] || '23');
+  const searchTerm = process.argv[2] ?? 'Demon Slayer Kimetsu no Yaiba manga';
+  const expectedVolumes = parseInt(process.argv[3] ?? '23');
   
   console.log('╔' + '═'.repeat(58) + '╗');
   console.log('║' + '  NC Cardinal Series Analyzer  '.padStart(44).padEnd(58) + '║');

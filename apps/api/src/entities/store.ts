@@ -93,7 +93,7 @@ export async function loadStore(): Promise<EntityStore> {
     }
     
     // Validate that loaded data has the required structure
-    if (!loaded.series || !loaded.volumes) {
+    if (loaded.series == null || loaded.volumes == null) {
       console.warn('[EntityStore] Invalid store format detected. Starting fresh.');
       storeCache = createEmptyStore();
       return storeCache;
@@ -153,7 +153,7 @@ export async function getSeriesById(id: string): Promise<Series | null> {
 export async function getSeriesByWikipediaId(wikipediaId: number): Promise<Series | null> {
   const store = await loadStore();
   const seriesId = store.wikipediaIndex[wikipediaId];
-  if (!seriesId) {
+  if (seriesId == null) {
     return null;
   }
   return store.series[seriesId] ?? null;
@@ -166,7 +166,7 @@ export async function getSeriesByTitle(title: string): Promise<Series | null> {
   const store = await loadStore();
   const normalized = normalizeTitle(title);
   const seriesId = store.titleIndex[normalized];
-  if (!seriesId) {
+  if (seriesId == null) {
     return null;
   }
   return store.series[seriesId] ?? null;
@@ -183,7 +183,7 @@ export async function saveSeries(series: Series): Promise<void> {
   // Update indexes
   store.titleIndex[normalizeTitle(series.title)] = series.id;
   
-  if (series.externalIds.wikipedia) {
+  if (series.externalIds.wikipedia != null) {
     store.wikipediaIndex[series.externalIds.wikipedia] = series.id;
   }
   
@@ -296,7 +296,7 @@ export async function getEditionById(id: string): Promise<Edition | null> {
 export async function getEditionByIsbn(isbn: string): Promise<Edition | null> {
   const store = await loadStore();
   const editionId = store.isbnIndex[isbn];
-  if (!editionId) return null;
+  if (editionId == null) return null;
   return store.editions[editionId] ?? null;
 }
 

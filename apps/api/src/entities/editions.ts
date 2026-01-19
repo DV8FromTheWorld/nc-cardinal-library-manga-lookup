@@ -5,9 +5,7 @@
 import type { Edition, CreateEditionInput } from './types.js';
 import {
   getEditionByIsbn,
-  getEditionById,
   saveEdition,
-  saveEditions,
   generateEditionId,
   addVolumeToEdition,
   addEditionToVolume,

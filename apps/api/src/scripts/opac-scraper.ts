@@ -13,7 +13,7 @@
 import * as cheerio from 'cheerio';
 
 const BASE_URL =
-  process.env.NC_CARDINAL_BASE_URL || 'https://highpoint.nccardinal.org';
+  process.env.NC_CARDINAL_BASE_URL ?? 'https://highpoint.nccardinal.org';
 
 // User agent to identify our scraper
 const USER_AGENT =
@@ -87,7 +87,7 @@ export async function searchOPACCatalog(
     offset: offset.toString(),
   });
 
-  if (options.format) {
+  if (options.format != null) {
     params.set('fi:item_type', options.format);
   }
 
@@ -120,7 +120,7 @@ function parseSearchResultsPage(html: string): {
   let totalResults = 0;
   const selectAllLabel = $('label[for="select_all_records"]').text();
   const selectAllMatch = selectAllLabel.match(/\d+\s*-\s*(\d+)/);
-  if (selectAllMatch?.[1]) {
+  if (selectAllMatch?.[1] != null) {
     // This gives us the end range, but not total. Look for pagination or other indicators
     totalResults = parseInt(selectAllMatch[1], 10);
   }
@@ -136,12 +136,12 @@ function parseSearchResultsPage(html: string): {
     const recordMatch = href.match(/\/record\/(\d+)/);
     const recordId = recordMatch?.[1] ?? '';
 
-    if (!recordId) return;
+    if (recordId === '') return;
 
     // Extract title from the link's text content or title attribute
     const titleAttr = titleLink.attr('title') ?? '';
     const titleMatch = titleAttr.match(/Display record details for "(.+)"/);
-    const title = titleMatch?.[1]
+    const title = titleMatch?.[1] != null
       ? titleMatch[1].replace(/"/g, '')
       : cleanText(titleLink.text());
 
@@ -150,7 +150,7 @@ function parseSearchResultsPage(html: string): {
     const author = authorLink.text().trim();
 
     // Extract availability info from result_count
-    const availabilityText = $el.find('.result_count').text().trim();
+    const _availabilityText = $el.find('.result_count').text().trim();
 
     // Extract format/type from record_format span
     const format = $el.find('.record_format').text().trim();
@@ -158,8 +158,8 @@ function parseSearchResultsPage(html: string): {
     results.push({
       recordId,
       title: cleanText(title),
-      author: author ? cleanText(author) : undefined,
-      format: format ? cleanText(format) : undefined,
+      author: author !== '' ? cleanText(author) : undefined,
+      format: format !== '' ? cleanText(format) : undefined,
       publicationYear: undefined, // Not visible in search results
       isbn: undefined, // Not visible in search results
       callNumber: undefined, // Not visible in search results
@@ -177,13 +177,13 @@ function parseSearchResultsPage(html: string): {
       const recordId = recordMatch?.[1] ?? '';
 
       // Skip if already found or if it's a duplicate
-      if (!recordId || results.some((r) => r.recordId === recordId)) return;
+      if (recordId === '' || results.some((r) => r.recordId === recordId)) return;
 
       // Skip cover images and non-title links
       if ($a.hasClass('cover-image') || $a.find('img').length > 0) return;
 
       const title = $a.attr('title') ?? $a.text().trim();
-      if (!title || title.length < 2) return;
+      if (title === '' || title.length < 2) return;
 
       results.push({
         recordId,
@@ -233,7 +233,7 @@ function parseRecordDetailPage(html: string, recordId: string): OPACRecordDetail
   // Clean up title - remove [manga] tag and extra info after main title
   title = title.split('[')[0]?.trim() ?? '';
 
-  if (!title) {
+  if (title === '') {
     return null; // Invalid page
   }
 
@@ -245,7 +245,7 @@ function parseRecordDetailPage(html: string, recordId: string): OPACRecordDetail
   const pubValue = $('#rdetail_publisher .rdetail_value').text().trim();
   const pubParts = pubValue.split(':').map((p) => p.trim());
   const lastPubPart = pubParts[pubParts.length - 1];
-  const publisher = pubParts.length > 1 && lastPubPart ? lastPubPart.split(',')[0] : undefined;
+  const publisher = pubParts.length > 1 && lastPubPart != null && lastPubPart !== '' ? lastPubPart.split(',')[0] : undefined;
 
   // Copyright year from #rdetail_copyright
   const copyrightText = $('#rdetail_copyright .rdetail_value').text();
@@ -256,7 +256,7 @@ function parseRecordDetailPage(html: string, recordId: string): OPACRecordDetail
   const isbns: string[] = [];
   $('.rdetail_isbns .rdetail_value').each((_, el) => {
     const isbn = $(el).text().trim();
-    if (isbn && /^[\dX-]+$/i.test(isbn)) {
+    if (isbn !== '' && /^[\dX-]+$/i.test(isbn)) {
       isbns.push(isbn.replace(/-/g, ''));
     }
   });
@@ -276,7 +276,7 @@ function parseRecordDetailPage(html: string, recordId: string): OPACRecordDetail
   const subjects: string[] = [];
   $('.rdetail_subject_value a').each((_, el) => {
     const subject = $(el).text().trim();
-    if (subject && !subjects.includes(subject)) {
+    if (subject !== '' && !subjects.includes(subject)) {
       subjects.push(subject);
     }
   });
@@ -287,12 +287,12 @@ function parseRecordDetailPage(html: string, recordId: string): OPACRecordDetail
   return {
     recordId,
     title: cleanText(title),
-    author: authorName ? cleanText(authorName.replace(/,$/, '')) : undefined,
-    publisher: publisher || undefined,
+    author: authorName !== '' ? cleanText(authorName.replace(/,$/, '')) : undefined,
+    publisher: publisher !== '' ? publisher : undefined,
     publicationYear,
     isbn: isbns.length > 0 ? isbns : undefined,
-    format: format || undefined,
-    series: series || undefined,
+    format: format !== '' ? format : undefined,
+    series: series !== '' ? series : undefined,
     subjects: subjects.length > 0 ? subjects : undefined,
     summary: undefined,
     holdings,
@@ -313,7 +313,7 @@ function parseHoldingsFromCopyCounts($: cheerio.CheerioAPI): OPACHolding[] {
 
     // Parse "X of Y copies available at Library Name"
     const match = text.match(/(\d+)\s+of\s+(\d+)\s+cop(?:y|ies)\s+available\s+at\s+(.+?)\.?\s*(?:\(Show\))?$/i);
-    if (match && match[1] && match[2] && match[3]) {
+    if (match != null && match[1] != null && match[2] != null && match[3] != null) {
       const available = parseInt(match[1], 10);
       const total = parseInt(match[2], 10);
       const library = match[3].trim();
@@ -334,7 +334,7 @@ function parseHoldingsFromCopyCounts($: cheerio.CheerioAPI): OPACHolding[] {
 /**
  * Parse holdings/copies table from record detail page (legacy/alternate format)
  */
-function parseHoldingsTable($: cheerio.CheerioAPI): OPACHolding[] {
+function _parseHoldingsTable($: cheerio.CheerioAPI): OPACHolding[] {
   const holdings: OPACHolding[] = [];
 
   // Holdings are typically in a table
@@ -354,16 +354,16 @@ function parseHoldingsTable($: cheerio.CheerioAPI): OPACHolding[] {
     const library = cells.eq(0).text().trim();
     const location = cells.eq(1).text().trim();
     const callNumber = cells.eq(2).text().trim();
-    const status = cells.eq(3).text().trim() || 'Unknown';
+    const status = cells.eq(3).text().trim();
     const dueDate = cells.eq(4).text().trim();
 
-    if (library) {
+    if (library !== '') {
       holdings.push({
         library: cleanText(library),
-        location: cleanText(location) || 'Unknown',
+        location: cleanText(location) !== '' ? cleanText(location) : 'Unknown',
         callNumber: cleanText(callNumber),
-        status: cleanText(status),
-        dueDate: dueDate ? cleanText(dueDate) : undefined,
+        status: status !== '' ? cleanText(status) : 'Unknown',
+        dueDate: dueDate !== '' ? cleanText(dueDate) : undefined,
       });
     }
   });
@@ -403,7 +403,7 @@ function parseLibraryOptions(html: string): LibraryOrg[] {
     const value = $option.attr('value');
     const text = $option.text().trim();
 
-    if (!value) return;
+    if (value == null || value === '') return;
 
     const id = parseInt(value, 10);
     if (isNaN(id)) return;
@@ -535,7 +535,7 @@ async function main() {
     console.log(`Found ${totalResults} total results, showing first ${searchResults.length}:`);
     searchResults.forEach((r, i) => {
       console.log(`  ${i + 1}. [${r.recordId}] ${r.title}`);
-      console.log(`     Author: ${r.author || 'N/A'} | Format: ${r.format || 'N/A'}`);
+      console.log(`     Author: ${r.author ?? 'N/A'} | Format: ${r.format ?? 'N/A'}`);
     });
 
     // Test 3: Get record details for first result
@@ -547,18 +547,18 @@ async function main() {
       if (details) {
         console.log('Record Details:');
         console.log(`  Title: ${details.title}`);
-        console.log(`  Author: ${details.author || 'N/A'}`);
-        console.log(`  Publisher: ${details.publisher || 'N/A'}`);
-        console.log(`  Year: ${details.publicationYear || 'N/A'}`);
-        console.log(`  ISBNs: ${details.isbn?.join(', ') || 'N/A'}`);
-        console.log(`  Series: ${details.series || 'N/A'}`);
-        console.log(`  Format: ${details.format || 'N/A'}`);
-        console.log(`  Subjects: ${details.subjects?.slice(0, 3).join(', ') || 'N/A'}`);
+        console.log(`  Author: ${details.author ?? 'N/A'}`);
+        console.log(`  Publisher: ${details.publisher ?? 'N/A'}`);
+        console.log(`  Year: ${details.publicationYear ?? 'N/A'}`);
+        console.log(`  ISBNs: ${details.isbn?.join(', ') ?? 'N/A'}`);
+        console.log(`  Series: ${details.series ?? 'N/A'}`);
+        console.log(`  Format: ${details.format ?? 'N/A'}`);
+        console.log(`  Subjects: ${details.subjects?.slice(0, 3).join(', ') ?? 'N/A'}`);
 
         console.log(`\n  Holdings (${details.holdings.length} locations):`);
         details.holdings.slice(0, 5).forEach((h) => {
           console.log(`    - ${h.library} / ${h.location}: ${h.status}`);
-          console.log(`      Call#: ${h.callNumber || 'N/A'}`);
+          console.log(`      Call#: ${h.callNumber !== '' ? h.callNumber : 'N/A'}`);
         });
         if (details.holdings.length > 5) {
           console.log(`    ... and ${details.holdings.length - 5} more locations`);

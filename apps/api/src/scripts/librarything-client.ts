@@ -17,7 +17,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const TALPA_API_URL = 'https://www.librarything.com/api/talpa.php';
-const API_TOKEN = process.env.LIBRARYTHING_API_KEY || '';
+const API_TOKEN = process.env.LIBRARYTHING_API_KEY ?? '';
 
 // Cache directory for storing API responses
 const CACHE_DIR = path.join(process.cwd(), '.cache', 'talpa');
@@ -41,7 +41,7 @@ function loadFromCache(cacheKey: string): TalpaSearchResult | null {
   if (fs.existsSync(cachePath)) {
     try {
       const data = fs.readFileSync(cachePath, 'utf-8');
-      const cached = JSON.parse(data);
+      const cached = JSON.parse(data) as TalpaSearchResult;
       console.log(`  📁 Loaded from cache: ${cacheKey}`);
       return cached;
     } catch {
@@ -59,7 +59,7 @@ function saveToCache(cacheKey: string, data: TalpaSearchResult): void {
   console.log(`  💾 Saved to cache: ${cacheKey}`);
 }
 
-const API_TOKEN_MISSING = !API_TOKEN || API_TOKEN === 'your_key_here';
+const API_TOKEN_MISSING = API_TOKEN === '' || API_TOKEN === 'your_key_here';
 
 if (API_TOKEN_MISSING) {
   console.warn('⚠️  LIBRARYTHING_API_KEY not set or is default value.');

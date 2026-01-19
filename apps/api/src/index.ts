@@ -34,7 +34,8 @@ app.register(mangaRoutes, { prefix: '/manga' });
 // Start server
 const start = async () => {
   try {
-    const port = Number(process.env.PORT) || 3001;
+    const envPort = Number(process.env.PORT);
+    const port = !Number.isNaN(envPort) && envPort !== 0 ? envPort : 3001;
     await app.listen({ port, host: '0.0.0.0' });
     console.log(`API running at http://localhost:${port}`);
   } catch (err) {
@@ -43,4 +44,4 @@ const start = async () => {
   }
 };
 
-start();
+void start();

@@ -15,12 +15,8 @@ import { z } from 'zod';
 import {
   search,
   getSeriesDetails,
-  parseQuery,
   fetchBookcoverUrl,
   fetchGoogleBooksCoverUrl,
-  type SearchResult,
-  type SeriesDetails,
-  type VolumeAvailability,
 } from '../scripts/manga-search.js';
 
 import {
@@ -33,7 +29,6 @@ import {
   NC_CARDINAL_LIBRARIES,
   getCatalogUrl,
   getDetailedAvailabilitySummary,
-  type CatalogRecord,
 } from '../scripts/opensearch-client.js';
 
 // Google Books for descriptions
@@ -70,16 +65,11 @@ import {
   isSessionValid,
   isHistoryEnabled,
   getSession,
-  type PatronSession,
-  type CheckedOutItem,
-  type HistoryItem,
-  type HoldItem,
 } from '../scripts/patron-client.js';
 
 import {
   getPopularManga,
   getSuggestions,
-  type SuggestionItem,
 } from '../scripts/anilist-client.js';
 
 // ============================================================================
@@ -480,8 +470,8 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
     {
       schema: {
         querystring: z.object({
-          popularLimit: z.string().optional().transform(v => v ? parseInt(v, 10) : 150),
-          trendingLimit: z.string().optional().transform(v => v ? parseInt(v, 10) : 50),
+          popularLimit: z.string().optional().transform(v => v != null ? parseInt(v, 10) : 150),
+          trendingLimit: z.string().optional().transform(v => v != null ? parseInt(v, 10) : 50),
         }),
         response: {
           200: SuggestionsResponseSchema,
@@ -521,7 +511,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
       schema: {
         querystring: z.object({
           q: z.string().min(1).describe('Search query'),
-          limit: z.string().optional().transform(v => v ? parseInt(v, 10) : 10),
+          limit: z.string().optional().transform(v => v != null ? parseInt(v, 10) : 10),
         }),
         response: {
           200: SuggestionsResponseSchema,
@@ -778,7 +768,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
     async (request) => {
       const sessionId = request.headers['x-session-id'];
 
-      if (sessionId) {
+      if (sessionId != null) {
         await logout(sessionId);
       }
 
@@ -806,7 +796,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
     async (request) => {
       const sessionId = request.headers['x-session-id'];
 
-      if (!sessionId) {
+      if (sessionId == null) {
         return { valid: false };
       }
 
@@ -847,7 +837,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const sessionId = request.headers['x-session-id'];
 
-      if (!sessionId || !isSessionValid(sessionId)) {
+      if (sessionId === '' || !isSessionValid(sessionId)) {
         return reply.status(401).send({
           error: 'unauthorized',
           message: 'Invalid or expired session',
@@ -889,8 +879,8 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
           'x-session-id': z.string(),
         }),
         querystring: z.object({
-          limit: z.string().optional().transform(v => v ? parseInt(v, 10) : 15),
-          offset: z.string().optional().transform(v => v ? parseInt(v, 10) : 0),
+          limit: z.string().optional().transform(v => v != null ? parseInt(v, 10) : 15),
+          offset: z.string().optional().transform(v => v != null ? parseInt(v, 10) : 0),
         }),
         response: {
           200: HistoryResponseSchema,
@@ -903,7 +893,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
       const sessionId = request.headers['x-session-id'];
       const { limit, offset } = request.query;
 
-      if (!sessionId || !isSessionValid(sessionId)) {
+      if (sessionId === '' || !isSessionValid(sessionId)) {
         return reply.status(401).send({
           error: 'unauthorized',
           message: 'Invalid or expired session',
@@ -953,7 +943,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const sessionId = request.headers['x-session-id'];
 
-      if (!sessionId || !isSessionValid(sessionId)) {
+      if (sessionId === '' || !isSessionValid(sessionId)) {
         return reply.status(401).send({
           error: 'unauthorized',
           message: 'Invalid or expired session',
@@ -1003,7 +993,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const sessionId = request.headers['x-session-id'];
 
-      if (!sessionId || !isSessionValid(sessionId)) {
+      if (sessionId === '' || !isSessionValid(sessionId)) {
         return reply.status(401).send({
           error: 'unauthorized',
           message: 'Invalid or expired session',
@@ -1272,16 +1262,16 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
         const primaryIsbn = englishPhysical?.isbn ?? englishDigital?.isbn;
 
         // Build the volume title
-        const volumeTitle = volume.title 
+        const volumeTitle = volume.title != null
           ? `${series.title}, Vol. ${volume.volumeNumber}: ${volume.title}`
           : `${series.title}, Vol. ${volume.volumeNumber}`;
 
         // If no ISBN, return minimal info (Japan-only volume)
-        if (!primaryIsbn) {
+        if (primaryIsbn == null) {
           return {
             id: volume.id,
             title: volumeTitle,
-            authors: series.author ? [series.author] : [],
+            authors: series.author != null ? [series.author] : [],
             isbns: editions.map(e => e.isbn),
             subjects: [],
             coverImage: undefined,
@@ -1316,7 +1306,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
         
         // Cover image priority: Bookcover API > Google Books > OpenLibrary
         let coverImage: string;
-        if (bookcoverUrl) {
+        if (bookcoverUrl != null) {
           coverImage = bookcoverUrl;
         } else {
           const googleBooksUrl = await fetchGoogleBooksCoverUrl(primaryIsbn).catch(() => null);
@@ -1330,10 +1320,10 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
         const fullDescription = googleBooksDescription ?? record?.summary;
         let volumeDescription: string | undefined;
         
-        if (fullDescription) {
+        if (fullDescription != null) {
           // If series doesn't have a description yet, we need to find the true preamble
           // by comparing with another volume's description
-          if (!series.description) {
+          if (series.description == null) {
             // Get all volumes for this series to find another one to compare
             const allVolumes = await getVolumesBySeriesId(series.id);
             
@@ -1344,21 +1334,21 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
             
             // Try to get the comparison volume's description
             let compareDescription: string | null = null;
-            if (compareVolume) {
+            if (compareVolume != null) {
               const compareEditions = await getVolumeEditionData(compareVolume.id);
               const compareIsbn = compareEditions.find(e => e.language === 'en' && e.format === 'physical')?.isbn
                 ?? compareEditions.find(e => e.language === 'en' && e.format === 'digital')?.isbn;
               
-              if (compareIsbn) {
+              if (compareIsbn != null) {
                 compareDescription = await getDescriptionByISBN(compareIsbn);
               }
             }
             
-            if (compareDescription) {
+            if (compareDescription != null) {
               // Found another volume's description - extract the common preamble
               const preamble = findCommonPreamble(fullDescription, compareDescription);
               
-              if (preamble) {
+              if (preamble != null) {
                 // Save the common preamble as series description
                 await updateSeriesDescription(series.id, preamble);
                 // Extract unique part from this volume
@@ -1385,12 +1375,12 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
           volumeNumber: volume.volumeNumber,
         };
 
-        if (!record) {
+        if (record == null) {
           // Book not in NC Cardinal catalog - still include Google Books description
           return {
             id: volume.id,
             title: volumeTitle,
-            authors: series.author ? [series.author] : [],
+            authors: series.author != null ? [series.author] : [],
             isbns: editions.map(e => e.isbn),
             subjects: [],
             summary: volumeDescription,
@@ -1485,7 +1475,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
         
         // Cover image priority: Bookcover API > Google Books > OpenLibrary
         let coverImage: string;
-        if (bookcoverUrl) {
+        if (bookcoverUrl != null) {
           coverImage = bookcoverUrl;
         } else {
           // Try Google Books as fallback (with placeholder detection)
@@ -1499,7 +1489,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
         // Build volume title from entity
         let volumeTitle: string | undefined;
         
-        if (volumeEntity) {
+        if (volumeEntity != null) {
           // We have entity data - use it for series info
           seriesInfo = {
             id: volumeEntity.series.id,
@@ -1507,7 +1497,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
             volumeNumber: volumeEntity.volume.volumeNumber,
           };
           // Build full title: "Series, Vol. N" or "Series, Vol. N: Subtitle"
-          volumeTitle = volumeEntity.volume.title 
+          volumeTitle = volumeEntity.volume.title != null
             ? `${volumeEntity.series.title}, Vol. ${volumeEntity.volume.volumeNumber}: ${volumeEntity.volume.title}`
             : `${volumeEntity.series.title}, Vol. ${volumeEntity.volume.volumeNumber}`;
         }
@@ -1583,7 +1573,7 @@ import type { HoldingInfo } from '../scripts/opensearch-client.js';
 /**
  * Calculate detailed availability counts from holdings
  */
-function calculateAvailability(holdings: HoldingInfo[]): {
+function _calculateAvailability(holdings: HoldingInfo[]): {
   available: boolean;
   totalCopies: number;
   availableCopies: number;
@@ -1646,7 +1636,7 @@ function extractSeriesInfo(title: string): { title: string; volumeNumber?: numbe
 
   for (const pattern of patterns) {
     const match = title.match(pattern);
-    if (match?.[1] && match?.[2]) {
+    if (match?.[1] != null && match?.[2] != null) {
       const volumeNumber = parseInt(match[2], 10);
       if (volumeNumber > 0 && volumeNumber < 1000) {
         return {

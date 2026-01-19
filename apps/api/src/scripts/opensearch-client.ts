@@ -18,7 +18,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const BASE_URL =
-  process.env.NC_CARDINAL_BASE_URL || 'https://highpoint.nccardinal.org';
+  process.env.NC_CARDINAL_BASE_URL ?? 'https://highpoint.nccardinal.org';
 
 // ============================================================================
 // Two-Tier Caching:
@@ -345,7 +345,7 @@ export async function searchByISBN(
   // Tier 1: Check if we have a cached ISBN -> RecordID mapping
   const cachedRecordId = readISBNToRecordId(cleanISBN);
   
-  if (cachedRecordId) {
+  if (cachedRecordId != null) {
     // Tier 2: Check if we have a fresh record cache
     const cachedRecord = readRecordCache(cachedRecordId);
     
@@ -410,7 +410,7 @@ export async function searchByISBNs(
   const uncachedISBNs: string[] = [];
   for (const isbn of cleanISBNs) {
     const cachedRecordId = readISBNToRecordId(isbn);
-    if (cachedRecordId) {
+    if (cachedRecordId != null) {
       const cachedRecord = readRecordCache(cachedRecordId);
       if (cachedRecord !== 'miss' && cachedRecord !== null) {
         results.set(isbn, cachedRecord);
@@ -558,9 +558,12 @@ function parseAtomFullResponse(xml: string): OpenSearchResult {
   const $ = cheerio.load(xml, { xmlMode: true });
 
   // Parse OpenSearch metadata
-  const totalResults = parseInt($('totalResults').text()) || 0;
-  const startIndex = parseInt($('startIndex').text()) || 1;
-  const itemsPerPage = parseInt($('itemsPerPage').text()) || 0;
+  const totalResultsRaw = parseInt($('totalResults').text());
+  const totalResults = Number.isNaN(totalResultsRaw) ? 0 : totalResultsRaw;
+  const startIndexRaw = parseInt($('startIndex').text());
+  const startIndex = Number.isNaN(startIndexRaw) ? 1 : startIndexRaw;
+  const itemsPerPageRaw = parseInt($('itemsPerPage').text());
+  const itemsPerPage = Number.isNaN(itemsPerPageRaw) ? 0 : itemsPerPageRaw;
 
   // Find next page link
   const nextLink = $('link[rel="next"]').attr('href');
@@ -575,7 +578,7 @@ function parseAtomFullResponse(xml: string): OpenSearchResult {
     const idMatch = idText.match(/urn:tcn:(\d+)/);
     const id = idMatch?.[1] ?? '';
 
-    if (!id) return;
+    if (id === '') return;
 
     // Title
     const title = $entry.find('title').first().text().trim();
@@ -586,7 +589,7 @@ function parseAtomFullResponse(xml: string): OpenSearchResult {
       const authorText = $(el).text().trim();
       // Clean up author text - remove role info and IDs
       const cleanAuthor = authorText.split('(CARDINAL)')[0]?.trim() ?? authorText;
-      if (cleanAuthor) {
+      if (cleanAuthor !== '') {
         authors.push(cleanAuthor);
       }
     });
@@ -596,7 +599,7 @@ function parseAtomFullResponse(xml: string): OpenSearchResult {
     $entry.find('dc\\:identifier, identifier').each((_, el) => {
       const text = $(el).text();
       const isbnMatch = text.match(/URN:ISBN:(.+)/);
-      if (isbnMatch?.[1]) {
+      if (isbnMatch?.[1] != null) {
         isbns.push(isbnMatch[1]);
       }
     });
@@ -605,16 +608,18 @@ function parseAtomFullResponse(xml: string): OpenSearchResult {
     const subjects: string[] = [];
     $entry.find('category').each((_, el) => {
       const term = $(el).attr('term');
-      if (term) {
+      if (term != null) {
         subjects.push(term);
       }
     });
 
     // Summary
-    const summary = $entry.find('summary').text().trim() || undefined;
+    const summaryText = $entry.find('summary').text().trim();
+    const summary = summaryText !== '' ? summaryText : undefined;
 
     // Updated date
-    const updatedDate = $entry.find('updated').text().trim() || undefined;
+    const updatedDateText = $entry.find('updated').text().trim();
+    const updatedDate = updatedDateText !== '' ? updatedDateText : undefined;
 
     // Parse holdings
     const holdings = parseHoldings($entry, $);
@@ -624,22 +629,23 @@ function parseAtomFullResponse(xml: string): OpenSearchResult {
     $entry.find('suffix').each((_: number, el: unknown) => {
       const $suffix = $(el as string);
       const label = $suffix.text().trim();
-      const sortKey = $suffix.attr('label_sortkey') || '';
+      const sortKeyAttr = $suffix.attr('label_sortkey');
+      const sortKey = sortKeyAttr ?? '';
       
       // Common patterns: V.1, Vol.1, BK.1, #1
-      const volMatch = label.match(/^(?:V\.?|Vol\.?|BK\.?)\s*(\d+)/i) ||
+      const volMatch = label.match(/^(?:V\.?|Vol\.?|BK\.?)\s*(\d+)/i) ??
                        sortKey.match(/^(?:v|bk)0*(\d+)/i);
-      if (volMatch && !volumeNumber) {
+      if (volMatch != null && volumeNumber == null) {
         volumeNumber = volMatch[1];
       }
     });
 
     // Also check call numbers for volume info (e.g., "GN/YA/Demon Slayer #1")
-    if (!volumeNumber) {
+    if (volumeNumber == null) {
       for (const h of holdings) {
         const callMatch = h.callNumber.match(/#(\d+)|(?:Vol\.?|V\.?)\s*(\d+)/i);
-        if (callMatch) {
-          volumeNumber = callMatch[1] || callMatch[2];
+        if (callMatch != null) {
+          volumeNumber = callMatch[1] ?? callMatch[2];
           break;
         }
       }
@@ -678,18 +684,20 @@ function parseHoldings(
   const holdings: HoldingInfo[] = [];
 
   // Holdings are in <holdings><volumes><volume><copies><copy> structure
-  $entry.find('volume').each((_: number, volume: unknown) => {
-    const $volume = $(volume as string);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+  $entry.find('volume').each(function(this: unknown) {
+    const $volume = $(this as Parameters<typeof $>[0]);
     const callNumber = $volume.attr('label') ?? '';
     const owningLib = $volume.find('owning_lib').attr('name') ?? '';
     const owningLibCode = $volume.find('owning_lib').attr('shortname') ?? '';
 
-    $volume.find('copy').each((_idx: number, copy: unknown) => {
-      const $copy = $(copy as string);
+    $volume.find('copy').each(function(this: unknown) {
+      const $copy = $(this as Parameters<typeof $>[0]);
 
       const status = $copy.find('status').text().trim();
       const location = $copy.find('location').text().trim();
-      const circLib = $copy.find('circlib').text().trim() || owningLib;
+      const circLibText = $copy.find('circlib').text().trim();
+      const circLib = circLibText !== '' ? circLibText : owningLib;
       const circLibCode = $copy.find('circ_lib').attr('shortname') ?? owningLibCode;
       const barcode = $copy.attr('barcode');
 
@@ -750,7 +758,7 @@ export function getAvailabilitySummary(record: CatalogRecord): {
  */
 export function getDetailedAvailabilitySummary(
   record: CatalogRecord,
-  homeLibraryCode?: string | undefined
+  homeLibraryCode?: string  
 ): AvailabilitySummary {
   const counts = {
     available: 0,
@@ -776,7 +784,7 @@ export function getDetailedAvailabilitySummary(
     }
     
     // Track local vs remote if home library is specified
-    if (homeLibraryCode) {
+    if (homeLibraryCode != null) {
       const isLocal = holding.libraryCode.toUpperCase() === homeLibraryCode.toUpperCase();
       if (isLocal) {
         localCopies++;
@@ -803,10 +811,10 @@ export function getDetailedAvailabilitySummary(
     unavailableCopies: counts.unavailable,
     libraries: [...availableLibraries],
     // Include local/remote only if home library was specified
-    localCopies: homeLibraryCode ? localCopies : undefined,
-    localAvailable: homeLibraryCode ? localAvailable : undefined,
-    remoteCopies: homeLibraryCode ? remoteCopies : undefined,
-    remoteAvailable: homeLibraryCode ? remoteAvailable : undefined,
+    localCopies: homeLibraryCode != null ? localCopies : undefined,
+    localAvailable: homeLibraryCode != null ? localAvailable : undefined,
+    remoteCopies: homeLibraryCode != null ? remoteCopies : undefined,
+    remoteAvailable: homeLibraryCode != null ? remoteAvailable : undefined,
     catalogUrl: getCatalogUrl(record.id),
   };
 }
@@ -856,14 +864,14 @@ export async function getVolumeInfo(recordId: string): Promise<{
   
   // Full title reconstruction
   let fullTitle = titleA;
-  if (titleN) fullTitle += ` Vol. ${titleN}`;
-  if (titleP) fullTitle += `: ${titleP}`;
+  if (titleN !== '') fullTitle += ` Vol. ${titleN}`;
+  if (titleP !== '') fullTitle += `: ${titleP}`;
   
   return {
-    volumeNumber: titleN || undefined,
-    volumeTitle: titleP || undefined,
-    seriesName: seriesName || undefined,
-    fullTitle: fullTitle || undefined,
+    volumeNumber: titleN !== '' ? titleN : undefined,
+    volumeTitle: titleP !== '' ? titleP : undefined,
+    seriesName: seriesName !== '' ? seriesName : undefined,
+    fullTitle: fullTitle !== '' ? fullTitle : undefined,
   };
 }
 
@@ -951,8 +959,10 @@ async function main() {
 
     for (const record of keywordResults.records) {
       console.log(`  📚 [${record.id}] ${record.title}`);
-      console.log(`     Authors: ${record.authors.slice(0, 2).join(', ') || 'N/A'}`);
-      console.log(`     ISBNs: ${record.isbns.join(', ') || 'N/A'}`);
+      const authorsStr = record.authors.slice(0, 2).join(', ');
+      console.log(`     Authors: ${authorsStr !== '' ? authorsStr : 'N/A'}`);
+      const isbnsStr = record.isbns.join(', ');
+      console.log(`     ISBNs: ${isbnsStr !== '' ? isbnsStr : 'N/A'}`);
 
       const availability = getAvailabilitySummary(record);
       console.log(`     Copies: ${availability.availableCopies}/${availability.totalCopies} available`);
@@ -1017,7 +1027,7 @@ async function main() {
     console.log(`Found ${demonSlayerVolumes.length} individual volumes:`);
     for (const vol of demonSlayerVolumes) {
       const avail = getAvailabilitySummary(vol);
-      const volNum = vol.volumeNumber ? `Vol. ${vol.volumeNumber}` : '(no vol#)';
+      const volNum = vol.volumeNumber != null ? `Vol. ${vol.volumeNumber}` : '(no vol#)';
       console.log(`  - ${volNum}: ${vol.title} - ${avail.availableCopies}/${avail.totalCopies} available`);
     }
 

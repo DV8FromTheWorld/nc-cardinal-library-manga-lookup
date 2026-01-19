@@ -41,7 +41,7 @@ export async function createSeries(input: CreateSeriesInput): Promise<Series> {
   };
   
   await saveSeries(series);
-  console.log(`[Series] Created series: ${series.id} - "${series.title}"${input.relationship ? ` (${input.relationship})` : ''}`);
+  console.log(`[Series] Created series: ${series.id} - "${series.title}"${input.relationship != null ? ` (${input.relationship})` : ''}`);
   
   return series;
 }
@@ -64,7 +64,7 @@ export async function findOrCreateSeriesByWikipedia(
   const byTitle = await getSeriesByTitle(input.title);
   if (byTitle) {
     // Update with Wikipedia ID if we didn't have it
-    if (!byTitle.externalIds.wikipedia) {
+    if (byTitle.externalIds.wikipedia == null) {
       byTitle.externalIds.wikipedia = wikipediaPageId;
       byTitle.updatedAt = new Date().toISOString();
       await saveSeries(byTitle);
@@ -134,7 +134,7 @@ export async function updateSeriesDescription(
   }
   
   // Only set if not already present
-  if (!series.description) {
+  if (series.description == null) {
     series.description = description;
     series.updatedAt = new Date().toISOString();
     await saveSeries(series);

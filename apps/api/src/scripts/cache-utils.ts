@@ -176,12 +176,12 @@ export function clearCacheForISBN(isbn: string): { deletedCount: number; deleted
       try {
         // Read the record ID before deleting so we can also clear the record
         const content = fs.readFileSync(isbnFile, 'utf-8');
-        const data = JSON.parse(content);
+        const data = JSON.parse(content) as { recordId?: string | undefined };
         fs.unlinkSync(isbnFile);
         deletedFiles.push(`nc-cardinal/isbn-to-record/${cleanISBN}.json`);
         
         // Also clear the associated record if we have a record ID
-        if (data.recordId) {
+        if (data.recordId != null) {
           const recordFile = path.join(getCacheDir('nc-cardinal'), 'records', `${data.recordId}.json`);
           if (fs.existsSync(recordFile)) {
             try {

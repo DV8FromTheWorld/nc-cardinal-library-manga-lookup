@@ -30,7 +30,7 @@ export async function createVolume(input: CreateVolumeInput): Promise<Volume> {
   };
   
   await saveVolume(volume);
-  console.log(`[Volume] Created volume: ${volume.id} - Vol. ${volume.volumeNumber}${volume.title ? ` "${volume.title}"` : ''}`);
+  console.log(`[Volume] Created volume: ${volume.id} - Vol. ${volume.volumeNumber}${volume.title != null ? ` "${volume.title}"` : ''}`);
   
   return volume;
 }
