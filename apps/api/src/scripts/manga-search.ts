@@ -205,6 +205,10 @@ const BOOKCOVER_CACHE_DIR = path.join(process.cwd(), '.cache', 'bookcover');
 /**
  * Fetch cover URL from Bookcover API (aggregates Amazon, Google, OpenLibrary, etc.)
  * Results are cached to avoid repeated API calls
+ * 
+ * NOTE: The Bookcover API can take 25+ seconds to return "not found" because it
+ * searches multiple sources. We use a 5-second timeout since successful responses
+ * typically come back in <1 second.
  */
 export async function fetchBookcoverUrl(isbn: string): Promise<string | null> {
   // Ensure cache directory exists
@@ -221,7 +225,17 @@ export async function fetchBookcoverUrl(isbn: string): Promise<string | null> {
   }
 
   try {
-    const response = await fetch(`https://bookcover.longitood.com/bookcover/${isbn}`);
+    // Use a 5-second timeout - successful responses are usually <1 second
+    // If it takes longer, it's likely going to return "not found" after 25+ seconds
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
+    const response = await fetch(`https://bookcover.longitood.com/bookcover/${isbn}`, {
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+    
     if (!response.ok) {
       fs.writeFileSync(cacheFile, ''); // Cache the miss
       return null;
@@ -234,6 +248,7 @@ export async function fetchBookcoverUrl(isbn: string): Promise<string | null> {
     fs.writeFileSync(cacheFile, url ?? '');
     return url;
   } catch {
+    // On timeout or error, don't cache - might succeed next time
     return null;
   }
 }
@@ -310,11 +325,12 @@ export async function fetchGoogleBooksCoverUrl(isbn: string): Promise<string | n
       return null;
     }
 
-    // Step 2: Check if the image is a placeholder by fetching it
+    // Step 2: Check if the image is a placeholder by doing a HEAD request
     // IMPORTANT: Must check zoom=2 because Google Books can return JPEG at zoom=1 but PNG at zoom=2
     // (placeholder images are PNG, real covers are JPEG)
+    // Using HEAD instead of GET to avoid downloading the entire image just to check content-type
     const imageUrl = `https://books.google.com/books/content?id=${book.id}&printsec=frontcover&img=1&zoom=2&source=gbs_api`;
-    const imageResponse = await fetch(imageUrl);
+    const imageResponse = await fetch(imageUrl, { method: 'HEAD' });
     
     if (!imageResponse.ok) {
       fs.writeFileSync(cacheFile, '');
