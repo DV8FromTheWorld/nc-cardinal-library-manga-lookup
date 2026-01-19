@@ -375,12 +375,14 @@ export async function searchByISBN(
   }
 
   // No cached mapping - do full OpenSearch
+  const searchStart = Date.now();
   console.log(`[NC Cardinal] Full search for ISBN: ${cleanISBN}`);
   const results = await searchCatalog(cleanISBN, {
     searchClass: 'keyword',
     org,
     count: 5,
   });
+  console.log(`[NC Cardinal] ISBN ${cleanISBN} search took ${Date.now() - searchStart}ms`);
 
   // Find the record that matches the ISBN
   const match = results.records.find((r) =>
@@ -408,6 +410,7 @@ export async function searchByISBNs(
   isbns: string[],
   options: { org?: string; concurrency?: number } = {}
 ): Promise<Map<string, CatalogRecord | null>> {
+  const startTime = Date.now();
   const { org = ORG_CODES.CARDINAL, concurrency = 10 } = options;
 
   const results = new Map<string, CatalogRecord | null>();
@@ -416,6 +419,7 @@ export async function searchByISBNs(
   const cleanISBNs = [...new Set(isbns.map((isbn) => isbn.replace(/[-\s]/g, '')))];
 
   // First pass: check what's already cached (instant)
+  const cacheCheckStart = Date.now();
   const uncachedISBNs: string[] = [];
   for (const isbn of cleanISBNs) {
     const cachedRecordId = readISBNToRecordId(isbn);
@@ -428,22 +432,27 @@ export async function searchByISBNs(
     }
     uncachedISBNs.push(isbn);
   }
+  const cacheCheckTime = Date.now() - cacheCheckStart;
 
   if (uncachedISBNs.length === 0) {
-    console.log(`[NC Cardinal] All ${cleanISBNs.length} ISBNs served from cache`);
+    console.log(
+      `[Timing] NC Cardinal: All ${cleanISBNs.length} ISBNs served from cache in ${cacheCheckTime}ms`
+    );
     return results;
   }
 
   console.log(
-    `[NC Cardinal] ${results.size} cached, ${uncachedISBNs.length} need fetching (parallel, concurrency=${concurrency})`
+    `[Timing] NC Cardinal cache check: ${cacheCheckTime}ms for ${cleanISBNs.length} ISBNs (${results.size} hits, ${uncachedISBNs.length} misses)`
   );
 
   // Process in parallel batches
+  const networkStart = Date.now();
   for (let i = 0; i < uncachedISBNs.length; i += concurrency) {
     const batch = uncachedISBNs.slice(i, i + concurrency);
     const batchNum = Math.floor(i / concurrency) + 1;
     const totalBatches = Math.ceil(uncachedISBNs.length / concurrency);
 
+    const batchStart = Date.now();
     console.log(
       `[NC Cardinal] Batch ${batchNum}/${totalBatches}: fetching ${batch.length} ISBNs in parallel...`
     );
@@ -460,11 +469,16 @@ export async function searchByISBNs(
       })
     );
 
+    console.log(`[Timing] NC Cardinal batch ${batchNum}: ${Date.now() - batchStart}ms`);
+
     for (const { isbn, record } of batchResults) {
       results.set(isbn, record);
     }
   }
 
+  console.log(
+    `[Timing] NC Cardinal searchByISBNs TOTAL: ${Date.now() - startTime}ms (${cacheCheckTime}ms cache, ${Date.now() - networkStart}ms network)`
+  );
   return results;
 }
 
@@ -496,9 +510,11 @@ export async function getAvailabilityByISBNs(
   isbns: string[],
   options: { org?: string; homeLibrary?: string | undefined } = {}
 ): Promise<Map<string, AvailabilitySummary>> {
+  const startTime = Date.now();
   const { homeLibrary, ...searchOptions } = options;
   const records = await searchByISBNs(isbns, searchOptions);
 
+  const summaryStart = Date.now();
   const availability = new Map<string, AvailabilitySummary>();
 
   for (const [isbn, record] of records) {
@@ -522,6 +538,9 @@ export async function getAvailabilityByISBNs(
     availability.set(isbn, summary);
   }
 
+  console.log(
+    `[Timing] getAvailabilityByISBNs: ${Date.now() - startTime}ms total (${Date.now() - summaryStart}ms building summaries)`
+  );
   return availability;
 }
 

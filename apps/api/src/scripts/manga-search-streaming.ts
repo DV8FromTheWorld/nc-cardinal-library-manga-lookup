@@ -89,6 +89,7 @@ export async function searchWithProgress(
   options: StreamingSearchOptions
 ): Promise<SearchResult> {
   const { homeLibrary, onProgress } = options;
+  const totalStart = Date.now();
 
   const parsedQuery = parseQuery(query);
 
@@ -104,6 +105,7 @@ export async function searchWithProgress(
 
   // Step 1: Try Wikipedia
   onProgress({ type: 'wikipedia:searching' });
+  const wikiStart = Date.now();
 
   let wikiSeries: WikiSeries | null = null;
   let ncCardinalFallbackSeries: SeriesResult[] = [];
@@ -112,15 +114,20 @@ export async function searchWithProgress(
     wikiSeries = await getWikipediaSeries(parsedQuery.title);
 
     if (wikiSeries && wikiSeries.volumes.length > 0) {
+      console.log(
+        `[Timing] Wikipedia search + parse: ${Date.now() - wikiStart}ms (found ${wikiSeries.volumes.length} volumes)`
+      );
       onProgress({
         type: 'wikipedia:found',
         seriesTitle: wikiSeries.title,
         volumeCount: wikiSeries.volumes.length,
       });
     } else {
+      console.log(`[Timing] Wikipedia search: ${Date.now() - wikiStart}ms (not found)`);
       onProgress({ type: 'wikipedia:not-found', fallback: 'nc-cardinal' });
     }
   } catch (error) {
+    console.log(`[Timing] Wikipedia search: ${Date.now() - wikiStart}ms (error)`);
     const message = error instanceof Error ? error.message : 'Unknown error';
     onProgress({ type: 'wikipedia:error', message });
     onProgress({ type: 'wikipedia:not-found', fallback: 'nc-cardinal' });
@@ -129,6 +136,7 @@ export async function searchWithProgress(
   // Step 2: If Wikipedia failed, try NC Cardinal directly
   if (!wikiSeries || wikiSeries.volumes.length === 0) {
     onProgress({ type: 'nc-cardinal:searching' });
+    const ncFallbackStart = Date.now();
 
     try {
       const fallbackResults = await searchCatalog(parsedQuery.title, {
@@ -137,11 +145,18 @@ export async function searchWithProgress(
       });
 
       if (fallbackResults.records.length > 0) {
+        console.log(
+          `[Timing] NC Cardinal fallback search: ${Date.now() - ncFallbackStart}ms (found ${fallbackResults.records.length} records)`
+        );
         onProgress({ type: 'nc-cardinal:found', recordCount: fallbackResults.records.length });
         ncCardinalFallbackSeries = await buildMultipleSeriesFromRecords(
           parsedQuery.title,
           fallbackResults.records,
           homeLibrary
+        );
+      } else {
+        console.log(
+          `[Timing] NC Cardinal fallback search: ${Date.now() - ncFallbackStart}ms (no records)`
         );
       }
     } catch (error) {
@@ -160,61 +175,93 @@ export async function searchWithProgress(
     }
   }
 
-  // Step 4: Check availability with progress
+  // Step 4: Check availability with progress (max concurrency model)
   const availability = new Map<string, VolumeAvailability>();
+  const availabilityStart = Date.now();
 
   if (isbnsToCheck.length > 0) {
     onProgress({ type: 'availability:start', total: isbnsToCheck.length });
 
-    const BATCH_SIZE = 5;
+    const MAX_CONCURRENCY = 10;
+    let activeCount = 0;
+    let nextIndex = 0;
     let completed = 0;
     let foundInCatalog = 0;
 
-    for (let i = 0; i < isbnsToCheck.length; i += BATCH_SIZE) {
-      const batch = isbnsToCheck.slice(i, i + BATCH_SIZE);
+    await new Promise<void>((resolve) => {
+      const processNext = () => {
+        while (activeCount < MAX_CONCURRENCY && nextIndex < isbnsToCheck.length) {
+          const isbn = isbnsToCheck[nextIndex++];
+          if (isbn == null) continue;
 
-      // Process batch in parallel
-      const batchResults = await Promise.all(
-        batch.map(async (isbn) => {
-          try {
-            const record = await searchByISBNSingle(isbn);
-            return { isbn, record };
-          } catch {
-            return { isbn, record: null };
-          }
-        })
-      );
+          activeCount++;
+          searchByISBNSingle(isbn)
+            .then((record) => {
+              if (record != null) {
+                foundInCatalog++;
+                availability.set(isbn, getDetailedAvailabilitySummary(record, homeLibrary));
+              } else {
+                availability.set(isbn, {
+                  available: false,
+                  notInCatalog: true,
+                  totalCopies: 0,
+                  availableCopies: 0,
+                  checkedOutCopies: 0,
+                  inTransitCopies: 0,
+                  onOrderCopies: 0,
+                  onHoldCopies: 0,
+                  unavailableCopies: 0,
+                  libraries: [],
+                });
+              }
+            })
+            .catch(() => {
+              availability.set(isbn, {
+                available: false,
+                notInCatalog: true,
+                totalCopies: 0,
+                availableCopies: 0,
+                checkedOutCopies: 0,
+                inTransitCopies: 0,
+                onOrderCopies: 0,
+                onHoldCopies: 0,
+                unavailableCopies: 0,
+                libraries: [],
+              });
+            })
+            .finally(() => {
+              activeCount--;
+              completed++;
 
-      // Process results
-      for (const { isbn, record } of batchResults) {
-        if (record != null) {
-          foundInCatalog++;
-          availability.set(isbn, getDetailedAvailabilitySummary(record, homeLibrary));
-        } else {
-          availability.set(isbn, {
-            available: false,
-            notInCatalog: true,
-            totalCopies: 0,
-            availableCopies: 0,
-            checkedOutCopies: 0,
-            inTransitCopies: 0,
-            onOrderCopies: 0,
-            onHoldCopies: 0,
-            unavailableCopies: 0,
-            libraries: [],
-          });
+              // Emit progress every 5 completions to avoid flooding SSE
+              if (completed % 5 === 0 || completed === isbnsToCheck.length) {
+                onProgress({
+                  type: 'availability:progress',
+                  completed,
+                  total: isbnsToCheck.length,
+                  foundInCatalog,
+                });
+              }
+
+              if (nextIndex >= isbnsToCheck.length && activeCount === 0) {
+                resolve();
+              } else {
+                processNext();
+              }
+            });
         }
-      }
 
-      completed += batch.length;
-      onProgress({
-        type: 'availability:progress',
-        completed,
-        total: isbnsToCheck.length,
-        foundInCatalog,
-      });
-    }
+        if (isbnsToCheck.length === 0) {
+          resolve();
+        }
+      };
 
+      processNext();
+    });
+
+    console.log(
+      `[Timing] Availability total: ${Date.now() - availabilityStart}ms (${isbnsToCheck.length} ISBNs, ${foundInCatalog} found)`
+    );
     onProgress({
       type: 'availability:complete',
       foundInCatalog,
@@ -222,67 +269,127 @@ export async function searchWithProgress(
     });
   }
 
-  // Step 5: Fetch cover images with progress
+  // Step 5: Fetch cover images with progress (max concurrency model)
   if (isbnsToCheck.length > 0) {
     onProgress({ type: 'covers:start', total: isbnsToCheck.length });
+    const coversStart = Date.now();
 
     const bookcoverUrls = new Map<string, string>();
-    const COVER_BATCH_SIZE = 5;
     let coversCompleted = 0;
 
-    // First pass: Bookcover API
-    for (let i = 0; i < isbnsToCheck.length; i += COVER_BATCH_SIZE) {
-      const batch = isbnsToCheck.slice(i, i + COVER_BATCH_SIZE);
+    // First pass: Bookcover API with max concurrency
+    const bookcoverStart = Date.now();
+    const MAX_COVER_CONCURRENCY = 5;
 
-      const batchResults = await Promise.all(
-        batch.map(async (isbn) => {
-          const url = await fetchBookcoverUrl(isbn);
-          return { isbn, url };
-        })
-      );
+    await new Promise<void>((resolve) => {
+      let activeCount = 0;
+      let nextIndex = 0;
 
-      for (const { isbn, url } of batchResults) {
-        if (url != null) {
-          bookcoverUrls.set(isbn, url);
+      const processNext = () => {
+        while (activeCount < MAX_COVER_CONCURRENCY && nextIndex < isbnsToCheck.length) {
+          const isbn = isbnsToCheck[nextIndex++];
+          if (isbn == null) continue;
+
+          activeCount++;
+          void fetchBookcoverUrl(isbn)
+            .then((url) => {
+              if (url != null) {
+                bookcoverUrls.set(isbn, url);
+              }
+            })
+            .finally(() => {
+              activeCount--;
+              coversCompleted++;
+
+              // Emit progress every 5 completions
+              if (coversCompleted % 5 === 0 || coversCompleted === isbnsToCheck.length) {
+                onProgress({
+                  type: 'covers:progress',
+                  completed: coversCompleted,
+                  total: isbnsToCheck.length,
+                });
+              }
+
+              if (nextIndex >= isbnsToCheck.length && activeCount === 0) {
+                resolve();
+              } else {
+                processNext();
+              }
+            });
         }
-      }
 
-      coversCompleted += batch.length;
-      onProgress({
-        type: 'covers:progress',
-        completed: coversCompleted,
-        total: isbnsToCheck.length,
-      });
-    }
+        if (isbnsToCheck.length === 0) {
+          resolve();
+        }
+      };
 
-    // Second pass: Google Books for missing covers
+      processNext();
+    });
+
+    console.log(
+      `[Timing] Bookcover API total: ${Date.now() - bookcoverStart}ms (${bookcoverUrls.size}/${isbnsToCheck.length} found)`
+    );
+
+    // Second pass: Google Books for missing covers with max concurrency
     const missingCoverIsbns = isbnsToCheck.filter((isbn) => !bookcoverUrls.has(isbn));
     const googleBooksUrls = new Map<string, string>();
 
     if (missingCoverIsbns.length > 0) {
-      for (let i = 0; i < missingCoverIsbns.length; i += COVER_BATCH_SIZE) {
-        const batch = missingCoverIsbns.slice(i, i + COVER_BATCH_SIZE);
-        const batchResults = await Promise.all(
-          batch.map(async (isbn) => {
-            const url = await fetchGoogleBooksCoverUrl(isbn);
-            return { isbn, url };
-          })
-        );
-        for (const { isbn, url } of batchResults) {
-          if (url != null) googleBooksUrls.set(isbn, url);
-        }
-      }
+      const googleStart = Date.now();
+
+      await new Promise<void>((resolve) => {
+        let activeCount = 0;
+        let nextIndex = 0;
+
+        const processNext = () => {
+          while (activeCount < MAX_COVER_CONCURRENCY && nextIndex < missingCoverIsbns.length) {
+            const isbn = missingCoverIsbns[nextIndex++];
+            if (isbn == null) continue;
+
+            activeCount++;
+            void fetchGoogleBooksCoverUrl(isbn)
+              .then((url) => {
+                if (url != null) {
+                  googleBooksUrls.set(isbn, url);
+                }
+              })
+              .finally(() => {
+                activeCount--;
+                if (nextIndex >= missingCoverIsbns.length && activeCount === 0) {
+                  resolve();
+                } else {
+                  processNext();
+                }
+              });
+          }
+
+          if (missingCoverIsbns.length === 0) {
+            resolve();
+          }
+        };
+
+        processNext();
+      });
+
+      console.log(
+        `[Timing] Google Books covers: ${Date.now() - googleStart}ms (${googleBooksUrls.size}/${missingCoverIsbns.length} found)`
+      );
     }
 
+    console.log(`[Timing] Covers total: ${Date.now() - coversStart}ms`);
     onProgress({ type: 'covers:complete' });
 
     // Build final results with Wikipedia data
     if (wikiSeries != null && wikiSeries.volumes.length > 0) {
+      const entityStart = Date.now();
       const seriesResult = await buildSeriesResultFromWikipedia(
         wikiSeries,
         availability,
         bookcoverUrls,
         googleBooksUrls
+      );
+      console.log(
+        `[Timing] Entity creation (buildSeriesResultFromWikipedia): ${Date.now() - entityStart}ms`
       );
       result.series.push(seriesResult);
 
@@ -506,6 +613,8 @@ export async function searchWithProgress(
   } else if (result.series.length > 0) {
     result.bestMatch = { type: 'series', series: result.series[0] };
   }
+
+  console.log(`[Timing] searchWithProgress TOTAL: ${Date.now() - totalStart}ms`);
 
   // Emit completion
   onProgress({ type: 'complete', result });
