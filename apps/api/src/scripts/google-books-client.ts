@@ -91,7 +91,10 @@ interface GoogleBooksAPIItem {
 // ============================================================================
 
 function getCacheKey(query: string): string {
-  const sanitized = query.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 100);
+  const sanitized = query
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .slice(0, 100);
   return `search_${sanitized}.json`;
 }
 
@@ -99,13 +102,13 @@ function readCache<T>(cacheKey: string): T | null {
   const cachePath = path.join(CACHE_DIR, cacheKey);
   try {
     if (!fs.existsSync(cachePath)) return null;
-    
+
     const stat = fs.statSync(cachePath);
     if (Date.now() - stat.mtimeMs > CACHE_TTL_MS) {
       fs.unlinkSync(cachePath);
       return null;
     }
-    
+
     const data = fs.readFileSync(cachePath, 'utf-8');
     return JSON.parse(data) as T;
   } catch {
@@ -130,7 +133,7 @@ export async function searchVolumes(
   options: { maxResults?: number } = {}
 ): Promise<GoogleBooksSearchResult> {
   const { maxResults = 40 } = options;
-  
+
   const cacheKey = getCacheKey(`${query}_${maxResults}`);
   const cached = readCache<GoogleBooksSearchResult>(cacheKey);
   if (cached) {
@@ -152,10 +155,12 @@ export async function searchVolumes(
     throw new Error(`Google Books API error: ${response.status}`);
   }
 
-  const data = await response.json() as GoogleBooksAPIResponse;
-  
-  const volumes = (data.items ?? []).map(parseVolume).filter((v): v is GoogleBooksVolume => v !== null);
-  
+  const data = (await response.json()) as GoogleBooksAPIResponse;
+
+  const volumes = (data.items ?? [])
+    .map(parseVolume)
+    .filter((v): v is GoogleBooksVolume => v !== null);
+
   const result: GoogleBooksSearchResult = {
     totalItems: data.totalItems ?? 0,
     volumes,
@@ -175,7 +180,7 @@ function parseVolume(item: GoogleBooksAPIItem): GoogleBooksVolume | null {
   // Extract ISBNs
   let isbn10: string | undefined;
   let isbn13: string | undefined;
-  
+
   for (const id of info.industryIdentifiers ?? []) {
     if (id.type === 'ISBN_10') {
       isbn10 = id.identifier;
@@ -186,9 +191,10 @@ function parseVolume(item: GoogleBooksAPIItem): GoogleBooksVolume | null {
 
   // Extract series info
   const seriesInfo = info.seriesInfo?.volumeSeries?.[0];
-  const volumeNumber = info.seriesInfo?.bookDisplayNumber != null
-    ? parseInt(info.seriesInfo.bookDisplayNumber, 10) 
-    : undefined;
+  const volumeNumber =
+    info.seriesInfo?.bookDisplayNumber != null
+      ? parseInt(info.seriesInfo.bookDisplayNumber, 10)
+      : undefined;
 
   return {
     id: item.id,
@@ -212,18 +218,20 @@ function parseVolume(item: GoogleBooksAPIItem): GoogleBooksVolume | null {
  * "Ascendance of a Bookworm (Manga) Part 2 Volume 1" → "Ascendance of a Bookworm (Manga)"
  */
 function extractSeriesTitle(volumeTitle: string): string {
-  return volumeTitle
-    // Remove volume number patterns
-    .replace(/,?\s*Vol(?:ume)?\.?\s*\d+.*$/i, '')
-    .replace(/\s*Volume\s*\d+.*$/i, '')
-    // Remove part indicators but keep them for grouping
-    .replace(/\s*Part\s*\d+\s*Volume.*$/i, match => {
-      const partMatch = match.match(/Part\s*(\d+)/i);
-      return partMatch ? ` Part ${partMatch[1]}` : '';
-    })
-    // Remove trailing parenthetical info that's volume-specific
-    .replace(/\s*\([^)]*\d+[^)]*\)\s*$/, '')
-    .trim();
+  return (
+    volumeTitle
+      // Remove volume number patterns
+      .replace(/,?\s*Vol(?:ume)?\.?\s*\d+.*$/i, '')
+      .replace(/\s*Volume\s*\d+.*$/i, '')
+      // Remove part indicators but keep them for grouping
+      .replace(/\s*Part\s*\d+\s*Volume.*$/i, (match) => {
+        const partMatch = match.match(/Part\s*(\d+)/i);
+        return partMatch ? ` Part ${partMatch[1]}` : '';
+      })
+      // Remove trailing parenthetical info that's volume-specific
+      .replace(/\s*\([^)]*\d+[^)]*\)\s*$/, '')
+      .trim()
+  );
 }
 
 /**
@@ -239,7 +247,7 @@ function extractVolumeNumber(title: string): number | undefined {
     /Part\s*\d+\s*Volume\s*(\d+)/i,
     /#\s*(\d+)/,
   ];
-  
+
   for (const pattern of patterns) {
     const match = title.match(pattern);
     if (match?.[1] != null) {
@@ -247,7 +255,7 @@ function extractVolumeNumber(title: string): number | undefined {
       if (num > 0 && num < 1000) return num;
     }
   }
-  
+
   return undefined;
 }
 
@@ -259,29 +267,31 @@ export async function searchMangaVolumes(
   options: { maxResults?: number } = {}
 ): Promise<GoogleBooksSeries[]> {
   const { maxResults = 40 } = options;
-  
+
   // Search with "manga" to filter results (unless already included)
-  const query = seriesTitle.toLowerCase().includes('manga') 
-    ? seriesTitle 
-    : `${seriesTitle} manga`;
+  const query = seriesTitle.toLowerCase().includes('manga') ? seriesTitle : `${seriesTitle} manga`;
   const searchResult = await searchVolumes(query, { maxResults });
-  
-  console.log(`[GoogleBooks] Search returned ${searchResult.totalItems} total, ${searchResult.volumes.length} volumes`);
-  
+
+  console.log(
+    `[GoogleBooks] Search returned ${searchResult.totalItems} total, ${searchResult.volumes.length} volumes`
+  );
+
   // Group volumes by series ID OR by normalized title pattern
   const seriesMap = new Map<string, GoogleBooksVolume[]>();
-  
+
   for (const volume of searchResult.volumes) {
     // Filter out non-manga items (coloring books, notebooks, etc.)
     const titleLower = volume.title.toLowerCase();
-    if (titleLower.includes('coloring') || 
-        titleLower.includes('notebook') || 
-        titleLower.includes('composition') ||
-        titleLower.includes('box set') ||
-        titleLower.includes('collection set')) {
+    if (
+      titleLower.includes('coloring') ||
+      titleLower.includes('notebook') ||
+      titleLower.includes('composition') ||
+      titleLower.includes('box set') ||
+      titleLower.includes('collection set')
+    ) {
       continue;
     }
-    
+
     // Determine grouping key: prefer seriesId, fall back to title pattern
     let groupKey: string;
     if (volume.seriesId != null) {
@@ -291,12 +301,10 @@ export async function searchMangaVolumes(
       const normalizedTitle = extractSeriesTitle(volume.title).toLowerCase();
       groupKey = `title:${normalizedTitle}`;
     }
-    
+
     // If volume doesn't have a volume number, try to extract it from title
-    if (volume.volumeNumber === undefined) {
-      volume.volumeNumber = extractVolumeNumber(volume.title);
-    }
-    
+    volume.volumeNumber ??= extractVolumeNumber(volume.title);
+
     const existing = seriesMap.get(groupKey) ?? [];
     existing.push(volume);
     seriesMap.set(groupKey, existing);
@@ -306,7 +314,7 @@ export async function searchMangaVolumes(
 
   // Convert map to array of series
   const series: GoogleBooksSeries[] = [];
-  
+
   for (const [groupKey, volumes] of seriesMap) {
     // Deduplicate volumes by ISBN (prefer volumes with more metadata)
     const uniqueVolumes = new Map<string, GoogleBooksVolume>();
@@ -318,19 +326,19 @@ export async function searchMangaVolumes(
       }
     }
     const dedupedVolumes = Array.from(uniqueVolumes.values());
-    
+
     // Sort volumes by volume number
     dedupedVolumes.sort((a, b) => (a.volumeNumber ?? 999) - (b.volumeNumber ?? 999));
-    
+
     // Derive series title from the first volume's title
     const firstVolume = dedupedVolumes[0];
     const title = firstVolume != null ? extractSeriesTitle(firstVolume.title) : seriesTitle;
-    
+
     // Use actual seriesId if available, otherwise generate one from title
-    const seriesId = groupKey.startsWith('id:') 
-      ? groupKey.slice(3) 
+    const seriesId = groupKey.startsWith('id:')
+      ? groupKey.slice(3)
       : `title-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-    
+
     series.push({
       seriesId,
       title,
@@ -342,7 +350,9 @@ export async function searchMangaVolumes(
   // Sort series by number of volumes found (most complete first)
   series.sort((a, b) => b.totalVolumesFound - a.totalVolumesFound);
 
-  console.log(`[GoogleBooks] Returning ${series.length} series, best has ${series[0]?.totalVolumesFound ?? 0} volumes`);
+  console.log(
+    `[GoogleBooks] Returning ${series.length} series, best has ${series[0]?.totalVolumesFound ?? 0} volumes`
+  );
 
   return series;
 }
@@ -355,12 +365,12 @@ export async function getSeriesVolumes(
   options: { maxResults?: number } = {}
 ): Promise<GoogleBooksVolume[]> {
   const series = await searchMangaVolumes(seriesTitle, options);
-  
+
   // Return volumes from the best matching series
   if (series.length > 0 && series[0]) {
     return series[0].volumes;
   }
-  
+
   return [];
 }
 
@@ -372,18 +382,18 @@ export async function getSeriesISBNs(
   options: { prefer13?: boolean } = {}
 ): Promise<Array<{ volumeNumber?: number | undefined; isbn: string }>> {
   const { prefer13 = true } = options;
-  
+
   const volumes = await getSeriesVolumes(seriesTitle);
-  
+
   const results: Array<{ volumeNumber?: number | undefined; isbn: string }> = [];
-  
+
   for (const v of volumes) {
     const isbn = prefer13 ? (v.isbn13 ?? v.isbn10) : (v.isbn10 ?? v.isbn13);
     if (isbn != null) {
       results.push({ volumeNumber: v.volumeNumber, isbn });
     }
   }
-  
+
   return results;
 }
 
@@ -393,9 +403,9 @@ export async function getSeriesISBNs(
 export async function searchByISBN(isbn: string): Promise<GoogleBooksVolume | null> {
   // Clean ISBN
   const cleanISBN = isbn.replace(/[-\s]/g, '');
-  
+
   const result = await searchVolumes(`isbn:${cleanISBN}`, { maxResults: 5 });
-  
+
   return result.volumes[0] ?? null;
 }
 
@@ -417,23 +427,20 @@ export async function getDescriptionByISBN(isbn: string): Promise<string | null>
 /**
  * Find the common prefix (preamble) between two volume descriptions.
  * This identifies the series overview that appears at the start of all volume descriptions.
- * 
+ *
  * @param desc1 - First volume description (typically Vol 1)
  * @param desc2 - Second volume description (typically Vol 2)
  * @returns The common prefix (preamble), or null if no significant common prefix
  */
-export function findCommonPreamble(
-  desc1: string,
-  desc2: string
-): string | null {
+export function findCommonPreamble(desc1: string, desc2: string): string | null {
   if (desc1 === '' || desc2 === '') {
     return null;
   }
-  
+
   // Find the longest common prefix character by character
   const minLength = Math.min(desc1.length, desc2.length);
   let commonPrefixEnd = 0;
-  
+
   for (let i = 0; i < minLength; i++) {
     if (desc1[i] === desc2[i]) {
       commonPrefixEnd = i + 1;
@@ -441,43 +448,43 @@ export function findCommonPreamble(
       break;
     }
   }
-  
+
   // Need at least 50 characters of common prefix to be meaningful
   if (commonPrefixEnd < 50) {
     return null;
   }
-  
+
   // Find the last complete sentence boundary within the common prefix
   const commonPart = desc1.slice(0, commonPrefixEnd);
-  
+
   // Look for sentence endings (. ! ?) followed by space or end of string
   const sentenceEndPattern = /[.!?](?:\s|$)/g;
   let lastSentenceEnd = -1;
   let match;
-  
+
   while ((match = sentenceEndPattern.exec(commonPart)) !== null) {
     // Only count as sentence end if there's more text after or it's end of common part
     lastSentenceEnd = match.index + 1;
   }
-  
+
   // If we found a sentence boundary, use it
   if (lastSentenceEnd > 50) {
     return desc1.slice(0, lastSentenceEnd).trim();
   }
-  
+
   // Otherwise, no good preamble found
   return null;
 }
 
 /**
  * Extract the unique portion of a volume description by removing the series preamble.
- * 
+ *
  * Many manga volumes have descriptions that start with the same series overview
  * (4-5 sentences) followed by volume-specific content.
- * 
+ *
  * This function finds where the volume description diverges from the series preamble
  * and returns only the unique portion.
- * 
+ *
  * @param volumeDescription - The full description for a specific volume
  * @param seriesPreamble - The series description (common prefix across volumes)
  * @returns The unique portion of the volume description, or the full description if no common prefix
@@ -489,13 +496,13 @@ export function extractUniqueVolumeDescription(
   if (seriesPreamble == null || seriesPreamble === '' || volumeDescription === '') {
     return volumeDescription;
   }
-  
+
   // Check if volume description starts with the preamble
   if (!volumeDescription.startsWith(seriesPreamble)) {
     // Descriptions don't share the preamble exactly - check for partial match
     const minLength = Math.min(volumeDescription.length, seriesPreamble.length);
     let matchEnd = 0;
-    
+
     for (let i = 0; i < minLength; i++) {
       if (volumeDescription[i] === seriesPreamble[i]) {
         matchEnd = i + 1;
@@ -503,12 +510,12 @@ export function extractUniqueVolumeDescription(
         break;
       }
     }
-    
+
     // If less than 80% matches, return full description
     if (matchEnd < seriesPreamble.length * 0.8) {
       return volumeDescription;
     }
-    
+
     // Find sentence boundary near match end
     const partialMatch = volumeDescription.slice(0, matchEnd);
     const lastSentenceEnd = Math.max(
@@ -516,25 +523,24 @@ export function extractUniqueVolumeDescription(
       partialMatch.lastIndexOf('! '),
       partialMatch.lastIndexOf('? ')
     );
-    
+
     if (lastSentenceEnd > 50) {
       return volumeDescription.slice(lastSentenceEnd + 2).trim();
     }
-    
+
     return volumeDescription;
   }
-  
+
   // Volume description starts with the exact preamble - extract unique part
   const uniquePart = volumeDescription.slice(seriesPreamble.length).trim();
-  
+
   // If the unique part is empty or very short, return full description
   if (uniquePart === '' || uniquePart.length < 20) {
     return volumeDescription;
   }
-  
+
   return uniquePart;
 }
-
 
 // ============================================================================
 // Test/Demo execution
@@ -549,11 +555,11 @@ async function main() {
     // Test 1: Search for Demon Slayer volumes
     console.log('\n--- Test 1: Search for Demon Slayer manga volumes ---');
     const demonSlayerSeries = await searchMangaVolumes('Demon Slayer Kimetsu no Yaiba');
-    
+
     for (const series of demonSlayerSeries.slice(0, 2)) {
       console.log(`\nSeries: ${series.title} (ID: ${series.seriesId})`);
       console.log(`Found ${series.totalVolumesFound} volumes:`);
-      
+
       for (const vol of series.volumes.slice(0, 5)) {
         console.log(`  Vol ${vol.volumeNumber ?? '?'}: ${vol.title}`);
         console.log(`    ISBN-13: ${vol.isbn13 ?? 'N/A'}`);
@@ -592,7 +598,6 @@ async function main() {
       console.log(`  Volume #: ${byISBN.volumeNumber}`);
       console.log(`  Series ID: ${byISBN.seriesId}`);
     }
-
   } catch (error) {
     console.error('Error during testing:', error);
   }

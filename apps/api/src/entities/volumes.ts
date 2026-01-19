@@ -2,23 +2,23 @@
  * Volume entity operations
  */
 
-import type { Volume, CreateVolumeInput, Series } from './types.js';
 import {
-  getVolumeBySeriesAndNumber,
+  addEditionToVolume,
+  generateVolumeId,
+  getSeriesById,
   getVolumeById,
+  getVolumeBySeriesAndNumber,
   saveVolume,
   saveVolumes,
-  getSeriesById,
-  generateVolumeId,
-  addEditionToVolume,
 } from './store.js';
+import type { CreateVolumeInput, Series, Volume } from './types.js';
 
 /**
  * Create a new volume entity
  */
 export async function createVolume(input: CreateVolumeInput): Promise<Volume> {
   const now = new Date().toISOString();
-  
+
   const volume: Volume = {
     id: generateVolumeId(),
     seriesId: input.seriesId,
@@ -28,10 +28,12 @@ export async function createVolume(input: CreateVolumeInput): Promise<Volume> {
     createdAt: now,
     updatedAt: now,
   };
-  
+
   await saveVolume(volume);
-  console.log(`[Volume] Created volume: ${volume.id} - Vol. ${volume.volumeNumber}${volume.title != null ? ` "${volume.title}"` : ''}`);
-  
+  console.log(
+    `[Volume] Created volume: ${volume.id} - Vol. ${volume.volumeNumber}${volume.title != null ? ` "${volume.title}"` : ''}`
+  );
+
   return volume;
 }
 
@@ -43,7 +45,7 @@ export async function findOrCreateVolume(input: CreateVolumeInput): Promise<Volu
   const existing = await getVolumeBySeriesAndNumber(input.seriesId, input.volumeNumber);
   if (existing) {
     console.log(`[Volume] Found existing volume: ${existing.id} - Vol. ${existing.volumeNumber}`);
-    
+
     // Add any new edition IDs
     let updated = false;
     for (const editionId of input.editionIds ?? []) {
@@ -52,16 +54,18 @@ export async function findOrCreateVolume(input: CreateVolumeInput): Promise<Volu
         updated = true;
       }
     }
-    
+
     if (updated) {
       existing.updatedAt = new Date().toISOString();
       await saveVolume(existing);
-      console.log(`[Volume] Updated edition links for ${existing.id}: now has ${existing.editionIds.length} editions`);
+      console.log(
+        `[Volume] Updated edition links for ${existing.id}: now has ${existing.editionIds.length} editions`
+      );
     }
-    
+
     return existing;
   }
-  
+
   return createVolume(input);
 }
 
@@ -71,7 +75,7 @@ export async function findOrCreateVolume(input: CreateVolumeInput): Promise<Volu
 export async function findOrCreateVolumes(inputs: CreateVolumeInput[]): Promise<Volume[]> {
   const results: Volume[] = [];
   const toCreate: CreateVolumeInput[] = [];
-  
+
   // Check which volumes already exist
   for (const input of inputs) {
     const existing = await getVolumeBySeriesAndNumber(input.seriesId, input.volumeNumber);
@@ -88,11 +92,11 @@ export async function findOrCreateVolumes(inputs: CreateVolumeInput[]): Promise<
       toCreate.push(input);
     }
   }
-  
+
   // Create new volumes
   if (toCreate.length > 0) {
     const now = new Date().toISOString();
-    const created: Volume[] = toCreate.map(input => ({
+    const created: Volume[] = toCreate.map((input) => ({
       id: generateVolumeId(),
       seriesId: input.seriesId,
       volumeNumber: input.volumeNumber,
@@ -101,15 +105,17 @@ export async function findOrCreateVolumes(inputs: CreateVolumeInput[]): Promise<
       createdAt: now,
       updatedAt: now,
     }));
-    
+
     results.push(...created);
   }
-  
+
   // Save all (both updated existing and new)
   await saveVolumes(results);
-  
-  console.log(`[Volume] Found ${results.length - toCreate.length} existing, created ${toCreate.length} new`);
-  
+
+  console.log(
+    `[Volume] Found ${results.length - toCreate.length} existing, created ${toCreate.length} new`
+  );
+
   // Sort by volume number to maintain order
   return results.sort((a, b) => a.volumeNumber - b.volumeNumber);
 }
@@ -133,12 +139,12 @@ export async function getVolumeWithSeries(volumeId: string): Promise<{
   if (!volume) {
     return null;
   }
-  
+
   const series = await getSeriesById(volume.seriesId);
   if (!series) {
     console.warn(`[Volume] Volume ${volumeId} has invalid seriesId: ${volume.seriesId}`);
     return null;
   }
-  
+
   return { volume, series };
 }

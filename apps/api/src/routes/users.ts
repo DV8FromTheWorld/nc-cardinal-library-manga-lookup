@@ -1,7 +1,7 @@
+import { UserSchema } from '@repo/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { UserSchema } from '@repo/shared';
 
 // Create user request schema (without id, since server generates it)
 const CreateUserSchema = UserSchema.omit({ id: true });

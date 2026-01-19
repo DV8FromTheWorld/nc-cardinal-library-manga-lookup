@@ -156,7 +156,7 @@ export async function searchTalpa(
     throw new Error(`Talpa API error: ${response.status} ${response.statusText}`);
   }
 
-  const data = await response.json() as TalpaSearchResult;
+  const data = (await response.json()) as TalpaSearchResult;
 
   // Save to local cache
   if (!skipLocalCache) {
@@ -183,7 +183,7 @@ export function listCache(): string[] {
   if (!fs.existsSync(CACHE_DIR)) {
     return [];
   }
-  return fs.readdirSync(CACHE_DIR).filter(f => f.endsWith('.json'));
+  return fs.readdirSync(CACHE_DIR).filter((f) => f.endsWith('.json'));
 }
 
 /**
@@ -216,10 +216,7 @@ export async function searchByISBN(isbn: string): Promise<TalpaWork | null> {
  * Get all ISBNs for works matching a query
  * Useful for cross-referencing with NC Cardinal
  */
-export async function getAllISBNsForQuery(
-  query: string,
-  maxPages: number = 3
-): Promise<string[]> {
+export async function getAllISBNsForQuery(query: string, maxPages: number = 3): Promise<string[]> {
   const allISBNs: Set<string> = new Set();
 
   for (let page = 1; page <= maxPages; page++) {
@@ -261,17 +258,12 @@ export async function getQuotaStatus(): Promise<{ dailyquota: number; remaining:
  * e.g., "One Piece, Volume 1: Romance Dawn" -> "1"
  */
 export function extractVolumeNumber(title: string): string | null {
-  const patterns = [
-    /Volume\s+(\d+)/i,
-    /Vol\.?\s*(\d+)/i,
-    /,\s*(\d+):/,
-    /#(\d+)/,
-  ];
+  const patterns = [/Volume\s+(\d+)/i, /Vol\.?\s*(\d+)/i, /,\s*(\d+):/, /#(\d+)/];
 
   for (const pattern of patterns) {
     const match = title.match(pattern);
-    if (match) {
-      return match[1]!;
+    if (match?.[1] != null) {
+      return match[1];
     }
   }
 
@@ -318,7 +310,9 @@ async function main() {
     const result = await searchTalpa('One Piece manga', { limit: 5 });
     console.log(`Total results: ${result.response.results}`);
     console.log(`Query took: ${result.response.searchtook}s`);
-    console.log(`Quota remaining: ${result.request.developer.remaining}/${result.request.developer.dailyquota}`);
+    console.log(
+      `Quota remaining: ${result.request.developer.remaining}/${result.request.developer.dailyquota}`
+    );
     console.log('\nResults:');
     const resultlist = result.response.resultlist ?? [];
     if (resultlist.length === 0) {
@@ -337,7 +331,6 @@ async function main() {
     for (const [seriesName, works] of seriesGroups) {
       console.log(`  ${seriesName}: ${works.length} works`);
     }
-
   } catch (error) {
     console.error('Error during testing:', error);
   }

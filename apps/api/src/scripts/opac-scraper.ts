@@ -12,12 +12,10 @@
 
 import * as cheerio from 'cheerio';
 
-const BASE_URL =
-  process.env.NC_CARDINAL_BASE_URL ?? 'https://highpoint.nccardinal.org';
+const BASE_URL = process.env.NC_CARDINAL_BASE_URL ?? 'https://highpoint.nccardinal.org';
 
 // User agent to identify our scraper
-const USER_AGENT =
-  'Mozilla/5.0 (compatible; NC-Cardinal-Manga/1.0; Educational Project)';
+const USER_AGENT = 'Mozilla/5.0 (compatible; NC-Cardinal-Manga/1.0; Educational Project)';
 
 export interface OPACSearchResult {
   recordId: string;
@@ -51,10 +49,12 @@ export interface OPACHolding {
   callNumber: string;
   status: string;
   dueDate?: string | undefined;
-  copies?: {
-    available: number;
-    total: number;
-  } | undefined;
+  copies?:
+    | {
+        available: number;
+        total: number;
+      }
+    | undefined;
 }
 
 export interface LibraryOrg {
@@ -141,9 +141,8 @@ function parseSearchResultsPage(html: string): {
     // Extract title from the link's text content or title attribute
     const titleAttr = titleLink.attr('title') ?? '';
     const titleMatch = titleAttr.match(/Display record details for "(.+)"/);
-    const title = titleMatch?.[1] != null
-      ? titleMatch[1].replace(/"/g, '')
-      : cleanText(titleLink.text());
+    const title =
+      titleMatch?.[1] != null ? titleMatch[1].replace(/"/g, '') : cleanText(titleLink.text());
 
     // Extract author from record_author class
     const authorLink = $el.find('a.record_author').first();
@@ -245,7 +244,10 @@ function parseRecordDetailPage(html: string, recordId: string): OPACRecordDetail
   const pubValue = $('#rdetail_publisher .rdetail_value').text().trim();
   const pubParts = pubValue.split(':').map((p) => p.trim());
   const lastPubPart = pubParts[pubParts.length - 1];
-  const publisher = pubParts.length > 1 && lastPubPart != null && lastPubPart !== '' ? lastPubPart.split(',')[0] : undefined;
+  const publisher =
+    pubParts.length > 1 && lastPubPart != null && lastPubPart !== ''
+      ? lastPubPart.split(',')[0]
+      : undefined;
 
   // Copyright year from #rdetail_copyright
   const copyrightText = $('#rdetail_copyright .rdetail_value').text();
@@ -312,8 +314,10 @@ function parseHoldingsFromCopyCounts($: cheerio.CheerioAPI): OPACHolding[] {
     const text = $(el).text().trim();
 
     // Parse "X of Y copies available at Library Name"
-    const match = text.match(/(\d+)\s+of\s+(\d+)\s+cop(?:y|ies)\s+available\s+at\s+(.+?)\.?\s*(?:\(Show\))?$/i);
-    if (match != null && match[1] != null && match[2] != null && match[3] != null) {
+    const match = text.match(
+      /(\d+)\s+of\s+(\d+)\s+cop(?:y|ies)\s+available\s+at\s+(.+?)\.?\s*(?:\(Show\))?$/i
+    );
+    if (match?.[1] != null && match[2] != null && match[3] != null) {
       const available = parseInt(match[1], 10);
       const total = parseInt(match[2], 10);
       const library = match[3].trim();
@@ -575,7 +579,6 @@ async function main() {
     isbnResults.forEach((r) => {
       console.log(`  [${r.recordId}] ${r.title}`);
     });
-
   } catch (error) {
     console.error('Error during testing:', error);
   }

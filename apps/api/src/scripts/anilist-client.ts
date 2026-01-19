@@ -54,7 +54,20 @@ export interface AniListMedia {
 }
 
 export interface AniListRelation {
-  relationType: 'ADAPTATION' | 'PREQUEL' | 'SEQUEL' | 'PARENT' | 'SIDE_STORY' | 'CHARACTER' | 'SUMMARY' | 'ALTERNATIVE' | 'SPIN_OFF' | 'OTHER' | 'SOURCE' | 'COMPILATION' | 'CONTAINS';
+  relationType:
+    | 'ADAPTATION'
+    | 'PREQUEL'
+    | 'SEQUEL'
+    | 'PARENT'
+    | 'SIDE_STORY'
+    | 'CHARACTER'
+    | 'SUMMARY'
+    | 'ALTERNATIVE'
+    | 'SPIN_OFF'
+    | 'OTHER'
+    | 'SOURCE'
+    | 'COMPILATION'
+    | 'CONTAINS';
   node: {
     id: number;
     type: 'ANIME' | 'MANGA';
@@ -94,7 +107,7 @@ export interface SearchResult {
  */
 export interface SuggestionItem {
   anilistId: number;
-  title: string;           // English or Romaji
+  title: string; // English or Romaji
   titleRomaji: string;
   format: AniListFormat;
   volumes: number | null;
@@ -282,7 +295,7 @@ async function graphqlRequest<T>(query: string, variables: Record<string, unknow
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Accept': 'application/json',
+      Accept: 'application/json',
     },
     body: JSON.stringify({ query, variables }),
   });
@@ -291,10 +304,10 @@ async function graphqlRequest<T>(query: string, variables: Record<string, unknow
     throw new Error(`AniList API error: ${response.status} ${response.statusText}`);
   }
 
-  const result = await response.json() as { data: T; errors?: { message: string }[] };
-  
-  if (result.errors && result.errors.length > 0) {
-    throw new Error(`AniList GraphQL error: ${result.errors[0]!.message}`);
+  const result = (await response.json()) as { data: T; errors?: { message: string }[] };
+
+  if (result.errors != null && result.errors.length > 0) {
+    throw new Error(`AniList GraphQL error: ${result.errors[0]?.message ?? 'Unknown error'}`);
   }
 
   return result.data;
@@ -355,9 +368,9 @@ export async function searchManga(
  * Fetches by popularity and trending, deduplicates results
  */
 export async function getPopularManga(
-  options: { 
-    popularLimit?: number; 
-    trendingLimit?: number; 
+  options: {
+    popularLimit?: number;
+    trendingLimit?: number;
     skipCache?: boolean;
   } = {}
 ): Promise<SuggestionItem[]> {
@@ -370,7 +383,9 @@ export async function getPopularManga(
     if (cached) return cached;
   }
 
-  console.log(`🌐 AniList: Fetching popular manga (${popularLimit} popular + ${trendingLimit} trending)`);
+  console.log(
+    `🌐 AniList: Fetching popular manga (${popularLimit} popular + ${trendingLimit} trending)`
+  );
 
   // Fetch popular manga
   const popularData = await graphqlRequest<{
@@ -384,10 +399,10 @@ export async function getPopularManga(
         coverImage: { extraLarge: string | null } | null;
       }>;
     };
-  }>(GET_POPULAR_MANGA_QUERY, { 
-    page: 1, 
-    perPage: popularLimit, 
-    sort: ['POPULARITY_DESC'] 
+  }>(GET_POPULAR_MANGA_QUERY, {
+    page: 1,
+    perPage: popularLimit,
+    sort: ['POPULARITY_DESC'],
   });
 
   // Fetch trending manga
@@ -402,10 +417,10 @@ export async function getPopularManga(
         coverImage: { extraLarge: string | null } | null;
       }>;
     };
-  }>(GET_POPULAR_MANGA_QUERY, { 
-    page: 1, 
-    perPage: trendingLimit, 
-    sort: ['TRENDING_DESC'] 
+  }>(GET_POPULAR_MANGA_QUERY, {
+    page: 1,
+    perPage: trendingLimit,
+    sort: ['TRENDING_DESC'],
   });
 
   // Combine and deduplicate
@@ -422,7 +437,7 @@ export async function getPopularManga(
   }) => {
     if (seenIds.has(media.id)) return;
     seenIds.add(media.id);
-    
+
     items.push({
       anilistId: media.id,
       title: media.title.english ?? media.title.romaji,
@@ -571,12 +586,12 @@ export async function getSeriesWithRelated(
   if (!main) return null;
 
   const related: SeriesInfo[] = [];
-  
+
   // Fetch details for each related manga
   for (const rel of main.relatedSeries) {
     // Small delay to avoid rate limiting
     await new Promise((r) => setTimeout(r, 100));
-    
+
     const relatedManga = await getMangaById(rel.id, options);
     if (relatedManga) {
       related.push(relatedManga);
@@ -617,7 +632,7 @@ export async function findMainSeries(id: number): Promise<SeriesInfo | null> {
  */
 function determineIfMainSeries(media: AniListMedia): boolean {
   const title = (media.title.english ?? media.title.romaji).toLowerCase();
-  
+
   // Check for common spin-off indicators
   const spinOffIndicators = [
     'gaiden',
@@ -721,7 +736,6 @@ async function main() {
       console.log(`  ${mainLabel} [${series.id}] ${series.title}`);
       console.log(`     Volumes: ${series.volumes ?? 'N/A'}, Status: ${series.status}`);
     }
-
   } catch (error) {
     console.error('Error during testing:', error);
   }

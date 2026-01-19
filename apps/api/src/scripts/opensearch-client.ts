@@ -17,8 +17,7 @@ import * as cheerio from 'cheerio';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const BASE_URL =
-  process.env.NC_CARDINAL_BASE_URL ?? 'https://highpoint.nccardinal.org';
+const BASE_URL = process.env.NC_CARDINAL_BASE_URL ?? 'https://highpoint.nccardinal.org';
 
 // ============================================================================
 // Two-Tier Caching:
@@ -27,8 +26,8 @@ const BASE_URL =
 // ============================================================================
 
 const CACHE_DIR = path.join(process.cwd(), '.cache', 'nc-cardinal');
-const ISBN_MAP_DIR = path.join(CACHE_DIR, 'isbn-map');     // ISBN -> RecordID (permanent)
-const RECORD_CACHE_DIR = path.join(CACHE_DIR, 'records');  // RecordID -> Full record (1 hour)
+const ISBN_MAP_DIR = path.join(CACHE_DIR, 'isbn-map'); // ISBN -> RecordID (permanent)
+const RECORD_CACHE_DIR = path.join(CACHE_DIR, 'records'); // RecordID -> Full record (1 hour)
 const SEARCH_CACHE_DIR = path.join(CACHE_DIR, 'searches'); // Search query -> Results (1 hour)
 
 const RECORD_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour (availability changes frequently)
@@ -46,7 +45,7 @@ for (const dir of [ISBN_MAP_DIR, RECORD_CACHE_DIR, SEARCH_CACHE_DIR]) {
 function readISBNToRecordId(isbn: string): string | null {
   const clean = isbn.replace(/[-\s]/g, '');
   const cachePath = path.join(ISBN_MAP_DIR, `${clean}.txt`);
-  
+
   try {
     if (!fs.existsSync(cachePath)) return null;
     return fs.readFileSync(cachePath, 'utf-8').trim();
@@ -65,17 +64,17 @@ function writeISBNToRecordId(isbn: string, recordId: string): void {
 
 function readRecordCache(recordId: string): CatalogRecord | null | 'miss' {
   const cachePath = path.join(RECORD_CACHE_DIR, `${recordId}.json`);
-  
+
   try {
     if (!fs.existsSync(cachePath)) return 'miss';
-    
+
     const stat = fs.statSync(cachePath);
     if (Date.now() - stat.mtimeMs > RECORD_CACHE_TTL_MS) {
       // Expired - delete and return miss
       fs.unlinkSync(cachePath);
       return 'miss';
     }
-    
+
     const data = fs.readFileSync(cachePath, 'utf-8');
     return JSON.parse(data) as CatalogRecord;
   } catch {
@@ -91,23 +90,26 @@ function writeRecordCache(record: CatalogRecord): void {
 // --- Search query -> Results (TTL cache) ---
 
 function getSearchCacheKey(query: string, searchClass: string, count: number): string {
-  const sanitized = query.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 80);
+  const sanitized = query
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .slice(0, 80);
   return `${searchClass}_${sanitized}_${count}.json`;
 }
 
 function readSearchCache(cacheKey: string): OpenSearchResult | null {
   const cachePath = path.join(SEARCH_CACHE_DIR, cacheKey);
-  
+
   try {
     if (!fs.existsSync(cachePath)) return null;
-    
+
     const stat = fs.statSync(cachePath);
     if (Date.now() - stat.mtimeMs > SEARCH_CACHE_TTL_MS) {
       // Expired - delete and return null
       fs.unlinkSync(cachePath);
       return null;
     }
-    
+
     const data = fs.readFileSync(cachePath, 'utf-8');
     return JSON.parse(data) as OpenSearchResult;
   } catch {
@@ -125,14 +127,14 @@ function writeSearchCache(cacheKey: string, result: OpenSearchResult): void {
 async function fetchRecordById(recordId: string): Promise<CatalogRecord | null> {
   const url = `${BASE_URL}/opac/extras/supercat/retrieve/atom-full/record/${recordId}`;
   console.log(`[NC Cardinal] SuperCat fetch: ${url}`);
-  
+
   try {
     const response = await fetch(url);
     if (!response.ok) {
       console.warn(`SuperCat request failed: ${response.status}`);
       return null;
     }
-    
+
     const xml = await response.text();
     const result = parseAtomFullResponse(xml);
     return result.records[0] ?? null;
@@ -177,7 +179,7 @@ export const NC_CARDINAL_LIBRARIES = [
   { code: 'WARREN_MAIN', name: 'Warren County Memorial Library' },
 ] as const;
 
-export type LibraryCode = typeof NC_CARDINAL_LIBRARIES[number]['code'];
+export type LibraryCode = (typeof NC_CARDINAL_LIBRARIES)[number]['code'];
 
 // Generate catalog URL for a record
 export function getCatalogUrl(recordId: string): string {
@@ -213,45 +215,50 @@ export interface CatalogRecord {
 /**
  * Categorized copy status for clearer availability display
  */
-export type CopyStatusCategory = 
-  | 'available'      // On shelf, ready to borrow
-  | 'checked_out'    // Borrowed by someone
-  | 'in_transit'     // Moving between libraries
-  | 'on_order'       // Ordered but not yet received
-  | 'on_hold'        // Reserved/held for someone
-  | 'unavailable';   // Lost, missing, repair, withdrawn, etc.
+export type CopyStatusCategory =
+  | 'available' // On shelf, ready to borrow
+  | 'checked_out' // Borrowed by someone
+  | 'in_transit' // Moving between libraries
+  | 'on_order' // Ordered but not yet received
+  | 'on_hold' // Reserved/held for someone
+  | 'unavailable'; // Lost, missing, repair, withdrawn, etc.
 
 /**
  * Categorize a raw status string into a simplified category
  */
 export function categorizeStatus(status: string): CopyStatusCategory {
   const lower = status.toLowerCase().trim();
-  
+
   // Available
   if (lower === 'available' || lower === 'reshelving') {
     return 'available';
   }
-  
+
   // Checked out
   if (lower === 'checked out' || lower.includes('checked out') || lower === 'overdue') {
     return 'checked_out';
   }
-  
+
   // In transit
   if (lower === 'in transit' || lower.includes('transit') || lower === 'in process') {
     return 'in_transit';
   }
-  
+
   // On order
-  if (lower === 'on order' || lower.includes('order') || lower === 'cataloging' || lower === 'acquisitions') {
+  if (
+    lower === 'on order' ||
+    lower.includes('order') ||
+    lower === 'cataloging' ||
+    lower === 'acquisitions'
+  ) {
     return 'on_order';
   }
-  
+
   // On hold
   if (lower === 'on holds shelf' || lower.includes('hold')) {
     return 'on_hold';
   }
-  
+
   // Everything else is unavailable (lost, missing, repair, withdrawn, discard, etc.)
   return 'unavailable';
 }
@@ -316,22 +323,22 @@ export async function searchCatalog(
 
   const xml = await response.text();
   const result = parseAtomFullResponse(xml);
-  
+
   // Cache the result (only for first page requests)
   if (startIndex === 1) {
     writeSearchCache(cacheKey, result);
   }
-  
+
   return result;
 }
 
 /**
  * Search by ISBN (with two-tier caching)
- * 
+ *
  * Cache strategy:
  * 1. ISBN -> RecordID mapping (permanent, never changes)
  * 2. RecordID -> Full record (1 hour TTL, availability changes)
- * 
+ *
  * When record cache expires, we use SuperCat direct lookup by recordId
  * which is faster than re-searching by ISBN.
  */
@@ -344,20 +351,22 @@ export async function searchByISBN(
 
   // Tier 1: Check if we have a cached ISBN -> RecordID mapping
   const cachedRecordId = readISBNToRecordId(cleanISBN);
-  
+
   if (cachedRecordId != null) {
     // Tier 2: Check if we have a fresh record cache
     const cachedRecord = readRecordCache(cachedRecordId);
-    
+
     if (cachedRecord !== 'miss' && cachedRecord !== null) {
-      console.log(`[NC Cardinal] Full cache hit for ISBN: ${cleanISBN} -> record ${cachedRecordId}`);
+      console.log(
+        `[NC Cardinal] Full cache hit for ISBN: ${cleanISBN} -> record ${cachedRecordId}`
+      );
       return cachedRecord;
     }
-    
+
     // Record cache expired/missing, but we have the recordId - use SuperCat direct fetch
     console.log(`[NC Cardinal] Using cached recordId ${cachedRecordId} for ISBN: ${cleanISBN}`);
     const record = await fetchRecordById(cachedRecordId);
-    
+
     if (record) {
       writeRecordCache(record);
       return record;
@@ -379,20 +388,20 @@ export async function searchByISBN(
   );
 
   const result = match ?? results.records[0] ?? null;
-  
+
   // Cache both tiers
   if (result) {
     writeISBNToRecordId(cleanISBN, result.id);
     writeRecordCache(result);
   }
-  
+
   return result;
 }
 
 /**
  * Batch ISBN lookup - search for multiple ISBNs in PARALLEL
  * Returns a map of ISBN to CatalogRecord (or null if not found)
- * 
+ *
  * Uses parallel batches to avoid 23 * 5s = 115s sequential nightmare
  */
 export async function searchByISBNs(
@@ -400,12 +409,12 @@ export async function searchByISBNs(
   options: { org?: string; concurrency?: number } = {}
 ): Promise<Map<string, CatalogRecord | null>> {
   const { org = ORG_CODES.CARDINAL, concurrency = 10 } = options;
-  
+
   const results = new Map<string, CatalogRecord | null>();
-  
+
   // Clean and dedupe ISBNs
-  const cleanISBNs = [...new Set(isbns.map(isbn => isbn.replace(/[-\s]/g, '')))];
-  
+  const cleanISBNs = [...new Set(isbns.map((isbn) => isbn.replace(/[-\s]/g, '')))];
+
   // First pass: check what's already cached (instant)
   const uncachedISBNs: string[] = [];
   for (const isbn of cleanISBNs) {
@@ -419,22 +428,26 @@ export async function searchByISBNs(
     }
     uncachedISBNs.push(isbn);
   }
-  
+
   if (uncachedISBNs.length === 0) {
     console.log(`[NC Cardinal] All ${cleanISBNs.length} ISBNs served from cache`);
     return results;
   }
-  
-  console.log(`[NC Cardinal] ${results.size} cached, ${uncachedISBNs.length} need fetching (parallel, concurrency=${concurrency})`);
-  
+
+  console.log(
+    `[NC Cardinal] ${results.size} cached, ${uncachedISBNs.length} need fetching (parallel, concurrency=${concurrency})`
+  );
+
   // Process in parallel batches
   for (let i = 0; i < uncachedISBNs.length; i += concurrency) {
     const batch = uncachedISBNs.slice(i, i + concurrency);
     const batchNum = Math.floor(i / concurrency) + 1;
     const totalBatches = Math.ceil(uncachedISBNs.length / concurrency);
-    
-    console.log(`[NC Cardinal] Batch ${batchNum}/${totalBatches}: fetching ${batch.length} ISBNs in parallel...`);
-    
+
+    console.log(
+      `[NC Cardinal] Batch ${batchNum}/${totalBatches}: fetching ${batch.length} ISBNs in parallel...`
+    );
+
     const batchResults = await Promise.all(
       batch.map(async (isbn) => {
         try {
@@ -446,12 +459,12 @@ export async function searchByISBNs(
         }
       })
     );
-    
+
     for (const { isbn, record } of batchResults) {
       results.set(isbn, record);
     }
   }
-  
+
   return results;
 }
 
@@ -485,9 +498,9 @@ export async function getAvailabilityByISBNs(
 ): Promise<Map<string, AvailabilitySummary>> {
   const { homeLibrary, ...searchOptions } = options;
   const records = await searchByISBNs(isbns, searchOptions);
-  
+
   const availability = new Map<string, AvailabilitySummary>();
-  
+
   for (const [isbn, record] of records) {
     if (!record) {
       availability.set(isbn, {
@@ -504,11 +517,11 @@ export async function getAvailabilityByISBNs(
       });
       continue;
     }
-    
+
     const summary = getDetailedAvailabilitySummary(record, homeLibrary);
     availability.set(isbn, summary);
   }
-  
+
   return availability;
 }
 
@@ -631,10 +644,10 @@ function parseAtomFullResponse(xml: string): OpenSearchResult {
       const label = $suffix.text().trim();
       const sortKeyAttr = $suffix.attr('label_sortkey');
       const sortKey = sortKeyAttr ?? '';
-      
+
       // Common patterns: V.1, Vol.1, BK.1, #1
-      const volMatch = label.match(/^(?:V\.?|Vol\.?|BK\.?)\s*(\d+)/i) ??
-                       sortKey.match(/^(?:v|bk)0*(\d+)/i);
+      const volMatch =
+        label.match(/^(?:V\.?|Vol\.?|BK\.?)\s*(\d+)/i) ?? sortKey.match(/^(?:v|bk)0*(\d+)/i);
       if (volMatch != null && volumeNumber == null) {
         volumeNumber = volMatch[1];
       }
@@ -677,21 +690,21 @@ function parseAtomFullResponse(xml: string): OpenSearchResult {
  * Parse holdings/copy information from an entry
  */
 function parseHoldings(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Cheerio's $entry type from .find() is complex; using any simplifies parsing
   $entry: any,
   $: cheerio.CheerioAPI
 ): HoldingInfo[] {
   const holdings: HoldingInfo[] = [];
 
   // Holdings are in <holdings><volumes><volume><copies><copy> structure
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-  $entry.find('volume').each(function(this: unknown) {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Cheerio's dynamic API requires unsafe calls on $entry
+  $entry.find('volume').each(function (this: unknown) {
     const $volume = $(this as Parameters<typeof $>[0]);
     const callNumber = $volume.attr('label') ?? '';
     const owningLib = $volume.find('owning_lib').attr('name') ?? '';
     const owningLibCode = $volume.find('owning_lib').attr('shortname') ?? '';
 
-    $volume.find('copy').each(function(this: unknown) {
+    $volume.find('copy').each(function (this: unknown) {
       const $copy = $(this as Parameters<typeof $>[0]);
 
       const status = $copy.find('status').text().trim();
@@ -758,7 +771,7 @@ export function getAvailabilitySummary(record: CatalogRecord): {
  */
 export function getDetailedAvailabilitySummary(
   record: CatalogRecord,
-  homeLibraryCode?: string  
+  homeLibraryCode?: string
 ): AvailabilitySummary {
   const counts = {
     available: 0,
@@ -768,21 +781,21 @@ export function getDetailedAvailabilitySummary(
     on_hold: 0,
     unavailable: 0,
   };
-  
+
   const availableLibraries = new Set<string>();
-  
+
   // Local vs remote tracking
   let localCopies = 0;
   let localAvailable = 0;
   let remoteCopies = 0;
   let remoteAvailable = 0;
-  
+
   for (const holding of record.holdings) {
     counts[holding.statusCategory]++;
     if (holding.statusCategory === 'available') {
       availableLibraries.add(holding.libraryName);
     }
-    
+
     // Track local vs remote if home library is specified
     if (homeLibraryCode != null) {
       const isLocal = holding.libraryCode.toUpperCase() === homeLibraryCode.toUpperCase();
@@ -799,7 +812,7 @@ export function getDetailedAvailabilitySummary(
       }
     }
   }
-  
+
   return {
     available: counts.available > 0,
     totalCopies: record.holdings.length,
@@ -822,13 +835,8 @@ export function getDetailedAvailabilitySummary(
 /**
  * Filter holdings to a specific library
  */
-export function filterHoldingsByLibrary(
-  record: CatalogRecord,
-  libraryCode: string
-): HoldingInfo[] {
-  return record.holdings.filter(
-    (h) => h.libraryCode.toLowerCase() === libraryCode.toLowerCase()
-  );
+export function filterHoldingsByLibrary(record: CatalogRecord, libraryCode: string): HoldingInfo[] {
+  return record.holdings.filter((h) => h.libraryCode.toLowerCase() === libraryCode.toLowerCase());
 }
 
 /**
@@ -842,31 +850,31 @@ export async function getVolumeInfo(recordId: string): Promise<{
   fullTitle?: string | undefined;
 }> {
   const url = `${BASE_URL}/opac/extras/supercat/retrieve/marcxml/record/${recordId}`;
-  
+
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`SuperCat request failed: ${response.status}`);
   }
-  
+
   const xml = await response.text();
   const $ = cheerio.load(xml, { xmlMode: true });
-  
+
   // MARC 245 = Title statement
   // $a = Title, $n = Number/part, $p = Name of part
   const titleField = $('datafield[tag="245"]');
   const titleA = titleField.find('subfield[code="a"]').text().trim(); // Main title
   const titleN = titleField.find('subfield[code="n"]').text().trim(); // Volume number
   const titleP = titleField.find('subfield[code="p"]').text().trim(); // Part name/subtitle
-  
+
   // MARC 490 = Series statement
   const seriesField = $('datafield[tag="490"]');
   const seriesName = seriesField.find('subfield[code="a"]').text().trim();
-  
+
   // Full title reconstruction
   let fullTitle = titleA;
   if (titleN !== '') fullTitle += ` Vol. ${titleN}`;
   if (titleP !== '') fullTitle += `: ${titleP}`;
-  
+
   return {
     volumeNumber: titleN !== '' ? titleN : undefined,
     volumeTitle: titleP !== '' ? titleP : undefined,
@@ -903,38 +911,37 @@ export async function searchMangaSeriesVolumes(
   options: { maxVolumes?: number } = {}
 ): Promise<CatalogRecord[]> {
   const { maxVolumes = 50 } = options;
-  
+
   // Search with "manga" to filter to manga editions
   const results = await searchCatalog(`${seriesTitle} manga`, {
     searchClass: 'title',
     count: maxVolumes,
   });
-  
+
   // Filter to records that look like individual volumes (not box sets, etc.)
-  const volumeRecords = results.records.filter(r => {
+  const volumeRecords = results.records.filter((r) => {
     const title = r.title.toLowerCase();
     // Exclude box sets, omnibus, complete, etc.
-    return !title.includes('box set') && 
-           !title.includes('omnibus') && 
-           !title.includes('complete');
+    return !title.includes('box set') && !title.includes('omnibus') && !title.includes('complete');
   });
-  
+
   // Enrich with volume info (in batches to avoid rate limiting)
   const enriched: CatalogRecord[] = [];
-  for (const record of volumeRecords.slice(0, 20)) { // Limit to 20 for performance
+  for (const record of volumeRecords.slice(0, 20)) {
+    // Limit to 20 for performance
     const enrichedRecord = await enrichWithVolumeInfo(record);
     enriched.push(enrichedRecord);
     // Small delay to be nice to the server
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 50));
   }
-  
+
   // Sort by volume number
   enriched.sort((a, b) => {
     const numA = parseInt(a.volumeNumber ?? '999');
     const numB = parseInt(b.volumeNumber ?? '999');
     return numA - numB;
   });
-  
+
   return enriched;
 }
 
@@ -965,7 +972,9 @@ async function main() {
       console.log(`     ISBNs: ${isbnsStr !== '' ? isbnsStr : 'N/A'}`);
 
       const availability = getAvailabilitySummary(record);
-      console.log(`     Copies: ${availability.availableCopies}/${availability.totalCopies} available`);
+      console.log(
+        `     Copies: ${availability.availableCopies}/${availability.totalCopies} available`
+      );
 
       // Show High Point availability
       const highPointHoldings = filterHoldingsByLibrary(record, 'HIGH_POINT_MAIN');
@@ -1000,7 +1009,9 @@ async function main() {
     console.log(`First ${seriesResults.records.length} results:`);
     for (const record of seriesResults.records) {
       const availability = getAvailabilitySummary(record);
-      console.log(`  - [${record.id}] ${record.title} (${availability.availableCopies}/${availability.totalCopies} available)`);
+      console.log(
+        `  - [${record.id}] ${record.title} (${availability.availableCopies}/${availability.totalCopies} available)`
+      );
     }
 
     // Test 4: Title search
@@ -1028,9 +1039,10 @@ async function main() {
     for (const vol of demonSlayerVolumes) {
       const avail = getAvailabilitySummary(vol);
       const volNum = vol.volumeNumber != null ? `Vol. ${vol.volumeNumber}` : '(no vol#)';
-      console.log(`  - ${volNum}: ${vol.title} - ${avail.availableCopies}/${avail.totalCopies} available`);
+      console.log(
+        `  - ${volNum}: ${vol.title} - ${avail.availableCopies}/${avail.totalCopies} available`
+      );
     }
-
   } catch (error) {
     console.error('Error during testing:', error);
   }

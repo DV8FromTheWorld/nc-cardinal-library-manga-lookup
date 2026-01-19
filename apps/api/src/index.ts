@@ -1,12 +1,13 @@
-import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import Fastify from 'fastify';
 import {
   serializerCompiler,
   validatorCompiler,
   type ZodTypeProvider,
 } from 'fastify-type-provider-zod';
-import { userRoutes } from './routes/users.js';
+
 import { mangaRoutes } from './routes/manga.js';
+import { userRoutes } from './routes/users.js';
 
 const app = Fastify({
   logger: true,

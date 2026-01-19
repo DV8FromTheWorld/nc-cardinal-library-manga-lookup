@@ -8,11 +8,7 @@
  * - NC Cardinal availability integration
  */
 
-import {
-  search,
-  getSeriesDetails,
-  parseQuery,
-} from './manga-search.js';
+import { getSeriesDetails, parseQuery, search } from './manga-search.js';
 
 // ============================================================================
 // Test Helpers
@@ -33,7 +29,7 @@ interface TestCase {
 async function runTest(test: TestCase): Promise<{ passed: boolean; message: string }> {
   try {
     const result = await search(test.query);
-    
+
     const checks: string[] = [];
     let passed = true;
 
@@ -51,7 +47,9 @@ async function runTest(test: TestCase): Promise<{ passed: boolean; message: stri
       const title = result.series[0]?.title?.toLowerCase() ?? '';
       const expectedTitle = test.expected.seriesTitle.toLowerCase();
       if (!title.includes(expectedTitle)) {
-        checks.push(`Expected title containing "${test.expected.seriesTitle}", got "${result.series[0]?.title}"`);
+        checks.push(
+          `Expected title containing "${test.expected.seriesTitle}", got "${result.series[0]?.title}"`
+        );
         passed = false;
       }
     }
@@ -59,7 +57,9 @@ async function runTest(test: TestCase): Promise<{ passed: boolean; message: stri
     // Check parsed volume number
     if (test.expected.volumeNumber !== undefined) {
       if (result.parsedQuery.volumeNumber !== test.expected.volumeNumber) {
-        checks.push(`Expected volumeNumber=${test.expected.volumeNumber}, got ${result.parsedQuery.volumeNumber}`);
+        checks.push(
+          `Expected volumeNumber=${test.expected.volumeNumber}, got ${result.parsedQuery.volumeNumber}`
+        );
         passed = false;
       }
     }
@@ -67,14 +67,16 @@ async function runTest(test: TestCase): Promise<{ passed: boolean; message: stri
     // Check minimum volumes found
     if (test.expected.minVolumes !== undefined) {
       if (result.volumes.length < test.expected.minVolumes) {
-        checks.push(`Expected at least ${test.expected.minVolumes} volumes, got ${result.volumes.length}`);
+        checks.push(
+          `Expected at least ${test.expected.minVolumes} volumes, got ${result.volumes.length}`
+        );
         passed = false;
       }
     }
 
     // Check if availability data was returned
     if (test.expected.hasAvailability) {
-      const hasAvail = result.volumes.some(v => v.availability !== undefined);
+      const hasAvail = result.volumes.some((v) => v.availability !== undefined);
       if (!hasAvail) {
         checks.push('Expected availability data but none found');
         passed = false;
@@ -230,11 +232,15 @@ function testQueryParsing(): void {
     const volMatch = result.volumeNumber === test.expected.volumeNumber;
 
     if (titleMatch && volMatch) {
-      console.log(`  ✅ "${test.input}" -> title="${result.title}", vol=${result.volumeNumber ?? 'N/A'}`);
+      console.log(
+        `  ✅ "${test.input}" -> title="${result.title}", vol=${result.volumeNumber ?? 'N/A'}`
+      );
       passed++;
     } else {
       console.log(`  ❌ "${test.input}"`);
-      console.log(`     Expected: title="${test.expected.title}", vol=${test.expected.volumeNumber ?? 'N/A'}`);
+      console.log(
+        `     Expected: title="${test.expected.title}", vol=${test.expected.volumeNumber ?? 'N/A'}`
+      );
       console.log(`     Got:      title="${result.title}", vol=${result.volumeNumber ?? 'N/A'}`);
       failed++;
     }
@@ -258,21 +264,21 @@ async function testSeriesDetails(): Promise<void> {
 
   for (const test of seriesTests) {
     console.log(`  Testing: ${test.title}`);
-    
+
     try {
       const details = await getSeriesDetails(test.title);
-      
+
       if (!details) {
         console.log(`    ❌ Not found`);
         continue;
       }
 
       const checks: string[] = [];
-      
+
       if (test.expectedVolumes != null && details.totalVolumes !== test.expectedVolumes) {
         checks.push(`volumes: expected ${test.expectedVolumes}, got ${details.totalVolumes}`);
       }
-      
+
       if (test.minVolumes != null && details.totalVolumes < test.minVolumes) {
         checks.push(`volumes: expected >= ${test.minVolumes}, got ${details.totalVolumes}`);
       }
@@ -282,9 +288,13 @@ async function testSeriesDetails(): Promise<void> {
       }
 
       if (checks.length === 0) {
-        console.log(`    ✅ ${details.title}: ${details.totalVolumes} vols, ${details.availableCount} available`);
+        console.log(
+          `    ✅ ${details.title}: ${details.totalVolumes} vols, ${details.availableCount} available`
+        );
         if (details.missingVolumes.length > 0) {
-          console.log(`       Missing: ${details.missingVolumes.slice(0, 5).join(', ')}${details.missingVolumes.length > 5 ? '...' : ''}`);
+          console.log(
+            `       Missing: ${details.missingVolumes.slice(0, 5).join(', ')}${details.missingVolumes.length > 5 ? '...' : ''}`
+          );
         }
       } else {
         console.log(`    ❌ ${checks.join(', ')}`);
@@ -316,7 +326,7 @@ async function main() {
   for (const test of testCases) {
     process.stdout.write(`  ${test.name}... `);
     const result = await runTest(test);
-    
+
     if (result.passed) {
       console.log('✅');
       passed++;

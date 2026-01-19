@@ -3,12 +3,9 @@
  */
 
 import { nanoid } from 'nanoid';
-import type { Series, CreateSeriesInput, MediaType } from './types.js';
-import {
-  getSeriesByTitle,
-  getSeriesByWikipediaId,
-  saveSeries,
-} from './store.js';
+
+import { getSeriesByTitle, getSeriesByWikipediaId, saveSeries } from './store.js';
+import type { CreateSeriesInput, MediaType, Series } from './types.js';
 
 /**
  * Generate a unique series ID
@@ -22,7 +19,7 @@ function generateSeriesId(): string {
  */
 export async function createSeries(input: CreateSeriesInput): Promise<Series> {
   const now = new Date().toISOString();
-  
+
   const series: Series = {
     id: generateSeriesId(),
     title: input.title,
@@ -39,10 +36,12 @@ export async function createSeries(input: CreateSeriesInput): Promise<Series> {
     createdAt: now,
     updatedAt: now,
   };
-  
+
   await saveSeries(series);
-  console.log(`[Series] Created series: ${series.id} - "${series.title}"${input.relationship != null ? ` (${input.relationship})` : ''}`);
-  
+  console.log(
+    `[Series] Created series: ${series.id} - "${series.title}"${input.relationship != null ? ` (${input.relationship})` : ''}`
+  );
+
   return series;
 }
 
@@ -56,10 +55,12 @@ export async function findOrCreateSeriesByWikipedia(
   // Check if we already have this series by Wikipedia ID
   const existing = await getSeriesByWikipediaId(wikipediaPageId);
   if (existing) {
-    console.log(`[Series] Found existing series by Wikipedia ID ${wikipediaPageId}: ${existing.id}`);
+    console.log(
+      `[Series] Found existing series by Wikipedia ID ${wikipediaPageId}: ${existing.id}`
+    );
     return existing;
   }
-  
+
   // Also check by title in case we have it without Wikipedia ID
   const byTitle = await getSeriesByTitle(input.title);
   if (byTitle) {
@@ -72,7 +73,7 @@ export async function findOrCreateSeriesByWikipedia(
     }
     return byTitle;
   }
-  
+
   // Create new series with Wikipedia ID
   return createSeries({
     ...input,
@@ -92,27 +93,24 @@ export async function findOrCreateSeriesByTitle(input: CreateSeriesInput): Promi
     console.log(`[Series] Found existing series by title: ${existing.id} - "${existing.title}"`);
     return existing;
   }
-  
+
   return createSeries(input);
 }
 
 /**
  * Update series volume list
  */
-export async function updateSeriesVolumes(
-  seriesId: string,
-  volumeIds: string[]
-): Promise<void> {
+export async function updateSeriesVolumes(seriesId: string, volumeIds: string[]): Promise<void> {
   const { getSeriesById } = await import('./store.js');
   const series = await getSeriesById(seriesId);
-  
+
   if (!series) {
     throw new Error(`Series not found: ${seriesId}`);
   }
-  
+
   series.volumeIds = volumeIds;
   series.updatedAt = new Date().toISOString();
-  
+
   await saveSeries(series);
   console.log(`[Series] Updated volumes for ${seriesId}: ${volumeIds.length} volumes`);
 }
@@ -127,12 +125,12 @@ export async function updateSeriesDescription(
 ): Promise<void> {
   const { getSeriesById } = await import('./store.js');
   const series = await getSeriesById(seriesId);
-  
+
   if (!series) {
     console.warn(`[Series] Cannot update description - series not found: ${seriesId}`);
     return;
   }
-  
+
   // Only set if not already present
   if (series.description == null) {
     series.description = description;
@@ -151,16 +149,14 @@ export async function linkRelatedSeries(
 ): Promise<void> {
   const { getSeriesById } = await import('./store.js');
   const parent = await getSeriesById(parentSeriesId);
-  
+
   if (!parent) {
     throw new Error(`Parent series not found: ${parentSeriesId}`);
   }
-  
+
   // Initialize relatedSeriesIds if not present
-  if (!parent.relatedSeriesIds) {
-    parent.relatedSeriesIds = [];
-  }
-  
+  parent.relatedSeriesIds ??= [];
+
   // Add related series ID if not already present
   if (!parent.relatedSeriesIds.includes(relatedSeriesId)) {
     parent.relatedSeriesIds.push(relatedSeriesId);
@@ -178,7 +174,7 @@ export function detectMediaType(
   hints?: { isLightNovel?: boolean; isManga?: boolean }
 ): MediaType {
   const lowerTitle = title.toLowerCase();
-  
+
   if (hints?.isLightNovel || lowerTitle.includes('light novel')) {
     return 'light_novel';
   }
@@ -191,7 +187,7 @@ export function detectMediaType(
   if (lowerTitle.includes('guidebook') || lowerTitle.includes('guide book')) {
     return 'guidebook';
   }
-  
+
   // Default to manga for this app's context
   return 'manga';
 }

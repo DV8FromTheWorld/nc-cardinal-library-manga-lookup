@@ -2,12 +2,14 @@
  * Entity store - persists entities to a JSON file
  */
 
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
 import { nanoid } from 'nanoid';
-import type { EntityStore, Series, Volume, Edition } from './types.js';
+
+import type { Edition, EntityStore, Series, Volume } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, '../../.data');
@@ -37,8 +39,8 @@ function createEmptyStore(): EntityStore {
 export function normalizeTitle(title: string): string {
   return title
     .toLowerCase()
-    .replace(/\s*\(manga\)\s*$/i, '')        // Strip (Manga) suffix
-    .replace(/\s*\(light novel\)\s*$/i, '')  // Strip (Light Novel) suffix
+    .replace(/\s*\(manga\)\s*$/i, '') // Strip (Manga) suffix
+    .replace(/\s*\(light novel\)\s*$/i, '') // Strip (Light Novel) suffix
     .replace(/[^a-z0-9]/g, '')
     .trim();
 }
@@ -73,39 +75,45 @@ export async function loadStore(): Promise<EntityStore> {
 
     const data = await readFile(STORE_PATH, 'utf-8');
     const loaded = JSON.parse(data) as Record<string, unknown>;
-    
+
     // Check for old book-based store format and start fresh if detected
     if ('books' in loaded && !('volumes' in loaded)) {
-      console.warn('[EntityStore] Old book-based store detected. Starting fresh with volume-based store.');
+      console.warn(
+        '[EntityStore] Old book-based store detected. Starting fresh with volume-based store.'
+      );
       console.warn('[EntityStore] Delete .data/entities.json to clear this warning.');
       storeCache = createEmptyStore();
       return storeCache;
     }
-    
+
     // Check for old embedded-editions format (volumes have 'editions' array instead of 'editionIds')
     // If so, start fresh - the new format uses Edition entities
-    const sampleVolume = Object.values(loaded.volumes ?? {})[0] as Record<string, unknown> | undefined;
+    const sampleVolume = Object.values(loaded.volumes ?? {})[0] as
+      | Record<string, unknown>
+      | undefined;
     if (sampleVolume && 'editions' in sampleVolume && !('editionIds' in sampleVolume)) {
-      console.warn('[EntityStore] Old embedded-editions format detected. Starting fresh with Edition entities.');
+      console.warn(
+        '[EntityStore] Old embedded-editions format detected. Starting fresh with Edition entities.'
+      );
       console.warn('[EntityStore] Delete .data/entities.json to clear this warning.');
       storeCache = createEmptyStore();
       return storeCache;
     }
-    
+
     // Validate that loaded data has the required structure
     if (loaded.series == null || loaded.volumes == null) {
       console.warn('[EntityStore] Invalid store format detected. Starting fresh.');
       storeCache = createEmptyStore();
       return storeCache;
     }
-    
+
     storeCache = loaded as unknown as EntityStore;
-    
+
     // Ensure all required fields exist (backwards compatibility)
     storeCache.volumes = storeCache.volumes ?? {};
     storeCache.editions = storeCache.editions ?? {};
     storeCache.isbnIndex = storeCache.isbnIndex ?? {};
-    
+
     return storeCache;
   } catch (error) {
     console.error('[EntityStore] Failed to load store, creating empty:', error);
@@ -177,16 +185,16 @@ export async function getSeriesByTitle(title: string): Promise<Series | null> {
  */
 export async function saveSeries(series: Series): Promise<void> {
   const store = await loadStore();
-  
+
   store.series[series.id] = series;
-  
+
   // Update indexes
   store.titleIndex[normalizeTitle(series.title)] = series.id;
-  
+
   if (series.externalIds.wikipedia != null) {
     store.wikipediaIndex[series.externalIds.wikipedia] = series.id;
   }
-  
+
   await saveStore();
 }
 
@@ -205,21 +213,24 @@ export async function getVolumeById(id: string): Promise<Volume | null> {
 /**
  * Get a volume by series ID and volume number
  */
-export async function getVolumeBySeriesAndNumber(seriesId: string, volumeNumber: number): Promise<Volume | null> {
+export async function getVolumeBySeriesAndNumber(
+  seriesId: string,
+  volumeNumber: number
+): Promise<Volume | null> {
   const store = await loadStore();
   const series = store.series[seriesId];
-  
+
   if (!series) {
     return null;
   }
-  
+
   for (const volumeId of series.volumeIds) {
     const volume = store.volumes[volumeId];
-    if (volume && volume.volumeNumber === volumeNumber) {
+    if (volume?.volumeNumber === volumeNumber) {
       return volume;
     }
   }
-  
+
   return null;
 }
 
@@ -229,14 +240,14 @@ export async function getVolumeBySeriesAndNumber(seriesId: string, volumeNumber:
 export async function getVolumesBySeriesId(seriesId: string): Promise<Volume[]> {
   const store = await loadStore();
   const series = store.series[seriesId];
-  
+
   if (!series) {
     return [];
   }
-  
+
   // Return volumes in order from volumeIds
   return series.volumeIds
-    .map(id => store.volumes[id])
+    .map((id) => store.volumes[id])
     .filter((volume): volume is Volume => volume !== undefined);
 }
 
@@ -266,11 +277,11 @@ export async function saveVolumes(volumes: Volume[]): Promise<void> {
 export async function addVolumeToSeries(seriesId: string, volumeId: string): Promise<void> {
   const store = await loadStore();
   const series = store.series[seriesId];
-  
+
   if (!series) {
     throw new Error(`Series not found: ${seriesId}`);
   }
-  
+
   if (!series.volumeIds.includes(volumeId)) {
     series.volumeIds.push(volumeId);
     series.updatedAt = new Date().toISOString();
@@ -306,13 +317,13 @@ export async function getEditionByIsbn(isbn: string): Promise<Edition | null> {
 export async function getEditionsByVolumeId(volumeId: string): Promise<Edition[]> {
   const store = await loadStore();
   const volume = store.volumes[volumeId];
-  
+
   if (!volume) {
     return [];
   }
-  
+
   return volume.editionIds
-    .map(id => store.editions[id])
+    .map((id) => store.editions[id])
     .filter((edition): edition is Edition => edition !== undefined);
 }
 
@@ -322,9 +333,7 @@ export async function getEditionsByVolumeId(volumeId: string): Promise<Edition[]
  */
 export async function getEditionsContainingVolume(volumeId: string): Promise<Edition[]> {
   const store = await loadStore();
-  return Object.values(store.editions).filter(edition => 
-    edition.volumeIds.includes(volumeId)
-  );
+  return Object.values(store.editions).filter((edition) => edition.volumeIds.includes(volumeId));
 }
 
 /**
@@ -355,11 +364,11 @@ export async function saveEditions(editions: Edition[]): Promise<void> {
 export async function addVolumeToEdition(editionId: string, volumeId: string): Promise<void> {
   const store = await loadStore();
   const edition = store.editions[editionId];
-  
+
   if (!edition) {
     throw new Error(`Edition not found: ${editionId}`);
   }
-  
+
   if (!edition.volumeIds.includes(volumeId)) {
     edition.volumeIds.push(volumeId);
     edition.updatedAt = new Date().toISOString();
@@ -373,11 +382,11 @@ export async function addVolumeToEdition(editionId: string, volumeId: string): P
 export async function addEditionToVolume(volumeId: string, editionId: string): Promise<void> {
   const store = await loadStore();
   const volume = store.volumes[volumeId];
-  
+
   if (!volume) {
     throw new Error(`Volume not found: ${volumeId}`);
   }
-  
+
   if (!volume.editionIds.includes(editionId)) {
     volume.editionIds.push(editionId);
     volume.updatedAt = new Date().toISOString();

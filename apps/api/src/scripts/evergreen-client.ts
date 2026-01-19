@@ -12,8 +12,7 @@
 
 import * as cheerio from 'cheerio';
 
-const BASE_URL =
-  process.env.NC_CARDINAL_BASE_URL ?? 'https://highpoint.nccardinal.org';
+const BASE_URL = process.env.NC_CARDINAL_BASE_URL ?? 'https://highpoint.nccardinal.org';
 
 // Known library organization IDs (locg parameter)
 // These will need to be discovered/verified
@@ -54,14 +53,7 @@ export interface MARCRecord {
 /**
  * SuperCat formats available for record retrieval
  */
-export type SuperCatFormat =
-  | 'marcxml'
-  | 'mods'
-  | 'mods3'
-  | 'atom'
-  | 'atom-full'
-  | 'rss2'
-  | 'html';
+export type SuperCatFormat = 'marcxml' | 'mods' | 'mods3' | 'atom' | 'atom-full' | 'rss2' | 'html';
 
 /**
  * Fetch a record from SuperCat by record ID
@@ -149,11 +141,7 @@ export async function searchOPAC(
     limit?: number;
   } = {}
 ): Promise<SearchResult[]> {
-  const {
-    searchType = 'keyword',
-    libraryOrg = LIBRARY_ORGS.NC_CARDINAL_ALL,
-    limit = 20,
-  } = options;
+  const { searchType = 'keyword', libraryOrg = LIBRARY_ORGS.NC_CARDINAL_ALL, limit = 20 } = options;
 
   // Map search types to qtype parameter
   const qtypeMap: Record<string, string> = {
@@ -206,9 +194,10 @@ function parseOPACResults(html: string): SearchResult[] {
     // Extract title from the link's text content or title attribute
     const titleAttr = titleLink.attr('title') ?? '';
     const titleMatch = titleAttr.match(/Display record details for "(.+)"/);
-    const title = titleMatch?.[1] != null
-      ? titleMatch[1].replace(/"/g, '')
-      : titleLink.text().trim().replace(/\s+/g, ' ');
+    const title =
+      titleMatch?.[1] != null
+        ? titleMatch[1].replace(/"/g, '')
+        : titleLink.text().trim().replace(/\s+/g, ' ');
 
     // Extract author from record_author class
     const authorLink = $el.find('a.record_author').first();
@@ -321,8 +310,8 @@ async function main() {
     });
 
     // Test 2: If we found results, get details for the first one
-    if (searchResults.length > 0) {
-      const firstResult = searchResults[0]!;
+    const firstResult = searchResults[0];
+    if (firstResult != null) {
       console.log(`\n--- Test 2: Get full record details for ID ${firstResult.id} ---`);
 
       try {
@@ -358,7 +347,6 @@ async function main() {
     // Test 4: Try SuperCat directly with a known record ID (if we have one)
     console.log('\n--- Test 4: Direct SuperCat MARCXML fetch ---');
     console.log('(Skipping - need a known record ID from previous search)');
-
   } catch (error) {
     console.error('Error during testing:', error);
   }

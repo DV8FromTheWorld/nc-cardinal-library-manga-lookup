@@ -1,6 +1,6 @@
 /**
  * Entity data layer
- * 
+ *
  * This module provides stable IDs for series, volumes, and editions, persisted to disk.
  * Series, volumes, and editions all get generated IDs.
  * ISBN index maps to Edition IDs for lookups.
@@ -8,60 +8,60 @@
 
 // Types
 export type {
-  MediaType,
-  SeriesStatus,
-  SeriesRelationship,
-  SeriesExternalIds,
-  EditionFormat,
-  EditionLanguage,
-  Edition,
-  EditionData,
-  Series,
-  Volume,
-  EntityStore,
+  CreateEditionInput,
   CreateSeriesInput,
   CreateVolumeInput,
-  CreateEditionInput,
+  Edition,
+  EditionData,
+  EditionFormat,
+  EditionLanguage,
+  EntityStore,
+  MediaType,
+  Series,
+  SeriesExternalIds,
+  SeriesRelationship,
+  SeriesStatus,
+  Volume,
 } from './types.js';
 
 // Store operations
 export {
-  loadStore,
-  saveStore,
-  normalizeTitle,
-  generateVolumeId,
-  generateEditionId,
-  getSeriesById,
-  getSeriesByWikipediaId,
-  getSeriesByTitle,
-  saveSeries,
-  getVolumeById,
-  getVolumeBySeriesAndNumber,
-  getVolumesBySeriesId,
-  saveVolume,
-  saveVolumes,
+  addEditionToVolume,
+  addVolumeToEdition,
   addVolumeToSeries,
+  clearCache,
+  generateEditionId,
+  generateVolumeId,
+  getAllSeries,
   getEditionById,
   getEditionByIsbn,
   getEditionsByVolumeId,
   getEditionsContainingVolume,
+  getSeriesById,
+  getSeriesByTitle,
+  getSeriesByWikipediaId,
+  getStoreStats,
+  getVolumeById,
+  getVolumeBySeriesAndNumber,
+  getVolumesBySeriesId,
+  loadStore,
+  normalizeTitle,
   saveEdition,
   saveEditions,
-  addVolumeToEdition,
-  addEditionToVolume,
-  getAllSeries,
-  getStoreStats,
-  clearCache,
+  saveSeries,
+  saveStore,
+  saveVolume,
+  saveVolumes,
 } from './store.js';
 
 // Series operations
 export {
   createSeries,
-  findOrCreateSeriesByWikipedia,
-  findOrCreateSeriesByTitle,
-  updateSeriesVolumes,
-  linkRelatedSeries,
   detectMediaType,
+  findOrCreateSeriesByTitle,
+  findOrCreateSeriesByWikipedia,
+  linkRelatedSeries,
+  updateSeriesVolumes,
 } from './series.js';
 
 // Volume operations
@@ -69,8 +69,8 @@ export {
   createVolume,
   findOrCreateVolume,
   findOrCreateVolumes,
-  linkEditionToVolume,
   getVolumeWithSeries,
+  linkEditionToVolume,
 } from './volumes.js';
 
 // Edition operations
@@ -83,12 +83,12 @@ export {
 
 // Integration with existing services
 export {
-  createEntitiesFromWikipedia,
   createEntitiesFromNCCardinal,
+  createEntitiesFromWikipedia,
   getSeriesEntity,
-  getVolumeEntity,
   getSeriesVolumes,
   getVolumeEditionData,
-  resolveEditionsForVolumes,
+  getVolumeEntity,
   hasSeriesEntity,
+  resolveEditionsForVolumes,
 } from './integration.js';

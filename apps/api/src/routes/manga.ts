@@ -13,64 +13,54 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 
 import {
-  search,
-  getSeriesDetails,
-  fetchBookcoverUrl,
-  fetchGoogleBooksCoverUrl,
-} from '../scripts/manga-search.js';
-
-import {
-  searchWithProgress,
-  type SearchProgressEvent,
-} from '../scripts/manga-search-streaming.js';
-
-import {
-  searchByISBN,
-  NC_CARDINAL_LIBRARIES,
-  getCatalogUrl,
-  getDetailedAvailabilitySummary,
-} from '../scripts/opensearch-client.js';
-
-// Google Books for descriptions
-import { getDescriptionByISBN, extractUniqueVolumeDescription, findCommonPreamble } from '../scripts/google-books-client.js';
-
+  getSeriesById,
+  getSeriesEntity,
+  getVolumeById,
+  getVolumeEditionData,
+  getVolumeEntity,
+  getVolumesBySeriesId,
+} from '../entities/index.js';
 // Series description management
 import { updateSeriesDescription } from '../entities/series.js';
-
+import { getPopularManga, getSuggestions } from '../scripts/anilist-client.js';
 import {
-  getAllCacheStats,
-  clearAllCaches,
-  clearCacheType,
-  clearCacheForISBN,
-  clearCacheForSeries,
-  clearCacheForSearch,
   type CacheType,
+  clearAllCaches,
+  clearCacheForISBN,
+  clearCacheForSearch,
+  clearCacheForSeries,
+  clearCacheType,
+  getAllCacheStats,
 } from '../scripts/cache-utils.js';
-
+// Google Books for descriptions
 import {
-  getSeriesEntity,
-  getVolumeEntity,
-  getVolumeById,
-  getSeriesById,
-  getVolumesBySeriesId,
-  getVolumeEditionData,
-} from '../entities/index.js';
-
+  extractUniqueVolumeDescription,
+  findCommonPreamble,
+  getDescriptionByISBN,
+} from '../scripts/google-books-client.js';
 import {
-  login,
-  logout,
+  fetchBookcoverUrl,
+  fetchGoogleBooksCoverUrl,
+  getSeriesDetails,
+  search,
+} from '../scripts/manga-search.js';
+import { type SearchProgressEvent, searchWithProgress } from '../scripts/manga-search-streaming.js';
+import {
+  getCatalogUrl,
+  getDetailedAvailabilitySummary,
+  NC_CARDINAL_LIBRARIES,
+  searchByISBN,
+} from '../scripts/opensearch-client.js';
+import {
   getCheckouts,
   getHistory,
   getHolds,
-  isSessionValid,
-  isHistoryEnabled,
   getSession,
+  isHistoryEnabled,
+  isSessionValid,
+  login,
+  logout,
 } from '../scripts/patron-client.js';
-
-import {
-  getPopularManga,
-  getSuggestions,
-} from '../scripts/anilist-client.js';
 
 // ============================================================================
 // Zod Schemas
@@ -103,36 +93,42 @@ const EditionSchema = z.object({
 });
 
 const VolumeInfoSchema = z.object({
-  id: z.string(),  // Volume entity ID (required)
+  id: z.string(), // Volume entity ID (required)
   volumeNumber: z.number(),
   title: z.string().optional(),
   editions: z.array(EditionSchema),
-  primaryIsbn: z.string().optional(),  // First English physical ISBN for library lookups
+  primaryIsbn: z.string().optional(), // First English physical ISBN for library lookups
   coverImage: z.string().optional(),
   availability: VolumeAvailabilitySchema.optional(),
 });
 
 const SourceSummarySchema = z.object({
-  wikipedia: z.object({
-    found: z.boolean(),
-    volumeCount: z.number().optional(),
-    seriesTitle: z.string().optional(),
-    error: z.string().optional(),
-  }).optional(),
-  googleBooks: z.object({
-    found: z.boolean(),
-    totalItems: z.number().optional(),
-    volumesReturned: z.number().optional(),
-    volumesWithSeriesId: z.number().optional(),
-    seriesCount: z.number().optional(),
-    error: z.string().optional(),
-  }).optional(),
-  ncCardinal: z.object({
-    found: z.boolean(),
-    recordCount: z.number().optional(),
-    volumesExtracted: z.number().optional(),
-    error: z.string().optional(),
-  }).optional(),
+  wikipedia: z
+    .object({
+      found: z.boolean(),
+      volumeCount: z.number().optional(),
+      seriesTitle: z.string().optional(),
+      error: z.string().optional(),
+    })
+    .optional(),
+  googleBooks: z
+    .object({
+      found: z.boolean(),
+      totalItems: z.number().optional(),
+      volumesReturned: z.number().optional(),
+      volumesWithSeriesId: z.number().optional(),
+      seriesCount: z.number().optional(),
+      error: z.string().optional(),
+    })
+    .optional(),
+  ncCardinal: z
+    .object({
+      found: z.boolean(),
+      recordCount: z.number().optional(),
+      volumesExtracted: z.number().optional(),
+      error: z.string().optional(),
+    })
+    .optional(),
 });
 
 const DebugInfoSchema = z.object({
@@ -152,7 +148,14 @@ const DebugInfoSchema = z.object({
 });
 
 const MediaTypeSchema = z.enum(['manga', 'light_novel', 'unknown']);
-const SeriesRelationshipSchema = z.enum(['adaptation', 'spinoff', 'sequel', 'side_story', 'anthology', 'prequel']);
+const SeriesRelationshipSchema = z.enum([
+  'adaptation',
+  'spinoff',
+  'sequel',
+  'side_story',
+  'anthology',
+  'prequel',
+]);
 
 const SeriesResultSchema = z.object({
   id: z.string(),
@@ -169,7 +172,7 @@ const SeriesResultSchema = z.object({
 });
 
 const VolumeResultSchema = z.object({
-  id: z.string(),  // Volume entity ID (required)
+  id: z.string(), // Volume entity ID (required)
   title: z.string(),
   volumeNumber: z.number().optional(),
   seriesTitle: z.string().optional(),
@@ -203,7 +206,7 @@ const SearchResultSchema = z.object({
 const SeriesDetailsSchema = z.object({
   id: z.string(),
   title: z.string(),
-  description: z.string().nullish(),  // Series description/preamble from Vol 1
+  description: z.string().nullish(), // Series description/preamble from Vol 1
   totalVolumes: z.number(),
   coverImage: z.string().optional(),
   isComplete: z.boolean(),
@@ -239,7 +242,7 @@ const BookAvailabilitySchema = z.object({
   // Overall status
   available: z.boolean(),
   notInCatalog: z.boolean().optional(),
-  
+
   // Copy counts by status
   totalCopies: z.number(),
   availableCopies: z.number(),
@@ -248,10 +251,10 @@ const BookAvailabilitySchema = z.object({
   onOrderCopies: z.number(),
   onHoldCopies: z.number(),
   unavailableCopies: z.number(),
-  
+
   // Libraries with available copies
   libraries: z.array(z.string()),
-  
+
   // Local vs remote breakdown
   localCopies: z.number().optional(),
   localAvailable: z.number().optional(),
@@ -281,11 +284,13 @@ const BookDetailsSchema = z.object({
   holdings: z.array(HoldingSchema),
   availability: BookAvailabilitySchema,
   // Series info from entity store or extracted from title
-  seriesInfo: z.object({
-    id: z.string().optional(), // Entity ID for navigation
-    title: z.string(),
-    volumeNumber: z.number().optional(),
-  }).optional(),
+  seriesInfo: z
+    .object({
+      id: z.string().optional(), // Entity ID for navigation
+      title: z.string(),
+      volumeNumber: z.number().optional(),
+    })
+    .optional(),
   // Link to library catalog
   catalogUrl: z.string().optional(),
 });
@@ -470,8 +475,14 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
     {
       schema: {
         querystring: z.object({
-          popularLimit: z.string().optional().transform(v => v != null ? parseInt(v, 10) : 150),
-          trendingLimit: z.string().optional().transform(v => v != null ? parseInt(v, 10) : 50),
+          popularLimit: z
+            .string()
+            .optional()
+            .transform((v) => (v != null ? parseInt(v, 10) : 150)),
+          trendingLimit: z
+            .string()
+            .optional()
+            .transform((v) => (v != null ? parseInt(v, 10) : 50)),
         }),
         response: {
           200: SuggestionsResponseSchema,
@@ -511,7 +522,10 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
       schema: {
         querystring: z.object({
           q: z.string().min(1).describe('Search query'),
-          limit: z.string().optional().transform(v => v != null ? parseInt(v, 10) : 10),
+          limit: z
+            .string()
+            .optional()
+            .transform((v) => (v != null ? parseInt(v, 10) : 10)),
         }),
         response: {
           200: SuggestionsResponseSchema,
@@ -849,7 +863,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
         return checkouts;
       } catch (error) {
         request.log.error(error, 'Failed to fetch checkouts');
-        
+
         if (error instanceof Error && error.message.includes('Session expired')) {
           return reply.status(401).send({
             error: 'session_expired',
@@ -879,8 +893,14 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
           'x-session-id': z.string(),
         }),
         querystring: z.object({
-          limit: z.string().optional().transform(v => v != null ? parseInt(v, 10) : 15),
-          offset: z.string().optional().transform(v => v != null ? parseInt(v, 10) : 0),
+          limit: z
+            .string()
+            .optional()
+            .transform((v) => (v != null ? parseInt(v, 10) : 15)),
+          offset: z
+            .string()
+            .optional()
+            .transform((v) => (v != null ? parseInt(v, 10) : 0)),
         }),
         response: {
           200: HistoryResponseSchema,
@@ -1039,7 +1059,10 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
         querystring: z.object({
           q: z.string().min(1).describe('Search query'),
           debug: z.enum(['true', 'false']).optional().describe('Include debug info'),
-          homeLibrary: z.string().optional().describe('Home library code for local/remote breakdown'),
+          homeLibrary: z
+            .string()
+            .optional()
+            .describe('Home library code for local/remote breakdown'),
         }),
         response: {
           200: SearchResultSchema,
@@ -1100,7 +1123,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
       reply.raw.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
+        Connection: 'keep-alive',
         'Access-Control-Allow-Origin': '*',
         'X-Accel-Buffering': 'no', // Disable nginx buffering
       });
@@ -1161,27 +1184,27 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params;
       const { debug, homeLibrary } = request.query;
       const includeDebug = debug === 'true';
-      
+
       try {
         // Look up by entity ID only
         const entity = await getSeriesEntity(id);
-        
+
         if (!entity) {
           return reply.status(404).send({
             error: 'series_not_found',
             message: `Series with ID "${id}" not found`,
           });
         }
-        
+
         // Found entity - fetch full details using the stored title
         // Pass entityId as fallback for related series without Wikipedia pages
         request.log.info(`Found entity: ${entity.id} - "${entity.title}"`);
-        const details = await getSeriesDetails(entity.title, { 
-          includeDebug, 
+        const details = await getSeriesDetails(entity.title, {
+          includeDebug,
           homeLibrary,
           entityId: entity.id,
         });
-        
+
         if (!details) {
           return reply.status(404).send({
             error: 'series_not_found',
@@ -1221,7 +1244,10 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
           id: z.string().min(1).describe('Volume entity ID (e.g., v_abc123)'),
         }),
         querystring: z.object({
-          homeLibrary: z.string().optional().describe('Home library code for local/remote breakdown'),
+          homeLibrary: z
+            .string()
+            .optional()
+            .describe('Home library code for local/remote breakdown'),
         }),
         response: {
           200: BookDetailsSchema,
@@ -1257,14 +1283,17 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
         const editions = await getVolumeEditionData(volume.id);
 
         // Find the primary ISBN (first English physical edition)
-        const englishPhysical = editions.find(e => e.language === 'en' && e.format === 'physical');
-        const englishDigital = editions.find(e => e.language === 'en' && e.format === 'digital');
+        const englishPhysical = editions.find(
+          (e) => e.language === 'en' && e.format === 'physical'
+        );
+        const englishDigital = editions.find((e) => e.language === 'en' && e.format === 'digital');
         const primaryIsbn = englishPhysical?.isbn ?? englishDigital?.isbn;
 
         // Build the volume title
-        const volumeTitle = volume.title != null
-          ? `${series.title}, Vol. ${volume.volumeNumber}: ${volume.title}`
-          : `${series.title}, Vol. ${volume.volumeNumber}`;
+        const volumeTitle =
+          volume.title != null
+            ? `${series.title}, Vol. ${volume.volumeNumber}: ${volume.title}`
+            : `${series.title}, Vol. ${volume.volumeNumber}`;
 
         // If no ISBN, return minimal info (Japan-only volume)
         if (primaryIsbn == null) {
@@ -1272,7 +1301,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
             id: volume.id,
             title: volumeTitle,
             authors: series.author != null ? [series.author] : [],
-            isbns: editions.map(e => e.isbn),
+            isbns: editions.map((e) => e.isbn),
             subjects: [],
             coverImage: undefined,
             holdings: [],
@@ -1303,14 +1332,15 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
           fetchBookcoverUrl(primaryIsbn).catch(() => null),
           getDescriptionByISBN(primaryIsbn),
         ]);
-        
+
         // Cover image priority: Bookcover API > Google Books > OpenLibrary
         let coverImage: string;
         if (bookcoverUrl != null) {
           coverImage = bookcoverUrl;
         } else {
           const googleBooksUrl = await fetchGoogleBooksCoverUrl(primaryIsbn).catch(() => null);
-          coverImage = googleBooksUrl ?? `https://covers.openlibrary.org/b/isbn/${primaryIsbn}-M.jpg`;
+          coverImage =
+            googleBooksUrl ?? `https://covers.openlibrary.org/b/isbn/${primaryIsbn}-M.jpg`;
         }
 
         // Description handling:
@@ -1319,35 +1349,37 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
         // 3. Extract unique portion by stripping series preamble
         const fullDescription = googleBooksDescription ?? record?.summary;
         let volumeDescription: string | undefined;
-        
+
         if (fullDescription != null) {
           // If series doesn't have a description yet, we need to find the true preamble
           // by comparing with another volume's description
           if (series.description == null) {
             // Get all volumes for this series to find another one to compare
             const allVolumes = await getVolumesBySeriesId(series.id);
-            
+
             // Find a different volume (prefer Vol 1 or Vol 2 for consistency)
-            const compareVolume = volume.volumeNumber === 1
-              ? allVolumes.find(v => v.volumeNumber === 2)
-              : allVolumes.find(v => v.volumeNumber === 1);
-            
+            const compareVolume =
+              volume.volumeNumber === 1
+                ? allVolumes.find((v) => v.volumeNumber === 2)
+                : allVolumes.find((v) => v.volumeNumber === 1);
+
             // Try to get the comparison volume's description
             let compareDescription: string | null = null;
             if (compareVolume != null) {
               const compareEditions = await getVolumeEditionData(compareVolume.id);
-              const compareIsbn = compareEditions.find(e => e.language === 'en' && e.format === 'physical')?.isbn
-                ?? compareEditions.find(e => e.language === 'en' && e.format === 'digital')?.isbn;
-              
+              const compareIsbn =
+                compareEditions.find((e) => e.language === 'en' && e.format === 'physical')?.isbn ??
+                compareEditions.find((e) => e.language === 'en' && e.format === 'digital')?.isbn;
+
               if (compareIsbn != null) {
                 compareDescription = await getDescriptionByISBN(compareIsbn);
               }
             }
-            
+
             if (compareDescription != null) {
               // Found another volume's description - extract the common preamble
               const preamble = findCommonPreamble(fullDescription, compareDescription);
-              
+
               if (preamble != null) {
                 // Save the common preamble as series description
                 await updateSeriesDescription(series.id, preamble);
@@ -1381,7 +1413,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
             id: volume.id,
             title: volumeTitle,
             authors: series.author != null ? [series.author] : [],
-            isbns: editions.map(e => e.isbn),
+            isbns: editions.map((e) => e.isbn),
             subjects: [],
             summary: volumeDescription,
             coverImage,
@@ -1410,7 +1442,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
           id: volume.id,
           title: volumeTitle,
           authors: record.authors,
-          isbns: [...new Set([...editions.map(e => e.isbn), ...record.isbns])],
+          isbns: [...new Set([...editions.map((e) => e.isbn), ...record.isbns])],
           subjects: record.subjects,
           summary: volumeDescription,
           coverImage,
@@ -1451,7 +1483,10 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
           isbn: z.string().min(10).max(17).describe('ISBN-10 or ISBN-13'),
         }),
         querystring: z.object({
-          homeLibrary: z.string().optional().describe('Home library code for local/remote breakdown'),
+          homeLibrary: z
+            .string()
+            .optional()
+            .describe('Home library code for local/remote breakdown'),
         }),
         response: {
           200: BookDetailsSchema,
@@ -1472,7 +1507,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
           fetchBookcoverUrl(cleanISBN).catch(() => null),
           getVolumeEntity(cleanISBN).catch(() => null),
         ]);
-        
+
         // Cover image priority: Bookcover API > Google Books > OpenLibrary
         let coverImage: string;
         if (bookcoverUrl != null) {
@@ -1485,10 +1520,10 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
 
         // Build series info from entity (if available) or extract from title
         let seriesInfo: { id?: string; title: string; volumeNumber?: number } | undefined;
-        
+
         // Build volume title from entity
         let volumeTitle: string | undefined;
-        
+
         if (volumeEntity != null) {
           // We have entity data - use it for series info
           seriesInfo = {
@@ -1497,9 +1532,10 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
             volumeNumber: volumeEntity.volume.volumeNumber,
           };
           // Build full title: "Series, Vol. N" or "Series, Vol. N: Subtitle"
-          volumeTitle = volumeEntity.volume.title != null
-            ? `${volumeEntity.series.title}, Vol. ${volumeEntity.volume.volumeNumber}: ${volumeEntity.volume.title}`
-            : `${volumeEntity.series.title}, Vol. ${volumeEntity.volume.volumeNumber}`;
+          volumeTitle =
+            volumeEntity.volume.title != null
+              ? `${volumeEntity.series.title}, Vol. ${volumeEntity.volume.volumeNumber}: ${volumeEntity.volume.title}`
+              : `${volumeEntity.series.title}, Vol. ${volumeEntity.volume.volumeNumber}`;
         }
 
         if (!record) {
@@ -1592,16 +1628,16 @@ function _calculateAvailability(holdings: HoldingInfo[]): {
     on_hold: 0,
     unavailable: 0,
   };
-  
+
   const availableLibraries = new Set<string>();
-  
+
   for (const holding of holdings) {
     counts[holding.statusCategory]++;
     if (holding.statusCategory === 'available') {
       availableLibraries.add(holding.libraryName);
     }
   }
-  
+
   return {
     available: counts.available > 0,
     totalCopies: holdings.length,
@@ -1662,9 +1698,9 @@ function extractSeriesInfo(title: string): { title: string; volumeNumber?: numbe
  */
 function cleanSeriesTitle(title: string): string {
   return title
-    .replace(/\[manga\]/gi, '')      // Remove [manga] tags
-    .replace(/\s*\/\s*$/, '')         // Remove trailing slashes
-    .replace(/[.,:;/\\]+$/, '')       // Remove trailing punctuation
-    .replace(/\s+/g, ' ')             // Normalize whitespace
+    .replace(/\[manga\]/gi, '') // Remove [manga] tags
+    .replace(/\s*\/\s*$/, '') // Remove trailing slashes
+    .replace(/[.,:;/\\]+$/, '') // Remove trailing punctuation
+    .replace(/\s+/g, ' ') // Normalize whitespace
     .trim();
 }

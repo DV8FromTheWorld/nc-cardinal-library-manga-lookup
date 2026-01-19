@@ -14,8 +14,7 @@
 
 import * as cheerio from 'cheerio';
 
-const BASE_URL =
-  process.env.NC_CARDINAL_BASE_URL ?? 'https://nccardinal.org';
+const BASE_URL = process.env.NC_CARDINAL_BASE_URL ?? 'https://nccardinal.org';
 
 // ============================================================================
 // Types
@@ -160,7 +159,7 @@ async function fetchDisplayName(sessionToken: string): Promise<string | null> {
 
     // The user's name is typically in the account header or welcome message
     // Look for patterns like "Welcome, John Doe" or the name in the account nav
-    
+
     // Try to find the name in the patron summary section
     const patronName = $('#patron_name').text().trim();
     if (patronName !== '') return patronName;
@@ -187,10 +186,7 @@ async function fetchDisplayName(sessionToken: string): Promise<string | null> {
 /**
  * Login to NC Cardinal OPAC
  */
-export async function login(
-  cardNumber: string,
-  pin: string
-): Promise<LoginResult> {
+export async function login(cardNumber: string, pin: string): Promise<LoginResult> {
   const jar = createCookieJar();
 
   try {
@@ -392,7 +388,7 @@ function parseCheckoutsPage(html: string): PatronCheckouts {
       const text = $(td).text().trim();
       // Match date patterns like "01/15/2026" or "January 15, 2026"
       const dateMatch = text.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
-      if (dateMatch != null && dateMatch[1] != null) {
+      if (dateMatch?.[1] != null) {
         dueDate = dateMatch[1];
         // Check if overdue
         overdue = $(td).hasClass('overdue') || text.toLowerCase().includes('overdue');
@@ -469,11 +465,7 @@ export async function getHistory(
 /**
  * Parse the checkout history HTML page
  */
-function parseHistoryPage(
-  html: string,
-  limit: number,
-  offset: number
-): PatronHistory {
+function parseHistoryPage(html: string, limit: number, offset: number): PatronHistory {
   const $ = cheerio.load(html);
   const items: HistoryItem[] = [];
 
@@ -524,14 +516,14 @@ function parseHistoryPage(
     tds.each((_i, td) => {
       const text = $(td).text().trim();
       const dateMatch = text.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
-      if (dateMatch != null && dateMatch[1] != null) {
+      if (dateMatch?.[1] != null) {
         // Dates are typically in order: checkout, due, return
         if (checkoutDate === '') {
           checkoutDate = dateMatch[1];
         } else if (dueDate === '') {
           dueDate = dateMatch[1];
-        } else if (returnDate == null) {
-          returnDate = dateMatch[1];
+        } else {
+          returnDate ??= dateMatch[1];
         }
       }
     });
@@ -568,9 +560,14 @@ function parseHistoryPage(
   });
 
   // Check for pagination - look for next page link
-  const hasMore = $('a[href*="circ_history?"]')
-    .filter((_, el) => $(el).text().includes('Next') || ($(el).attr('href')?.includes(`offset=${offset + limit}`) === true))
-    .length > 0;
+  const hasMore =
+    $('a[href*="circ_history?"]').filter(
+      (_, el) =>
+        $(el).text().includes('Next') ||
+        $(el)
+          .attr('href')
+          ?.includes(`offset=${offset + limit}`) === true
+    ).length > 0;
 
   return {
     items,
@@ -599,7 +596,7 @@ export async function isHistoryEnabled(sessionId: string): Promise<boolean> {
 
   const $ = cheerio.load(result.text);
   const checkbox = $('input#history\\.circ\\.retention_start');
-  
+
   // Check if the checkbox has a 'checked' attribute
   const checkedAttr = checkbox.attr('checked');
   const checkedProp = checkbox.prop('checked');
@@ -671,16 +668,16 @@ function parseHoldsPage(html: string): { items: HoldItem[]; totalCount: number }
 
     $row.find('td').each((_, td) => {
       const text = $(td).text().trim();
-      
+
       // Hold date
       const dateMatch = text.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
-      if (dateMatch != null && dateMatch[1] != null && holdDate === '') {
+      if (dateMatch?.[1] != null && holdDate === '') {
         holdDate = dateMatch[1];
       }
 
       // Position in queue
       const posMatch = text.match(/Position:\s*(\d+)/i);
-      if (posMatch != null && posMatch[1] != null) {
+      if (posMatch?.[1] != null) {
         position = parseInt(posMatch[1], 10);
       }
 
@@ -760,7 +757,7 @@ export async function enrichCheckoutsWithISBNs(
       enriched.push({ ...item, isbns });
 
       // Small delay to be nice to the server
-      await new Promise(r => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 100));
     } catch {
       enriched.push({ ...item, isbns: [] });
     }

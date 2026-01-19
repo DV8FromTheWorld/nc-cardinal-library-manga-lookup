@@ -17,10 +17,11 @@ import * as path from 'path';
 
 // Import clients
 import * as anilist from './anilist-client.js';
+import type * as LibraryThingClient from './librarything-client.js';
 import * as opensearch from './opensearch-client.js';
 
 // Try to import librarything (may fail if API key not set)
-let _librarything: typeof import('./librarything-client.js') | null = null;
+let _librarything: typeof LibraryThingClient | null = null;
 try {
   _librarything = await import('./librarything-client.js');
 } catch {
@@ -32,24 +33,26 @@ try {
 // ============================================================================
 
 export interface SeriesMatch {
-  id: number;                    // AniList ID
+  id: number; // AniList ID
   name: string;
   slug: string;
-  volumes: number | null;        // Total volumes in series
-  status: string;                // FINISHED, RELEASING, etc.
+  volumes: number | null; // Total volumes in series
+  status: string; // FINISHED, RELEASING, etc.
   isMainSeries: boolean;
-  volumesInLibrary?: number;     // Volumes found in NC Cardinal
+  volumesInLibrary?: number; // Volumes found in NC Cardinal
   coverImage?: string;
 }
 
 export interface BookMatch {
   title: string;
   volumeNumber?: number | undefined;
-  series?: {
-    id: number;
-    name: string;
-    slug: string;
-  } | undefined;
+  series?:
+    | {
+        id: number;
+        name: string;
+        slug: string;
+      }
+    | undefined;
   isbns: string[];
   ncCardinalRecordId?: string | undefined;
   availability?: AvailabilityInfo | undefined;
@@ -170,7 +173,7 @@ export async function searchManga(
   const books: BookMatch[] = ncResults.records.map((record) => {
     // Try to match with a series from AniList
     const matchedSeries = findMatchingSeries(record.title, series);
-    
+
     // Get volume number from MARC data first, then try extracting from title
     let volumeNumber = record.volumeNumber != null ? parseInt(record.volumeNumber, 10) : null;
     if (volumeNumber === null || isNaN(volumeNumber)) {
@@ -304,10 +307,7 @@ export async function getSeriesBooks(
         existing.availability.totalCopies += totalCopies;
         existing.availability.availableCopies += availableCopies;
         existing.availability.locations = [
-          ...new Set([
-            ...existing.availability.locations,
-            ...locations,
-          ]),
+          ...new Set([...existing.availability.locations, ...locations]),
         ];
       }
     }
@@ -352,12 +352,11 @@ export async function findSeriesByISBN(isbn: string): Promise<SeriesMatch | null
     count: 5,
   });
 
-  if (ncResults.records.length === 0) {
+  const record = ncResults.records[0];
+  if (record == null) {
     console.log(`  No NC Cardinal results for ISBN ${isbn}`);
     return null;
   }
-
-  const record = ncResults.records[0]!;
   const title = record.title;
 
   // Search AniList with the title
@@ -398,7 +397,7 @@ function extractVolumeNumber(title: string): number | null {
 
   for (const pattern of patterns) {
     const match = title.match(pattern);
-    if (match != null && match[1] != null) {
+    if (match?.[1] != null) {
       return parseInt(match[1], 10);
     }
   }
@@ -430,8 +429,7 @@ function titleMatchesSeries(title: string, seriesName: string): boolean {
   const normalizedSeries = normalizeTitle(seriesName);
 
   // Check if the title starts with the series name
-  return normalizedTitle.startsWith(normalizedSeries) ||
-         normalizedTitle.includes(normalizedSeries);
+  return normalizedTitle.startsWith(normalizedSeries) || normalizedTitle.includes(normalizedSeries);
 }
 
 /**
@@ -458,7 +456,7 @@ async function main() {
     // Test 1: Search for "demon slayer"
     console.log('\n--- Test 1: Search for "demon slayer" ---');
     const searchResults = await searchManga('demon slayer');
-    
+
     console.log('\nSeries found:');
     for (const s of searchResults.series) {
       const mainLabel = s.isMainSeries ? '📚 Main' : '📖 Spin-off';
@@ -473,7 +471,9 @@ async function main() {
       console.log(`  📖 ${book.title}`);
       console.log(`    ${volInfo}${seriesInfo}`);
       if (book.availability) {
-        console.log(`    Available: ${book.availability.availableCopies}/${book.availability.totalCopies}`);
+        console.log(
+          `    Available: ${book.availability.availableCopies}/${book.availability.totalCopies}`
+        );
       }
     }
 
@@ -481,23 +481,26 @@ async function main() {
     console.log('\n--- Test 2: Get "Demon Slayer" series books ---');
     const demonSlayerId = 87216;
     const seriesBooks = await getSeriesBooks(demonSlayerId);
-    
+
     if (seriesBooks) {
       console.log(`\nSeries: ${seriesBooks.series.name}`);
       console.log(`Total volumes: ${seriesBooks.series.volumes}`);
       console.log(`In library: ${seriesBooks.volumes.length}`);
-      console.log(`Missing: ${seriesBooks.missingVolumes.length > 0 ? seriesBooks.missingVolumes.join(', ') : 'None'}`);
-      
+      console.log(
+        `Missing: ${seriesBooks.missingVolumes.length > 0 ? seriesBooks.missingVolumes.join(', ') : 'None'}`
+      );
+
       console.log('\nAvailable volumes:');
       for (const vol of seriesBooks.volumes.slice(0, 5)) {
         const avail = vol.availability;
-        console.log(`  Vol ${vol.volumeNumber}: ${avail?.availableCopies ?? '?'}/${avail?.totalCopies ?? '?'} available`);
+        console.log(
+          `  Vol ${vol.volumeNumber}: ${avail?.availableCopies ?? '?'}/${avail?.totalCopies ?? '?'} available`
+        );
       }
       if (seriesBooks.volumes.length > 5) {
         console.log(`  ... and ${seriesBooks.volumes.length - 5} more`);
       }
     }
-
   } catch (error) {
     console.error('Error:', error);
   }

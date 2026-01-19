@@ -2,21 +2,21 @@
  * Edition entity operations
  */
 
-import type { Edition, CreateEditionInput } from './types.js';
 import {
+  addEditionToVolume,
+  addVolumeToEdition,
+  generateEditionId,
   getEditionByIsbn,
   saveEdition,
-  generateEditionId,
-  addVolumeToEdition,
-  addEditionToVolume,
 } from './store.js';
+import type { CreateEditionInput, Edition } from './types.js';
 
 /**
  * Create a new edition entity
  */
 export async function createEdition(input: CreateEditionInput): Promise<Edition> {
   const now = new Date().toISOString();
-  
+
   const edition: Edition = {
     id: generateEditionId(),
     isbn: input.isbn,
@@ -27,10 +27,12 @@ export async function createEdition(input: CreateEditionInput): Promise<Edition>
     createdAt: now,
     updatedAt: now,
   };
-  
+
   await saveEdition(edition);
-  console.log(`[Edition] Created edition: ${edition.id} - ISBN ${edition.isbn} (${edition.language}/${edition.format}) for ${edition.volumeIds.length} volume(s)`);
-  
+  console.log(
+    `[Edition] Created edition: ${edition.id} - ISBN ${edition.isbn} (${edition.language}/${edition.format}) for ${edition.volumeIds.length} volume(s)`
+  );
+
   return edition;
 }
 
@@ -42,7 +44,7 @@ export async function findOrCreateEdition(input: CreateEditionInput): Promise<Ed
   const existing = await getEditionByIsbn(input.isbn);
   if (existing) {
     console.log(`[Edition] Found existing edition: ${existing.id} - ISBN ${existing.isbn}`);
-    
+
     // If new volumes are being added, update the edition
     let updated = false;
     for (const volumeId of input.volumeIds) {
@@ -51,16 +53,18 @@ export async function findOrCreateEdition(input: CreateEditionInput): Promise<Ed
         updated = true;
       }
     }
-    
+
     if (updated) {
       existing.updatedAt = new Date().toISOString();
       await saveEdition(existing);
-      console.log(`[Edition] Updated edition ${existing.id} with new volumes: ${existing.volumeIds.length} total`);
+      console.log(
+        `[Edition] Updated edition ${existing.id} with new volumes: ${existing.volumeIds.length} total`
+      );
     }
-    
+
     return existing;
   }
-  
+
   // Create new edition
   return createEdition(input);
 }
@@ -71,7 +75,7 @@ export async function findOrCreateEdition(input: CreateEditionInput): Promise<Ed
  */
 export async function findOrCreateEditions(inputs: CreateEditionInput[]): Promise<Edition[]> {
   const results: Edition[] = [];
-  
+
   // Group by ISBN to handle duplicates in input
   const byIsbn = new Map<string, CreateEditionInput>();
   for (const input of inputs) {
@@ -87,13 +91,13 @@ export async function findOrCreateEditions(inputs: CreateEditionInput[]): Promis
       byIsbn.set(input.isbn, { ...input, volumeIds: [...input.volumeIds] });
     }
   }
-  
+
   // Process each unique ISBN
   for (const input of byIsbn.values()) {
     const edition = await findOrCreateEdition(input);
     results.push(edition);
   }
-  
+
   return results;
 }
 

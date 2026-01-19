@@ -1,27 +1,40 @@
 /**
  * Integration between entity layer and existing search/data services
- * 
+ *
  * This module bridges the gap between the raw data from Wikipedia/NC Cardinal
  * and our entity data layer, ensuring entities are created/updated during searches.
  */
 
-import type { WikiSeries, WikiRelatedSeries } from '../scripts/wikipedia-client.js';
-import type { Series, Volume, Edition, MediaType, CreateVolumeInput, CreateEditionInput, EditionData } from './types.js';
-import {
-  findOrCreateSeriesByWikipedia,
-  findOrCreateSeriesByTitle,
-  updateSeriesVolumes,
-  linkRelatedSeries,
-  detectMediaType,
-} from './series.js';
-import { findOrCreateVolumes, getVolumeWithSeries } from './volumes.js';
+import type { WikiRelatedSeries, WikiSeries } from '../scripts/wikipedia-client.js';
 import { findOrCreateEditions } from './editions.js';
-import { getSeriesById, getSeriesByTitle, getVolumesBySeriesId, getEditionsByVolumeId } from './store.js';
+import {
+  detectMediaType,
+  findOrCreateSeriesByTitle,
+  findOrCreateSeriesByWikipedia,
+  linkRelatedSeries,
+  updateSeriesVolumes,
+} from './series.js';
+import {
+  getEditionsByVolumeId,
+  getSeriesById,
+  getSeriesByTitle,
+  getVolumesBySeriesId,
+} from './store.js';
+import type {
+  CreateEditionInput,
+  CreateVolumeInput,
+  Edition,
+  EditionData,
+  MediaType,
+  Series,
+  Volume,
+} from './types.js';
+import { findOrCreateVolumes, getVolumeWithSeries } from './volumes.js';
 
 /**
  * Create or update entities from Wikipedia series data
  * Called after a successful Wikipedia fetch during search
- * 
+ *
  * Also creates entities for related series (spin-offs, side stories, etc.)
  */
 export async function createEntitiesFromWikipedia(
@@ -42,7 +55,7 @@ export async function createEntitiesFromWikipedia(
 
   // First pass: Create volumes without edition links
   // We need volume IDs before we can create editions that reference them
-  const volumeInputs: CreateVolumeInput[] = wikiSeries.volumes.map(vol => ({
+  const volumeInputs: CreateVolumeInput[] = wikiSeries.volumes.map((vol) => ({
     seriesId: series.id,
     volumeNumber: vol.volumeNumber,
     title: vol.title,
@@ -51,7 +64,7 @@ export async function createEntitiesFromWikipedia(
 
   // Create/find volumes
   const volumes = await findOrCreateVolumes(volumeInputs);
-  const volumeIds = volumes.map(v => v.id);
+  const volumeIds = volumes.map((v) => v.id);
 
   // Update series with volume IDs (in order)
   await updateSeriesVolumes(series.id, volumeIds);
@@ -65,7 +78,7 @@ export async function createEntitiesFromWikipedia(
 
   // Collect all edition inputs, grouping by ISBN to detect omnibus editions
   const editionInputs: CreateEditionInput[] = [];
-  
+
   for (const wikiVol of wikiSeries.volumes) {
     const volume = volumeByNumber.get(wikiVol.volumeNumber);
     if (!volume) continue;
@@ -80,7 +93,7 @@ export async function createEntitiesFromWikipedia(
         releaseDate: wikiVol.japaneseReleaseDate,
       });
     }
-    
+
     // Add English edition if we have ISBN
     if (wikiVol.englishISBN != null) {
       editionInputs.push({
@@ -99,14 +112,16 @@ export async function createEntitiesFromWikipedia(
   // Link editions back to volumes
   await linkEditionsToVolumes(editions, volumes);
 
-  console.log(`[EntityIntegration] Created/updated: Series "${series.title}" (${series.id}) with ${volumes.length} volumes and ${editions.length} editions`);
+  console.log(
+    `[EntityIntegration] Created/updated: Series "${series.title}" (${series.id}) with ${volumes.length} volumes and ${editions.length} editions`
+  );
 
   // Process related series if present
   const relatedSeriesEntities: Series[] = [];
-  
+
   if (wikiSeries.relatedSeries && wikiSeries.relatedSeries.length > 0) {
     console.log(`[EntityIntegration] Processing ${wikiSeries.relatedSeries.length} related series`);
-    
+
     for (const related of wikiSeries.relatedSeries) {
       const relatedEntity = await createRelatedSeriesEntity(
         related,
@@ -114,24 +129,26 @@ export async function createEntitiesFromWikipedia(
         wikiSeries.title,
         wikiSeries.author
       );
-      
+
       if (relatedEntity) {
         relatedSeriesEntities.push(relatedEntity.series);
-        
+
         // Link to parent series
         await linkRelatedSeries(series.id, relatedEntity.series.id);
       }
     }
-    
+
     if (relatedSeriesEntities.length > 0) {
-      console.log(`[EntityIntegration] Created ${relatedSeriesEntities.length} related series entities`);
+      console.log(
+        `[EntityIntegration] Created ${relatedSeriesEntities.length} related series entities`
+      );
     }
   }
 
-  return { 
-    series, 
-    volumes, 
-    relatedSeries: relatedSeriesEntities.length > 0 ? relatedSeriesEntities : undefined 
+  return {
+    series,
+    volumes,
+    relatedSeries: relatedSeriesEntities.length > 0 ? relatedSeriesEntities : undefined,
   };
 }
 
@@ -141,7 +158,7 @@ export async function createEntitiesFromWikipedia(
  */
 async function linkEditionsToVolumes(editions: Edition[], volumes: Volume[]): Promise<void> {
   const { saveVolumes } = await import('./store.js');
-  
+
   // Build a map of volume ID -> volume for quick lookup
   const volumeMap = new Map<string, Volume>();
   for (const vol of volumes) {
@@ -176,7 +193,7 @@ async function createRelatedSeriesEntity(
     isManga: related.mediaType === 'manga',
     isLightNovel: related.mediaType === 'light_novel',
   });
-  
+
   // Generate a title for the related series
   // If the related title doesn't include the parent title, prefix it
   let relatedTitle = related.title;
@@ -184,13 +201,13 @@ async function createRelatedSeriesEntity(
   if (!related.title.toLowerCase().includes(parentBase)) {
     relatedTitle = `${parentTitle}: ${related.title}`;
   }
-  
+
   // Add media type suffix for light novels to distinguish from manga with same title
   // Use related.mediaType directly since it's more reliable than detectMediaType
   if (related.mediaType === 'light_novel' && !relatedTitle.toLowerCase().includes('light novel')) {
     relatedTitle = `${relatedTitle} (Light Novel)`;
   }
-  
+
   // Create the related series entity
   const relatedSeries = await findOrCreateSeriesByTitle({
     title: relatedTitle,
@@ -200,20 +217,20 @@ async function createRelatedSeriesEntity(
     parentSeriesId,
     relationship: related.relationship,
   });
-  
+
   // First pass: Create volumes without edition links
-  const volumeInputs: CreateVolumeInput[] = related.volumes.map(vol => ({
+  const volumeInputs: CreateVolumeInput[] = related.volumes.map((vol) => ({
     seriesId: relatedSeries.id,
     volumeNumber: vol.volumeNumber,
     title: vol.title,
     editionIds: [],
   }));
-  
+
   const volumes = await findOrCreateVolumes(volumeInputs);
-  const volumeIds = volumes.map(v => v.id);
-  
+  const volumeIds = volumes.map((v) => v.id);
+
   await updateSeriesVolumes(relatedSeries.id, volumeIds);
-  
+
   // Second pass: Create editions and link
   const volumeByNumber = new Map<number, Volume>();
   for (const vol of volumes) {
@@ -221,7 +238,7 @@ async function createRelatedSeriesEntity(
   }
 
   const editionInputs: CreateEditionInput[] = [];
-  
+
   for (const wikiVol of related.volumes) {
     const volume = volumeByNumber.get(wikiVol.volumeNumber);
     if (!volume) continue;
@@ -235,7 +252,7 @@ async function createRelatedSeriesEntity(
         releaseDate: wikiVol.japaneseReleaseDate,
       });
     }
-    
+
     if (wikiVol.englishISBN != null) {
       editionInputs.push({
         isbn: wikiVol.englishISBN,
@@ -250,9 +267,11 @@ async function createRelatedSeriesEntity(
   const editions = await findOrCreateEditions(editionInputs);
   await linkEditionsToVolumes(editions, volumes);
 
-  const englishEditionCount = editions.filter(e => e.language === 'en').length;
-  console.log(`[EntityIntegration] Created related series "${relatedSeries.title}" (${relatedSeries.relationship}) with ${volumes.length} volumes (${englishEditionCount} English editions)`);
-  
+  const englishEditionCount = editions.filter((e) => e.language === 'en').length;
+  console.log(
+    `[EntityIntegration] Created related series "${relatedSeries.title}" (${relatedSeries.relationship}) with ${volumes.length} volumes (${englishEditionCount} English editions)`
+  );
+
   return { series: relatedSeries, volumes };
 }
 
@@ -277,7 +296,7 @@ export async function createEntitiesFromNCCardinal(
   });
 
   // First pass: Create volumes without edition links
-  const volumeInputs: CreateVolumeInput[] = volumeData.map(vol => ({
+  const volumeInputs: CreateVolumeInput[] = volumeData.map((vol) => ({
     seriesId: series.id,
     volumeNumber: vol.volumeNumber,
     title: vol.title,
@@ -286,7 +305,7 @@ export async function createEntitiesFromNCCardinal(
 
   // Create/find volumes
   const volumes = await findOrCreateVolumes(volumeInputs);
-  const volumeIds = volumes.map(v => v.id);
+  const volumeIds = volumes.map((v) => v.id);
 
   // Update series with volume IDs
   await updateSeriesVolumes(series.id, volumeIds);
@@ -298,10 +317,10 @@ export async function createEntitiesFromNCCardinal(
   }
 
   const editionInputs: CreateEditionInput[] = [];
-  
+
   for (const volData of volumeData) {
     if (volData.isbn == null) continue;
-    
+
     const volume = volumeByNumber.get(volData.volumeNumber);
     if (!volume) continue;
 
@@ -318,7 +337,9 @@ export async function createEntitiesFromNCCardinal(
     await linkEditionsToVolumes(editions, volumes);
   }
 
-  console.log(`[EntityIntegration] Created/updated from NC Cardinal: Series "${series.title}" (${series.id}) with ${volumes.length} volumes`);
+  console.log(
+    `[EntityIntegration] Created/updated from NC Cardinal: Series "${series.title}" (${series.id}) with ${volumes.length} volumes`
+  );
 
   return { series, volumes };
 }
@@ -360,7 +381,7 @@ export async function getSeriesVolumes(seriesId: string): Promise<Volume[]> {
  */
 export async function getVolumeEditionData(volumeId: string): Promise<EditionData[]> {
   const editions = await getEditionsByVolumeId(volumeId);
-  return editions.map(e => ({
+  return editions.map((e) => ({
     isbn: e.isbn,
     format: e.format,
     language: e.language,
@@ -372,23 +393,26 @@ export async function getVolumeEditionData(volumeId: string): Promise<EditionDat
  * Resolve editions for multiple volumes efficiently
  * Returns a map of volume ID -> EditionData[]
  */
-export async function resolveEditionsForVolumes(volumeIds: string[]): Promise<Map<string, EditionData[]>> {
+export async function resolveEditionsForVolumes(
+  volumeIds: string[]
+): Promise<Map<string, EditionData[]>> {
   const result = new Map<string, EditionData[]>();
-  
+
   for (const volumeId of volumeIds) {
     const editionData = await getVolumeEditionData(volumeId);
     result.set(volumeId, editionData);
   }
-  
+
   return result;
 }
 
 /**
  * Check if we have an entity for a series (by Wikipedia ID or title)
  */
-export async function hasSeriesEntity(
-  options: { wikipediaId?: number; title?: string }
-): Promise<Series | null> {
+export async function hasSeriesEntity(options: {
+  wikipediaId?: number;
+  title?: string;
+}): Promise<Series | null> {
   if (options.wikipediaId != null) {
     const { getSeriesByWikipediaId } = await import('./store.js');
     const series = await getSeriesByWikipediaId(options.wikipediaId);
