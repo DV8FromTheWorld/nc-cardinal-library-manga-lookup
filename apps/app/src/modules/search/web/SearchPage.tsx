@@ -1,5 +1,5 @@
 /**
- * Search page component for web.
+ * Search page component for web - shows search results.
  */
 
 import { useRef, useEffect, useCallback, useState } from 'react';
@@ -28,6 +28,13 @@ export function SearchPage(): JSX.Element {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
+  // Redirect to home if no query
+  useEffect(() => {
+    if (!initialQuery) {
+      navigate('/', { replace: true });
+    }
+  }, [initialQuery, navigate]);
+
   // Home library for local/remote availability
   const { homeLibrary, setHomeLibrary, libraries } = useHomeLibrary();
 
@@ -44,7 +51,7 @@ export function SearchPage(): JSX.Element {
 
   const handleQueryChange = useCallback((newQuery: string) => {
     if (newQuery) {
-      navigate(`/?q=${encodeURIComponent(newQuery)}`);
+      navigate(`/search?q=${encodeURIComponent(newQuery)}`, { replace: true });
     } else {
       navigate('/');
     }
@@ -142,8 +149,8 @@ export function SearchPage(): JSX.Element {
     clearResults();
     clearSuggestions();
     setShowSuggestions(false);
-    inputRef.current?.focus();
-  }, [clearResults, clearSuggestions]);
+    navigate('/');
+  }, [clearResults, clearSuggestions, navigate]);
 
   const handleClearCache = useCallback(async () => {
     if (results?.query) {
@@ -315,7 +322,7 @@ export function SearchPage(): JSX.Element {
               <div className={styles.volumeGrid}>
                 {(showAllVolumes ? results.volumes : results.volumes.slice(0, 12)).map((volume, idx) => (
                   <VolumeCard
-                    key={`${volume.isbn ?? idx}`}
+                    key={volume.id ?? `vol-${idx}`}
                     volume={volume}
                     onClick={() => {
                       if (volume.id) {
@@ -354,29 +361,6 @@ export function SearchPage(): JSX.Element {
         </div>
       )}
 
-      {/* Empty State */}
-      {!results && !isLoading && !error && (
-        <div className={styles.emptyState}>
-          <div className={styles.suggestions}>
-            <Text variant="text-md/medium" color="text-secondary" tag="p" className={styles.suggestionsTitle}>Try searching for:</Text>
-            <div className={styles.suggestionChips}>
-              {['Demon Slayer', 'One Piece', 'My Hero Academia', 'Spy x Family'].map((suggestion) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  className={styles.suggestionChip}
-                  onClick={() => {
-                    setQuery(suggestion);
-                    search(suggestion);
-                  }}
-                >
-                  <Text variant="text-sm/medium">{suggestion}</Text>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Debug Panel */}
       <DebugPanel

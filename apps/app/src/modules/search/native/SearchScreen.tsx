@@ -1,8 +1,8 @@
 /**
- * Search screen component for React Native.
+ * Search screen component for React Native - shows search results.
  */
 
-import { useCallback, useState, useMemo } from 'react';
+import { useCallback, useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text as RNText,
@@ -17,8 +17,8 @@ import {
   Platform,
   ScrollView,
   Modal,
+  FlatList,
 } from 'react-native';
-import { FlashList } from '@shopify/flash-list';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../routing/native/Router';
 import { useStreamingSearch } from '../hooks/useStreamingSearch';
@@ -50,6 +50,13 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
+  // Redirect to Home if no query provided
+  useEffect(() => {
+    if (!initialQuery) {
+      navigation.replace('Home');
+    }
+  }, [initialQuery, navigation]);
+
   // Autocomplete for search suggestions
   const {
     suggestions,
@@ -63,7 +70,9 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
 
   const handleQueryChange = useCallback(
     (newQuery: string) => {
-      navigation.setParams({ query: newQuery || undefined });
+      if (newQuery) {
+        navigation.setParams({ query: newQuery });
+      }
     },
     [navigation]
   );
@@ -142,52 +151,107 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
     navigation.push('Search', { query: recentQuery, skipAnimation: true });
   }, [navigation, clearSuggestions]);
 
-  const staticSuggestions = ['Demon Slayer', 'One Piece', 'My Hero Academia', 'Spy x Family'];
+  // Header component for the scrollable list
+  const headerContent = (
+    <View>
+      {/* Header */}
+      <View style={styles.header}>
+        {/* User button */}
+        <View style={styles.userButtonContainer}>
+          <UserButton
+            onLoginPress={() => setShowLoginModal(true)}
+            onAccountPress={() => navigation.navigate('Account')}
+          />
+        </View>
+        {/* Back button when there's navigation history */}
+        {navigation.canGoBack() && (
+          <TouchableOpacity 
+            onPress={() => navigation.goBack()} 
+            style={[styles.backButton, { borderColor: theme.border }]}
+          >
+            <Text variant="text-sm/normal" color="text-secondary">← Back</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity onPress={() => navigation.navigate('Home')} style={styles.titleButton}>
+          <RNText style={styles.titleIcon}>📚</RNText>
+          <Heading level={1} variant="header-lg/bold" style={styles.titleText}>NC Cardinal Manga</Heading>
+        </TouchableOpacity>
+        <Text variant="text-md/normal" color="text-secondary" style={styles.subtitle}>
+          Find manga series at your local NC library
+        </Text>
+        {/* Library Selector */}
+        <TouchableOpacity
+          style={[styles.librarySelector, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}
+          onPress={() => setShowLibraryPicker(true)}
+        >
+          <Text variant="text-sm/normal" color="text-muted">📍 My Library:</Text>
+          <Text variant="text-sm/medium" color="text-primary" numberOfLines={1} style={styles.librarySelectorValue}>
+            {libraryName ?? 'Select...'}
+          </Text>
+          <Text variant="text-xs/normal" color="text-muted">▼</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Search Input */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchInputContainer}>
+          <View style={[styles.searchInputWrapper, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}>
+            <TextInput
+              style={[styles.searchInput, { color: theme.textPrimary }]}
+              placeholder="Search for manga..."
+              placeholderTextColor={theme.textMuted}
+              value={query}
+              onChangeText={handleInputChange}
+              onFocus={handleInputFocus}
+              onBlur={handleInputBlur}
+              onSubmitEditing={handleSearch}
+              returnKeyType="search"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="off"
+            />
+            <TouchableOpacity
+              style={[styles.searchButton, { backgroundColor: theme.accent }]}
+              onPress={handleSearch}
+              disabled={isLoading || !query.trim()}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <RNText style={styles.searchButtonText}>→</RNText>
+              )}
+            </TouchableOpacity>
+          </View>
+          {showSuggestions && (
+            <SearchSuggestions
+              suggestions={suggestions}
+              isLoading={isSuggestionsLoading}
+              recentSearches={recentSearches}
+              query={query}
+              onSelect={handleSelectSuggestion}
+              onSelectRecent={handleSelectRecent}
+              onRemoveRecent={removeRecentSearch}
+            />
+          )}
+        </View>
+      </View>
+
+      {/* Debug Panel - moved to header so it scrolls with content */}
+      <DebugPanel
+        debug={results?._debug}
+        cacheContext={results?.query ? { type: 'search', identifier: results.query } : undefined}
+        onClearCache={handleClearCache}
+      />
+    </View>
+  );
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={0}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          {/* User button */}
-          <View style={styles.userButtonContainer}>
-            <UserButton
-              onLoginPress={() => setShowLoginModal(true)}
-              onAccountPress={() => navigation.navigate('Account')}
-            />
-          </View>
-          {/* Back button when there's navigation history */}
-          {navigation.canGoBack() && (
-            <TouchableOpacity 
-              onPress={() => navigation.goBack()} 
-              style={[styles.backButton, { borderColor: theme.border }]}
-            >
-              <Text variant="text-sm/normal" color="text-secondary">← Back</Text>
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity onPress={() => navigation.popToTop()} style={styles.titleButton}>
-            <RNText style={styles.titleIcon}>📚</RNText>
-            <Heading level={1} variant="header-lg/bold" style={styles.titleText}>NC Cardinal Manga</Heading>
-          </TouchableOpacity>
-          <Text variant="text-md/normal" color="text-secondary" style={styles.subtitle}>
-            Find manga series at your local NC library
-          </Text>
-          {/* Library Selector */}
-          <TouchableOpacity
-            style={[styles.librarySelector, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}
-            onPress={() => setShowLibraryPicker(true)}
-          >
-            <Text variant="text-sm/normal" color="text-muted">📍 My Library:</Text>
-            <Text variant="text-sm/medium" color="text-primary" numberOfLines={1} style={styles.librarySelectorValue}>
-              {libraryName ?? 'Select...'}
-            </Text>
-            <Text variant="text-xs/normal" color="text-muted">▼</Text>
-          </TouchableOpacity>
-        </View>
-
         {/* Library Picker Modal */}
         <Modal
           visible={showLibraryPicker}
@@ -238,110 +302,24 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
           </View>
         </Modal>
 
-        {/* Search Input */}
-        <View style={styles.searchContainer}>
-          <View style={styles.searchInputContainer}>
-            <View style={[styles.searchInputWrapper, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}>
-              <TextInput
-                style={[styles.searchInput, { color: theme.textPrimary }]}
-                placeholder="Search for manga..."
-                placeholderTextColor={theme.textMuted}
-                value={query}
-                onChangeText={handleInputChange}
-                onFocus={handleInputFocus}
-                onBlur={handleInputBlur}
-                onSubmitEditing={handleSearch}
-                returnKeyType="search"
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="off"
-              />
-              <TouchableOpacity
-                style={[styles.searchButton, { backgroundColor: theme.accent }]}
-                onPress={handleSearch}
-                disabled={isLoading || !query.trim()}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <RNText style={styles.searchButtonText}>→</RNText>
-                )}
-              </TouchableOpacity>
-            </View>
-            {showSuggestions && (
-              <SearchSuggestions
-                suggestions={suggestions}
-                isLoading={isSuggestionsLoading}
-                recentSearches={recentSearches}
-                query={query}
-                onSelect={handleSelectSuggestion}
-                onSelectRecent={handleSelectRecent}
-                onRemoveRecent={removeRecentSearch}
-              />
-            )}
-          </View>
-        </View>
-
-        {/* Error State */}
-        {error && (
-          <View style={[styles.errorContainer, { backgroundColor: theme.errorBg }]}>
-            <Text variant="text-sm/normal" color="error">⚠ {error}</Text>
-          </View>
-        )}
-
-        {/* Loading State with Progress */}
-        {isLoading && (
-          <SearchProgressIndicator progress={progress} />
-        )}
-
-        {/* Results */}
-        {results && !isLoading && (
-          <ResultsList
-            results={results}
-            theme={theme}
-            showAllVolumes={showAllVolumes}
-            onToggleShowAllVolumes={() => setShowAllVolumes(!showAllVolumes)}
-            onSelectSeries={handleSelectSeries}
-            onSelectVolume={handleSelectVolume}
-          />
-        )}
-
-        {/* Empty State */}
-        {!results && !isLoading && !error && (
-          <View style={styles.emptyState}>
-            <Text variant="text-md/normal" color="text-secondary" style={styles.suggestionsTitle}>
-              Try searching for:
-            </Text>
-            <View style={styles.suggestionChips}>
-              {staticSuggestions.map((suggestion) => (
-                <TouchableOpacity
-                  key={suggestion}
-                  style={[styles.suggestionChip, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}
-                  onPress={() => {
-                    // Push a new search screen for this suggestion (no animation for search-to-search)
-                    navigation.push('Search', { query: suggestion, skipAnimation: true });
-                  }}
-                >
-                  <Text variant="text-sm/normal" color="text-primary">
-                    {suggestion}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Debug Panel */}
-        <DebugPanel
-          debug={results?._debug}
-          cacheContext={results?.query ? { type: 'search', identifier: results.query } : undefined}
-          onClearCache={handleClearCache}
-        />
-
         {/* Login Modal */}
         <LoginModal
           visible={showLoginModal}
           onClose={() => setShowLoginModal(false)}
+        />
+
+        {/* Results list with header - always rendered to enable scrolling */}
+        <ResultsList
+          results={results}
+          theme={theme}
+          showAllVolumes={showAllVolumes}
+          onToggleShowAllVolumes={() => setShowAllVolumes(!showAllVolumes)}
+          onSelectSeries={handleSelectSeries}
+          onSelectVolume={handleSelectVolume}
+          headerComponent={headerContent}
+          isLoading={isLoading}
+          error={error}
+          progress={progress}
         />
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -516,12 +494,16 @@ const ITEM_HEIGHTS = {
 };
 
 interface ResultsListProps {
-  results: NonNullable<ReturnType<typeof useSearch>['results']>;
+  results: NonNullable<ReturnType<typeof useSearch>['results']> | null;
   theme: ThemeColors;
   showAllVolumes: boolean;
   onToggleShowAllVolumes: () => void;
   onSelectSeries: (seriesId: string) => void;
   onSelectVolume: (volumeId: string) => void;
+  headerComponent: React.ReactElement;
+  isLoading?: boolean | undefined;
+  error?: string | null | undefined;
+  progress?: ReturnType<typeof useStreamingSearch>['progress'] | undefined;
 }
 
 function ResultsList({
@@ -531,9 +513,16 @@ function ResultsList({
   onToggleShowAllVolumes,
   onSelectSeries,
   onSelectVolume,
+  headerComponent,
+  isLoading,
+  error,
+  progress,
 }: ResultsListProps): JSX.Element {
   // Build flattened list from results (including section headers as items)
   const items = useMemo((): ResultItem[] => {
+    // If no results yet (loading or error), return empty array
+    if (!results) return [];
+    
     const result: ResultItem[] = [];
     
     // Best Match section
@@ -569,7 +558,7 @@ function ResultsList({
       
       const displayVolumes = showAllVolumes ? results.volumes : results.volumes.slice(0, 12);
       displayVolumes.forEach((volume, idx) => {
-        result.push({ type: 'volume', id: volume.isbn ?? `vol-${idx}`, volume });
+        result.push({ type: 'volume', id: volume.id ?? `vol-${idx}`, volume });
       });
       
       // Add "Show more" button if needed
@@ -585,6 +574,21 @@ function ResultsList({
     
     return result;
   }, [results, showAllVolumes]);
+  
+  // Combined header with loading/error states
+  const ListHeader = useMemo(() => (
+    <View>
+      {headerComponent}
+      {error && (
+        <View style={[styles.errorContainer, { backgroundColor: theme.errorBg }]}>
+          <Text variant="text-sm/normal" color="error">⚠ {error}</Text>
+        </View>
+      )}
+      {isLoading && (
+        <SearchProgressIndicator progress={progress} />
+      )}
+    </View>
+  ), [headerComponent, error, isLoading, theme.errorBg]);
 
   const renderItem = useCallback(
     ({ item }: { item: ResultItem }) => {
@@ -598,7 +602,7 @@ function ResultsList({
             </View>
           );
         case 'bestMatch': {
-          if (!results.bestMatch) return null;
+          if (!results?.bestMatch) return null;
           if (results.bestMatch.type === 'series' && results.bestMatch.series) {
             return (
               <SeriesCard
@@ -657,7 +661,7 @@ function ResultsList({
             <View style={styles.noResults}>
               <RNText style={styles.noResultsIcon}>🔍</RNText>
               <Text variant="text-md/normal" color="text-secondary">
-                No results found for "{results.query}"
+                No results found for "{results?.query}"
               </Text>
             </View>
           );
@@ -670,24 +674,15 @@ function ResultsList({
 
   const keyExtractor = useCallback((item: ResultItem) => item.id, []);
 
-  // Provide size hints to FlashList for better performance
-  const overrideItemLayout = useCallback(
-    (layout: { span?: number | undefined; size?: number | undefined }, item: ResultItem) => {
-      layout.size = ITEM_HEIGHTS[item.type];
-    },
-    []
-  );
-
   return (
     <View style={styles.results}>
-      <FlashList
+      <FlatList
         data={items}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
-        overrideItemLayout={overrideItemLayout}
-        estimatedItemSize={100}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.resultsContent}
+        ListHeaderComponent={ListHeader}
       />
     </View>
   );
@@ -714,6 +709,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: spacing.xl,
     paddingBottom: spacing.lg,
+    paddingHorizontal: spacing.lg, // Match search container padding
   },
   userButtonContainer: {
     position: 'absolute',
@@ -746,6 +742,7 @@ const styles = StyleSheet.create({
   librarySelector: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'stretch', // Take full width to respect header padding
     marginTop: spacing.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -825,13 +822,14 @@ const styles = StyleSheet.create({
   },
   results: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
+    // No horizontal padding here - let individual components handle their own padding
   },
   section: {
     marginBottom: spacing.xl,
   },
   sectionHeader: {
     paddingTop: spacing.md,
+    marginHorizontal: spacing.lg,
   },
   sectionTitle: {
     marginBottom: spacing.md,
@@ -845,6 +843,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: spacing.md,
     marginBottom: spacing.sm,
+    marginHorizontal: spacing.lg,
   },
   seriesCardHighlighted: {
     borderWidth: 2,
@@ -909,6 +908,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     padding: spacing.md,
+    marginHorizontal: spacing.lg,
     marginBottom: spacing.sm,
     gap: spacing.sm,
   },
@@ -961,6 +961,7 @@ const styles = StyleSheet.create({
   },
   showMoreButton: {
     marginTop: spacing.sm,
+    marginHorizontal: spacing.lg,
     padding: spacing.sm,
     borderRadius: 8,
     borderWidth: 1,
@@ -968,16 +969,24 @@ const styles = StyleSheet.create({
   },
   noResults: {
     alignItems: 'center',
+    marginHorizontal: spacing.lg,
     paddingVertical: spacing.xl,
   },
   noResultsIcon: {
     fontSize: 48,
     marginBottom: spacing.md,
   },
-  emptyState: {
+  emptyStateScroll: {
     flex: 1,
+  },
+  emptyStateContent: {
     alignItems: 'center',
-    paddingTop: spacing.xl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
+  },
+  fallbackSuggestions: {
+    alignItems: 'center',
+    paddingTop: spacing.lg,
   },
   suggestionsTitle: {
     marginBottom: spacing.md,
@@ -994,5 +1003,83 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: 999,
     borderWidth: 1,
+  },
+  // Recommendations section
+  recommendationsSection: {
+    width: '100%',
+    paddingHorizontal: spacing.md,
+  },
+  recommendationsTitle: {
+    textAlign: 'center',
+    marginBottom: spacing.xs,
+  },
+  recommendationsSubtitle: {
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+  },
+  recommendationsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  recommendationCard: {
+    width: '48%',
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  recommendationCover: {
+    width: '100%',
+    aspectRatio: 2 / 3,
+  },
+  recommendationCoverImage: {
+    width: '100%',
+    height: '100%',
+  },
+  recommendationCoverPlaceholder: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recommendationCoverPlaceholderText: {
+    fontSize: 32,
+  },
+  recommendationInfo: {
+    padding: spacing.sm,
+  },
+  recommendationTitle: {
+    marginBottom: 4,
+  },
+  recommendationBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  // Skeleton loading
+  recommendationSkeleton: {
+    width: '48%',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  skeletonCover: {
+    width: '100%',
+    aspectRatio: 2 / 3,
+  },
+  skeletonInfo: {
+    padding: spacing.sm,
+  },
+  skeletonTitle: {
+    height: 14,
+    borderRadius: 4,
+    marginBottom: 8,
+    width: '80%',
+  },
+  skeletonBadge: {
+    height: 20,
+    borderRadius: 4,
+    width: '50%',
   },
 });

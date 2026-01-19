@@ -721,6 +721,171 @@
 }
 
 /* -----------------------------------------------------------------------------
+   Recommendations (Popular Manga)
+   ----------------------------------------------------------------------------- */
+
+.recommendationsSection {
+  padding: var(--spacing-md) 0;
+}
+
+.recommendationsHeader {
+  text-align: center;
+  margin-bottom: var(--spacing-lg);
+}
+
+.recommendationsTitle {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-xs);
+}
+
+.recommendationsSubtitle {
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.recommendationsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--spacing-md);
+}
+
+@media (max-width: 900px) {
+  .recommendationsGrid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--spacing-sm);
+  }
+}
+
+@media (max-width: 600px) {
+  .recommendationsGrid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--spacing-sm);
+  }
+}
+
+.recommendationCard {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  width: 100%;
+  padding: 0;
+}
+
+.recommendationCard:hover {
+  border-color: var(--color-accent);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.recommendationCover {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  background: var(--color-bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.recommendationCover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.recommendationCoverPlaceholder {
+  font-size: 2rem;
+  color: var(--color-text-muted);
+}
+
+.recommendationInfo {
+  padding: var(--spacing-sm);
+}
+
+.recommendationTitle {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 4px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.recommendationMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.recommendationBadge {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  background: var(--color-bg-tertiary);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.recommendationBadge.ongoing {
+  color: var(--color-accent);
+  background: rgba(196, 30, 58, 0.1);
+}
+
+/* Skeleton loading state */
+.recommendationSkeleton {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.skeletonCover {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-tertiary) 0%,
+    var(--color-bg-secondary) 50%,
+    var(--color-bg-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.5s infinite;
+}
+
+.skeletonInfo {
+  padding: var(--spacing-sm);
+}
+
+.skeletonTitle {
+  height: 14px;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  width: 80%;
+}
+
+.skeletonBadge {
+  height: 20px;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-sm);
+  width: 50%;
+}
+
+@keyframes skeletonShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* -----------------------------------------------------------------------------
    Streaming Progress Indicator
    ----------------------------------------------------------------------------- */
 
