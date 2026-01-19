@@ -2,9 +2,10 @@
  * Login modal component for web.
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { login } from '../../authentication/store';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
 import { Text } from '../../../design/components/Text/web/Text';
+import { login } from '../../authentication/store';
 import styles from './LoginModal.module.css';
 
 interface LoginModalProps {
@@ -37,30 +38,36 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps): JSX.Element | 
     }
   }, [isOpen]);
 
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setIsLoading(true);
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      setError(null);
+      setIsLoading(true);
 
-    try {
-      const result = await login(cardNumber, pin);
-      if (result.success) {
-        onClose();
-      } else {
-        setError(result.error ?? 'Login failed');
+      try {
+        const result = await login(cardNumber, pin);
+        if (result.success) {
+          onClose();
+        } else {
+          setError(result.error ?? 'Login failed');
+        }
+      } catch {
+        setError('Network error. Please try again.');
+      } finally {
+        setIsLoading(false);
       }
-    } catch {
-      setError('Network error. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [cardNumber, pin, onClose]);
+    },
+    [cardNumber, pin, onClose]
+  );
 
-  const handleOverlayClick = useCallback((e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
-      onClose();
-    }
-  }, [onClose]);
+  const handleOverlayClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.target === e.currentTarget) {
+        onClose();
+      }
+    },
+    [onClose]
+  );
 
   // Handle escape key
   useEffect(() => {
@@ -76,6 +83,7 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps): JSX.Element | 
   if (isOpen === false) return null;
 
   return (
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- Modal overlay backdrop, keyboard close handled via Escape key in useEffect
     <div className={styles.overlay} onClick={handleOverlayClick}>
       <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="login-title">
         <div className={styles.header}>
@@ -83,23 +91,28 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps): JSX.Element | 
             <Text variant="header-md/bold" id="login-title" className={styles.title}>
               Sign In
             </Text>
-            <Text variant="text-sm/normal" color="text-secondary" tag="p" className={styles.subtitle}>
+            <Text
+              variant="text-sm/normal"
+              color="text-secondary"
+              tag="p"
+              className={styles.subtitle}
+            >
               Use your NC Cardinal library card
             </Text>
           </div>
-          <button
-            type="button"
-            className={styles.closeButton}
-            onClick={onClose}
-            aria-label="Close"
-          >
+          <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close">
             ×
           </button>
         </div>
 
         <form className={styles.form} onSubmit={handleSubmit}>
           <div className={styles.field}>
-            <Text variant="text-sm/semibold" tag="label" htmlFor="cardNumber" className={styles.label}>
+            <Text
+              variant="text-sm/semibold"
+              tag="label"
+              htmlFor="cardNumber"
+              className={styles.label}
+            >
               Library Card Number
             </Text>
             <input
@@ -149,7 +162,11 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps): JSX.Element | 
 
         <Text variant="text-xs/normal" color="text-muted" tag="p" className={styles.hint}>
           Don't have a card?{' '}
-          <a href="https://nccardinal.org/eg/opac/register" target="_blank" rel="noopener noreferrer">
+          <a
+            href="https://nccardinal.org/eg/opac/register"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             Register online
           </a>
         </Text>

@@ -1,6 +1,11 @@
 import eslint from '@eslint/js';
-import tseslint from 'typescript-eslint';
+import eslintComments from '@eslint-community/eslint-plugin-eslint-comments';
 import reactPlugin from '@eslint-react/eslint-plugin';
+import eslintConfigPrettier from 'eslint-config-prettier';
+import jsxA11y from 'eslint-plugin-jsx-a11y';
+import reactHooks from 'eslint-plugin-react-hooks';
+import simpleImportSort from 'eslint-plugin-simple-import-sort';
+import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   eslint.configs.recommended,
@@ -9,10 +14,7 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: [
-            'apps/app/rspack.config.ts',
-            'apps/native/babel.config.js',
-          ],
+          allowDefaultProject: ['apps/app/rspack.config.ts', 'apps/native/babel.config.js'],
         },
         tsconfigRootDir: import.meta.dirname,
       },
@@ -21,6 +23,41 @@ export default tseslint.config(
   {
     files: ['**/*.tsx', '**/*.ts'],
     ...reactPlugin.configs['recommended-type-checked'],
+  },
+  // React Hooks rules (official React linter)
+  {
+    files: ['**/*.tsx', '**/*.ts'],
+    plugins: {
+      'react-hooks': reactHooks,
+    },
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'error',
+    },
+  },
+  // Import sorting
+  {
+    plugins: {
+      'simple-import-sort': simpleImportSort,
+    },
+    rules: {
+      'simple-import-sort/imports': 'error',
+      'simple-import-sort/exports': 'error',
+    },
+  },
+  // ESLint directive comments (require explanations for eslint-disable)
+  {
+    plugins: {
+      '@eslint-community/eslint-comments': eslintComments,
+    },
+    rules: {
+      '@eslint-community/eslint-comments/require-description': [
+        'error',
+        { ignore: ['eslint-enable'] },
+      ],
+      '@eslint-community/eslint-comments/no-unlimited-disable': 'error',
+      '@eslint-community/eslint-comments/no-unused-disable': 'error',
+    },
   },
   {
     rules: {
@@ -31,10 +68,10 @@ export default tseslint.config(
       '@typescript-eslint/strict-boolean-expressions': [
         'error',
         {
-          allowString: false,        // Disallow: if (str)
-          allowNumber: false,        // Disallow: if (num)
+          allowString: false, // Disallow: if (str)
+          allowNumber: false, // Disallow: if (num)
           allowNullableObject: true, // Allow: if (obj) for objects
-          allowNullableBoolean: true,// Allow: if (bool) for booleans
+          allowNullableBoolean: true, // Allow: if (bool) for booleans
           allowNullableString: false,
           allowNullableNumber: false,
           allowNullableEnum: false,
@@ -62,9 +99,44 @@ export default tseslint.config(
       // React-specific rules adjustments
       // SSE handlers and prop-sync patterns legitimately need to call setters in useEffect
       '@eslint-react/hooks-extra/no-direct-set-state-in-use-effect': 'off',
+
+      // Enforce using `import type` for type-only imports
+      '@typescript-eslint/consistent-type-imports': [
+        'error',
+        {
+          prefer: 'type-imports',
+          fixStyle: 'separate-type-imports',
+        },
+      ],
+
+      // Ensure all cases in switch statements on union types are handled
+      '@typescript-eslint/switch-exhaustiveness-check': 'error',
+
+      // Prefer ?? over || for nullish checks (|| treats '' and 0 as falsy)
+      '@typescript-eslint/prefer-nullish-coalescing': 'error',
+
+      // Prefer ?. over && chains for optional access
+      '@typescript-eslint/prefer-optional-chain': 'error',
+
+      // Disallow non-null assertion (!) - forces proper null handling
+      '@typescript-eslint/no-non-null-assertion': 'error',
     },
   },
+  // Accessibility rules for JSX
   {
-    ignores: ['**/dist/**', '**/node_modules/**', '**/*.js', '**/*.cjs', '**/*.mjs', '**/rspack.config.ts'],
-  }
+    files: ['**/*.tsx'],
+    ...jsxA11y.flatConfigs.recommended,
+  },
+  {
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      '**/*.js',
+      '**/*.cjs',
+      '**/*.mjs',
+      '**/rspack.config.ts',
+    ],
+  },
+  // Prettier - must be last to disable conflicting rules
+  eslintConfigPrettier
 );
