@@ -9,6 +9,8 @@ import type {
   BookDetails,
   LibrariesResponse,
   ApiError,
+  SuggestionsResponse,
+  SuggestionItem,
 } from '../types';
 
 export class MangaApiError extends Error {
@@ -114,6 +116,33 @@ export async function getBookDetails(
   if (options.homeLibrary) params.set('homeLibrary', options.homeLibrary);
   const queryString = params.toString();
   return fetchApi<BookDetails>(`/manga/books/${isbn}${queryString ? `?${queryString}` : ''}`);
+}
+
+// ============================================================================
+// Autocomplete/Suggestions
+// ============================================================================
+
+/**
+ * Get popular manga for autocomplete suggestions.
+ * Returns top titles by popularity + trending from AniList.
+ */
+export async function getPopularManga(): Promise<SuggestionItem[]> {
+  const response = await fetchApi<SuggestionsResponse>('/manga/popular');
+  return response.items;
+}
+
+/**
+ * Search manga for autocomplete suggestions.
+ * Uses AniList search API.
+ */
+export async function getSuggestions(
+  query: string,
+  options: { limit?: number | undefined } = {}
+): Promise<SuggestionItem[]> {
+  const params = new URLSearchParams({ q: query });
+  if (options.limit) params.set('limit', options.limit.toString());
+  const response = await fetchApi<SuggestionsResponse>(`/manga/suggestions?${params}`);
+  return response.items;
 }
 
 // ============================================================================

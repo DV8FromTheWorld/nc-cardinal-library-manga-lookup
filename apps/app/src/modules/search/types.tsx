@@ -255,3 +255,33 @@ export interface StreamingSearchProgress {
   availabilityProgress?: { completed: number; total: number; foundInCatalog: number } | undefined;
   coversProgress?: { completed: number; total: number } | undefined;
 }
+
+// ============================================================================
+// Autocomplete/Suggestions Types
+// ============================================================================
+
+/**
+ * Format of a suggestion item from AniList.
+ */
+export type SuggestionFormat = 'MANGA' | 'NOVEL' | 'ONE_SHOT';
+
+/**
+ * A suggestion item for the autocomplete dropdown.
+ * From AniList API.
+ */
+export interface SuggestionItem {
+  anilistId: number;
+  title: string;           // English or Romaji
+  titleRomaji: string;
+  format: SuggestionFormat;
+  volumes: number | null;
+  status: string;
+  coverUrl: string | null;
+}
+
+/**
+ * Response from /manga/popular and /manga/suggestions endpoints.
+ */
+export interface SuggestionsResponse {
+  items: SuggestionItem[];
+}

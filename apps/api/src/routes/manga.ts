@@ -75,6 +75,12 @@ import {
   type HoldItem,
 } from '../scripts/patron-client.js';
 
+import {
+  getPopularManga,
+  getSuggestions,
+  type SuggestionItem,
+} from '../scripts/anilist-client.js';
+
 // ============================================================================
 // Zod Schemas
 // ============================================================================
@@ -319,6 +325,26 @@ const CacheClearResultSchema = z.object({
 });
 
 // ============================================================================
+// Suggestion/Autocomplete Schemas
+// ============================================================================
+
+const SuggestionFormatSchema = z.enum(['MANGA', 'NOVEL', 'ONE_SHOT']);
+
+const SuggestionItemSchema = z.object({
+  anilistId: z.number(),
+  title: z.string(),
+  titleRomaji: z.string(),
+  format: SuggestionFormatSchema,
+  volumes: z.number().nullable(),
+  status: z.string(),
+  coverUrl: z.string().nullable(),
+});
+
+const SuggestionsResponseSchema = z.object({
+  items: z.array(SuggestionItemSchema),
+});
+
+// ============================================================================
 // User/Patron Schemas
 // ============================================================================
 
@@ -430,6 +456,92 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
         libraries: [...NC_CARDINAL_LIBRARIES],
         defaultLibrary: 'HIGH_POINT_MAIN',
       };
+    }
+  );
+
+  // ==========================================================================
+  // Autocomplete/Suggestion Routes
+  // ==========================================================================
+
+  /**
+   * GET /manga/popular
+   *
+   * Get popular manga for autocomplete suggestions.
+   * Returns top titles by popularity + trending, deduplicated.
+   * Cached for 24 hours on the backend.
+   *
+   * Query params:
+   *   popularLimit: Number of popular titles to fetch (default: 150)
+   *   trendingLimit: Number of trending titles to fetch (default: 50)
+   */
+  app.get(
+    '/popular',
+    {
+      schema: {
+        querystring: z.object({
+          popularLimit: z.string().optional().transform(v => v ? parseInt(v, 10) : 150),
+          trendingLimit: z.string().optional().transform(v => v ? parseInt(v, 10) : 50),
+        }),
+        response: {
+          200: SuggestionsResponseSchema,
+          500: ErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { popularLimit, trendingLimit } = request.query;
+
+      try {
+        const items = await getPopularManga({ popularLimit, trendingLimit });
+        return { items };
+      } catch (error) {
+        request.log.error(error, 'Failed to fetch popular manga');
+        return reply.status(500).send({
+          error: 'popular_fetch_failed',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
+  );
+
+  /**
+   * GET /manga/suggestions
+   *
+   * Search for manga suggestions for autocomplete.
+   * Uses AniList search API.
+   *
+   * Query params:
+   *   q: Search query (required, min 1 char)
+   *   limit: Max results to return (default: 10)
+   */
+  app.get(
+    '/suggestions',
+    {
+      schema: {
+        querystring: z.object({
+          q: z.string().min(1).describe('Search query'),
+          limit: z.string().optional().transform(v => v ? parseInt(v, 10) : 10),
+        }),
+        response: {
+          200: SuggestionsResponseSchema,
+          400: ErrorSchema,
+          500: ErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { q, limit } = request.query;
+
+      try {
+        const items = await getSuggestions(q, { limit });
+        return { items };
+      } catch (error) {
+        request.log.error(error, 'Failed to fetch suggestions');
+        return reply.status(500).send({
+          error: 'suggestions_fetch_failed',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
     }
   );
 

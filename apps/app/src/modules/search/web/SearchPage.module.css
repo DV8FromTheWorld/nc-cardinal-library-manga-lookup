@@ -151,6 +151,10 @@
   margin: 0 auto var(--spacing-xl);
 }
 
+.searchInputContainer {
+  position: relative;
+}
+
 .searchInputWrapper {
   display: flex;
   gap: 0;

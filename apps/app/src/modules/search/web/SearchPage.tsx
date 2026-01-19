@@ -5,6 +5,7 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useStreamingSearch } from '../hooks/useStreamingSearch';
+import { useAutocomplete } from '../hooks/useAutocomplete';
 import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
 import { DebugPanel } from '../../debug/web/DebugPanel';
 import { clearCacheForSearch } from '../services/mangaApi';
@@ -13,6 +14,7 @@ import { Text } from '../../../design/components/Text/web/Text';
 import { Heading } from '../../../design/components/Heading/web/Heading';
 import { LoginModal } from '../../login/web/LoginModal';
 import { UserMenu } from '../../login/web/UserMenu';
+import { SearchSuggestions } from './SearchSuggestions';
 import type { SeriesResult, VolumeResult, StreamingSearchProgress } from '../types';
 import styles from './SearchPage.module.css';
 
@@ -21,11 +23,24 @@ export function SearchPage(): JSX.Element {
   const navigate = useNavigate();
   const initialQuery = searchParams.get('q') ?? undefined;
   const inputRef = useRef<HTMLInputElement>(null);
+  const searchFormRef = useRef<HTMLFormElement>(null);
   const [showAllVolumes, setShowAllVolumes] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   // Home library for local/remote availability
   const { homeLibrary, setHomeLibrary, libraries } = useHomeLibrary();
+
+  // Autocomplete for search suggestions
+  const {
+    suggestions,
+    isLoading: isSuggestionsLoading,
+    recentSearches,
+    setQuery: setAutocompleteQuery,
+    clearSuggestions,
+    addRecentSearch,
+    removeRecentSearch,
+  } = useAutocomplete();
 
   const handleQueryChange = useCallback((newQuery: string) => {
     if (newQuery) {
@@ -57,6 +72,17 @@ export function SearchPage(): JSX.Element {
     }
   }, [initialQuery]);
 
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchFormRef.current && !searchFormRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const handleSelectSeries = useCallback((seriesId: string) => {
     // Use entity ID for navigation (stable across data source updates)
     navigate(`/series/${encodeURIComponent(seriesId)}`);
@@ -66,21 +92,58 @@ export function SearchPage(): JSX.Element {
     navigate(`/volumes/${encodeURIComponent(volumeId)}`);
   }, [navigate]);
 
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setQuery(value);
+    setAutocompleteQuery(value);
+    setShowSuggestions(true);
+  }, [setQuery, setAutocompleteQuery]);
+
+  const handleInputFocus = useCallback(() => {
+    setShowSuggestions(true);
+  }, []);
+
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
-    search(query);
-  }, [query, search]);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    if (query.trim()) {
+      addRecentSearch(query.trim());
+      setShowSuggestions(false);
+      clearSuggestions();
       search(query);
     }
-  }, [query, search]);
+  }, [query, search, addRecentSearch, clearSuggestions]);
+
+  const handleSelectSuggestion = useCallback((title: string) => {
+    setQuery(title);
+    addRecentSearch(title);
+    setShowSuggestions(false);
+    clearSuggestions();
+    search(title);
+  }, [setQuery, addRecentSearch, clearSuggestions, search]);
+
+  const handleSelectRecent = useCallback((recentQuery: string) => {
+    setQuery(recentQuery);
+    setShowSuggestions(false);
+    clearSuggestions();
+    search(recentQuery);
+  }, [setQuery, clearSuggestions, search]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // Let SearchSuggestions handle arrow keys and escape
+    if (e.key === 'Enter' && !showSuggestions) {
+      if (query.trim()) {
+        addRecentSearch(query.trim());
+        search(query);
+      }
+    }
+  }, [query, search, showSuggestions, addRecentSearch]);
 
   const handleGoHome = useCallback(() => {
     clearResults();
+    clearSuggestions();
+    setShowSuggestions(false);
     inputRef.current?.focus();
-  }, [clearResults]);
+  }, [clearResults, clearSuggestions]);
 
   const handleClearCache = useCallback(async () => {
     if (results?.query) {
@@ -133,28 +196,43 @@ export function SearchPage(): JSX.Element {
         </div>
       </header>
 
-      <form className={styles.searchForm} onSubmit={handleSubmit}>
-        <div className={styles.searchInputWrapper}>
-          <input
-            ref={inputRef}
-            type="text"
-            className={styles.searchInput}
-            placeholder="Search for manga... (e.g., Demon Slayer, One Piece vol 12)"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
+      <form className={styles.searchForm} onSubmit={handleSubmit} ref={searchFormRef}>
+        <div className={styles.searchInputContainer}>
+          <div className={styles.searchInputWrapper}>
+            <input
+              ref={inputRef}
+              type="text"
+              className={styles.searchInput}
+              placeholder="Search for manga... (e.g., Demon Slayer, One Piece vol 12)"
+              value={query}
+              onChange={handleInputChange}
+              onFocus={handleInputFocus}
+              onKeyDown={handleKeyDown}
+              autoComplete="off"
+            />
+            <button
+              type="submit"
+              className={styles.searchButton}
+              disabled={isLoading || !query.trim()}
+            >
+              {isLoading ? (
+                <span className={styles.spinner} />
+              ) : (
+                <span className={styles.searchIcon}>→</span>
+              )}
+            </button>
+          </div>
+          <SearchSuggestions
+            suggestions={suggestions}
+            isLoading={isSuggestionsLoading}
+            recentSearches={recentSearches}
+            isOpen={showSuggestions}
+            query={query}
+            onSelect={handleSelectSuggestion}
+            onSelectRecent={handleSelectRecent}
+            onRemoveRecent={removeRecentSearch}
+            onClose={() => setShowSuggestions(false)}
           />
-          <button
-            type="submit"
-            className={styles.searchButton}
-            disabled={isLoading || !query.trim()}
-          >
-            {isLoading ? (
-              <span className={styles.spinner} />
-            ) : (
-              <span className={styles.searchIcon}>→</span>
-            )}
-          </button>
         </div>
         {results?.parsedQuery.volumeNumber && (
           <Text variant="text-sm/normal" color="text-secondary" tag="p" className={styles.parsedHint}>

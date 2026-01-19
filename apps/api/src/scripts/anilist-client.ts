@@ -31,9 +31,12 @@ export interface AniListTitle {
   native: string | null;
 }
 
+export type AniListFormat = 'MANGA' | 'NOVEL' | 'ONE_SHOT';
+
 export interface AniListMedia {
   id: number;
   title: AniListTitle;
+  format: AniListFormat | null;
   volumes: number | null;
   chapters: number | null;
   status: 'FINISHED' | 'RELEASING' | 'NOT_YET_RELEASED' | 'CANCELLED' | 'HIATUS';
@@ -86,6 +89,19 @@ export interface SearchResult {
   totalResults: number;
 }
 
+/**
+ * Suggestion item for autocomplete dropdown
+ */
+export interface SuggestionItem {
+  anilistId: number;
+  title: string;           // English or Romaji
+  titleRomaji: string;
+  format: AniListFormat;
+  volumes: number | null;
+  status: string;
+  coverUrl: string | null;
+}
+
 // ============================================================================
 // Cache Functions
 // ============================================================================
@@ -133,13 +149,14 @@ query SearchManga($search: String!, $page: Int, $perPage: Int) {
       currentPage
       hasNextPage
     }
-    media(search: $search, type: MANGA, sort: SEARCH_MATCH) {
+    media(search: $search, type: MANGA, sort: SEARCH_MATCH, isAdult: false) {
       id
       title {
         romaji
         english
         native
       }
+      format
       volumes
       chapters
       status
@@ -159,6 +176,50 @@ query SearchManga($search: String!, $page: Int, $perPage: Int) {
         day
       }
       genres
+    }
+  }
+}
+`;
+
+const GET_POPULAR_MANGA_QUERY = `
+query GetPopularManga($page: Int, $perPage: Int, $sort: [MediaSort]) {
+  Page(page: $page, perPage: $perPage) {
+    pageInfo {
+      total
+      hasNextPage
+    }
+    media(type: MANGA, sort: $sort, isAdult: false) {
+      id
+      title {
+        romaji
+        english
+      }
+      format
+      volumes
+      status
+      coverImage {
+        medium
+      }
+    }
+  }
+}
+`;
+
+const SEARCH_SUGGESTIONS_QUERY = `
+query SearchSuggestions($search: String!, $perPage: Int) {
+  Page(page: 1, perPage: $perPage) {
+    media(search: $search, type: MANGA, sort: SEARCH_MATCH, isAdult: false) {
+      id
+      title {
+        romaji
+        english
+      }
+      format
+      volumes
+      status
+      coverImage {
+        medium
+      }
     }
   }
 }
@@ -287,6 +348,159 @@ export async function searchManga(
   }
 
   return result;
+}
+
+/**
+ * Get popular manga for autocomplete suggestions
+ * Fetches by popularity and trending, deduplicates results
+ */
+export async function getPopularManga(
+  options: { 
+    popularLimit?: number; 
+    trendingLimit?: number; 
+    skipCache?: boolean;
+  } = {}
+): Promise<SuggestionItem[]> {
+  const { popularLimit = 150, trendingLimit = 50, skipCache = false } = options;
+  const cacheKey = getCacheKey('popular', `p${popularLimit}_t${trendingLimit}`);
+
+  // Check cache
+  if (!skipCache) {
+    const cached = loadFromCache<SuggestionItem[]>(cacheKey);
+    if (cached) return cached;
+  }
+
+  console.log(`🌐 AniList: Fetching popular manga (${popularLimit} popular + ${trendingLimit} trending)`);
+
+  // Fetch popular manga
+  const popularData = await graphqlRequest<{
+    Page: {
+      media: Array<{
+        id: number;
+        title: { romaji: string; english: string | null };
+        format: AniListFormat | null;
+        volumes: number | null;
+        status: string;
+        coverImage: { medium: string | null } | null;
+      }>;
+    };
+  }>(GET_POPULAR_MANGA_QUERY, { 
+    page: 1, 
+    perPage: popularLimit, 
+    sort: ['POPULARITY_DESC'] 
+  });
+
+  // Fetch trending manga
+  const trendingData = await graphqlRequest<{
+    Page: {
+      media: Array<{
+        id: number;
+        title: { romaji: string; english: string | null };
+        format: AniListFormat | null;
+        volumes: number | null;
+        status: string;
+        coverImage: { medium: string | null } | null;
+      }>;
+    };
+  }>(GET_POPULAR_MANGA_QUERY, { 
+    page: 1, 
+    perPage: trendingLimit, 
+    sort: ['TRENDING_DESC'] 
+  });
+
+  // Combine and deduplicate
+  const seenIds = new Set<number>();
+  const items: SuggestionItem[] = [];
+
+  const addItem = (media: {
+    id: number;
+    title: { romaji: string; english: string | null };
+    format: AniListFormat | null;
+    volumes: number | null;
+    status: string;
+    coverImage: { medium: string | null } | null;
+  }) => {
+    if (seenIds.has(media.id)) return;
+    seenIds.add(media.id);
+    
+    items.push({
+      anilistId: media.id,
+      title: media.title.english || media.title.romaji,
+      titleRomaji: media.title.romaji,
+      format: media.format ?? 'MANGA',
+      volumes: media.volumes,
+      status: media.status,
+      coverUrl: media.coverImage?.medium ?? null,
+    });
+  };
+
+  // Add popular first (higher priority)
+  for (const media of popularData.Page.media) {
+    addItem(media);
+  }
+
+  // Add trending (may add new items not in popular)
+  for (const media of trendingData.Page.media) {
+    addItem(media);
+  }
+
+  console.log(`  ✅ Got ${items.length} unique manga`);
+
+  // Cache the result
+  if (!skipCache) {
+    saveToCache(cacheKey, items);
+  }
+
+  return items;
+}
+
+/**
+ * Search manga for autocomplete suggestions (returns SuggestionItem format)
+ */
+export async function getSuggestions(
+  query: string,
+  options: { limit?: number; skipCache?: boolean } = {}
+): Promise<SuggestionItem[]> {
+  const { limit = 10, skipCache = false } = options;
+  const cacheKey = getCacheKey('suggestions', `${query}_n${limit}`);
+
+  // Check cache
+  if (!skipCache) {
+    const cached = loadFromCache<SuggestionItem[]>(cacheKey);
+    if (cached) return cached;
+  }
+
+  console.log(`🌐 AniList: Getting suggestions for "${query}"`);
+
+  const data = await graphqlRequest<{
+    Page: {
+      media: Array<{
+        id: number;
+        title: { romaji: string; english: string | null };
+        format: AniListFormat | null;
+        volumes: number | null;
+        status: string;
+        coverImage: { medium: string | null } | null;
+      }>;
+    };
+  }>(SEARCH_SUGGESTIONS_QUERY, { search: query, perPage: limit });
+
+  const items: SuggestionItem[] = data.Page.media.map((media) => ({
+    anilistId: media.id,
+    title: media.title.english || media.title.romaji,
+    titleRomaji: media.title.romaji,
+    format: media.format ?? 'MANGA',
+    volumes: media.volumes,
+    status: media.status,
+    coverUrl: media.coverImage?.medium ?? null,
+  }));
+
+  // Cache the result
+  if (!skipCache) {
+    saveToCache(cacheKey, items);
+  }
+
+  return items;
 }
 
 /**

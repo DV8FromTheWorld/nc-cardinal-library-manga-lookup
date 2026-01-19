@@ -22,11 +22,13 @@ import { FlashList } from '@shopify/flash-list';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../routing/native/Router';
 import { useStreamingSearch } from '../hooks/useStreamingSearch';
+import { useAutocomplete } from '../hooks/useAutocomplete';
 import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
 import { DebugPanel } from '../../debug/native/DebugPanel';
 import { clearCacheForSearch } from '../services/mangaApi';
 import { getAvailabilityPercent, getAvailabilityDisplayInfo } from '../utils/availability';
 import { SearchProgressIndicator } from './SearchProgressIndicator';
+import { SearchSuggestions } from './SearchSuggestions';
 import type { SeriesResult, VolumeResult } from '../types';
 import { Text } from '../../../design/components/Text/native/Text';
 import { Heading } from '../../../design/components/Heading/native/Heading';
@@ -46,6 +48,18 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
   const [showLibraryPicker, setShowLibraryPicker] = useState(false);
   const [showAllVolumes, setShowAllVolumes] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Autocomplete for search suggestions
+  const {
+    suggestions,
+    isLoading: isSuggestionsLoading,
+    recentSearches,
+    setQuery: setAutocompleteQuery,
+    clearSuggestions,
+    addRecentSearch,
+    removeRecentSearch,
+  } = useAutocomplete();
 
   const handleQueryChange = useCallback(
     (newQuery: string) => {
@@ -82,8 +96,26 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
     [navigation]
   );
 
+  const handleInputChange = useCallback((text: string) => {
+    setQuery(text);
+    setAutocompleteQuery(text);
+    setShowSuggestions(true);
+  }, [setQuery, setAutocompleteQuery]);
+
+  const handleInputFocus = useCallback(() => {
+    setShowSuggestions(true);
+  }, []);
+
+  const handleInputBlur = useCallback(() => {
+    // Delay hiding to allow tap on suggestion
+    setTimeout(() => setShowSuggestions(false), 150);
+  }, []);
+
   const handleSearch = useCallback(() => {
     if (query.trim()) {
+      addRecentSearch(query.trim());
+      setShowSuggestions(false);
+      clearSuggestions();
       // Push a new search screen onto the stack for navigation history
       // Only push if this is a different query than what we came in with
       if (query.trim() !== initialQuery) {
@@ -94,9 +126,23 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
         search(query);
       }
     }
-  }, [query, search, initialQuery, navigation]);
+  }, [query, search, initialQuery, navigation, addRecentSearch, clearSuggestions]);
 
-  const suggestions = ['Demon Slayer', 'One Piece', 'My Hero Academia', 'Spy x Family'];
+  const handleSelectSuggestion = useCallback((title: string) => {
+    addRecentSearch(title);
+    setShowSuggestions(false);
+    clearSuggestions();
+    // Push a new search screen with this title
+    navigation.push('Search', { query: title, skipAnimation: true });
+  }, [navigation, addRecentSearch, clearSuggestions]);
+
+  const handleSelectRecent = useCallback((recentQuery: string) => {
+    setShowSuggestions(false);
+    clearSuggestions();
+    navigation.push('Search', { query: recentQuery, skipAnimation: true });
+  }, [navigation, clearSuggestions]);
+
+  const staticSuggestions = ['Demon Slayer', 'One Piece', 'My Hero Academia', 'Spy x Family'];
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
@@ -194,29 +240,45 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
 
         {/* Search Input */}
         <View style={styles.searchContainer}>
-          <View style={[styles.searchInputWrapper, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}>
-            <TextInput
-              style={[styles.searchInput, { color: theme.textPrimary }]}
-              placeholder="Search for manga..."
-              placeholderTextColor={theme.textMuted}
-              value={query}
-              onChangeText={setQuery}
-              onSubmitEditing={handleSearch}
-              returnKeyType="search"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <TouchableOpacity
-              style={[styles.searchButton, { backgroundColor: theme.accent }]}
-              onPress={handleSearch}
-              disabled={isLoading || !query.trim()}
-            >
-              {isLoading ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <RNText style={styles.searchButtonText}>→</RNText>
-              )}
-            </TouchableOpacity>
+          <View style={styles.searchInputContainer}>
+            <View style={[styles.searchInputWrapper, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}>
+              <TextInput
+                style={[styles.searchInput, { color: theme.textPrimary }]}
+                placeholder="Search for manga..."
+                placeholderTextColor={theme.textMuted}
+                value={query}
+                onChangeText={handleInputChange}
+                onFocus={handleInputFocus}
+                onBlur={handleInputBlur}
+                onSubmitEditing={handleSearch}
+                returnKeyType="search"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="off"
+              />
+              <TouchableOpacity
+                style={[styles.searchButton, { backgroundColor: theme.accent }]}
+                onPress={handleSearch}
+                disabled={isLoading || !query.trim()}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <RNText style={styles.searchButtonText}>→</RNText>
+                )}
+              </TouchableOpacity>
+            </View>
+            {showSuggestions && (
+              <SearchSuggestions
+                suggestions={suggestions}
+                isLoading={isSuggestionsLoading}
+                recentSearches={recentSearches}
+                query={query}
+                onSelect={handleSelectSuggestion}
+                onSelectRecent={handleSelectRecent}
+                onRemoveRecent={removeRecentSearch}
+              />
+            )}
           </View>
         </View>
 
@@ -251,7 +313,7 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
               Try searching for:
             </Text>
             <View style={styles.suggestionChips}>
-              {suggestions.map((suggestion) => (
+              {staticSuggestions.map((suggestion) => (
                 <TouchableOpacity
                   key={suggestion}
                   style={[styles.suggestionChip, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}
@@ -728,6 +790,10 @@ const styles = StyleSheet.create({
   searchContainer: {
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.lg,
+    zIndex: 10,
+  },
+  searchInputContainer: {
+    position: 'relative',
   },
   searchInputWrapper: {
     flexDirection: 'row',
