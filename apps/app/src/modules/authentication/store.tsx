@@ -51,7 +51,7 @@ export async function login(cardNumber: string, pin: string): Promise<LoginResul
   try {
     const response = await authApi.login(cardNumber, pin);
 
-    if (response.success && response.sessionId) {
+    if (response.success && response.sessionId != null) {
       const session: UserSession = {
         sessionId: response.sessionId,
         cardNumber,

@@ -55,7 +55,7 @@ function filterLocalSuggestions(
   limit: number
 ): SuggestionItem[] {
   const lowerQuery = query.toLowerCase().trim();
-  if (!lowerQuery) return [];
+  if (lowerQuery === '') return [];
 
   // Score items: exact prefix match > word prefix match > substring match
   const scored = items.map((item) => {
@@ -161,7 +161,7 @@ export function useAutocomplete(
       }
     }
 
-    loadPopular();
+    void loadPopular();
 
     return () => {
       cancelled = true;
@@ -173,7 +173,7 @@ export function useAutocomplete(
     async function loadRecent() {
       try {
         const stored = await Promise.resolve(storage.getItem(RECENT_SEARCHES_KEY));
-        if (stored) {
+        if (stored != null && stored !== '') {
           const parsed = JSON.parse(stored) as string[];
           if (Array.isArray(parsed)) {
             setRecentSearches(parsed);
@@ -184,25 +184,25 @@ export function useAutocomplete(
       }
     }
 
-    loadRecent();
+    void loadRecent();
   }, []);
 
   // Save recent searches when they change
   const saveRecentSearches = useCallback((searches: string[]) => {
     setRecentSearches(searches);
-    storage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(searches));
+    void storage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(searches));
   }, []);
 
   const addRecentSearch = useCallback(
     (query: string) => {
       const trimmed = query.trim();
-      if (!trimmed) return;
+      if (trimmed === '') return;
 
       setRecentSearches((prev) => {
         // Remove if exists, then add to front
         const filtered = prev.filter((s) => s.toLowerCase() !== trimmed.toLowerCase());
         const updated = [trimmed, ...filtered].slice(0, MAX_RECENT_SEARCHES);
-        storage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
+        void storage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
         return updated;
       });
     },
@@ -213,7 +213,7 @@ export function useAutocomplete(
     (query: string) => {
       setRecentSearches((prev) => {
         const updated = prev.filter((s) => s !== query);
-        storage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
+        void storage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
         return updated;
       });
     },
@@ -245,7 +245,7 @@ export function useAutocomplete(
       }
 
       // If query is empty, clear suggestions
-      if (!trimmed) {
+      if (trimmed === '') {
         setSuggestions([]);
         setIsLoading(false);
         return;
@@ -259,26 +259,28 @@ export function useAutocomplete(
       if (trimmed.length >= MIN_CHARS_FOR_API) {
         setIsLoading(true);
 
-        debounceTimerRef.current = setTimeout(async () => {
-          try {
-            // Only proceed if query hasn't changed
-            if (currentQueryRef.current !== trimmed) return;
+        debounceTimerRef.current = setTimeout(() => {
+          void (async () => {
+            try {
+              // Only proceed if query hasn't changed
+              if (currentQueryRef.current !== trimmed) return;
 
-            const apiResults = await getSuggestions(trimmed, { limit: maxSuggestions });
+              const apiResults = await getSuggestions(trimmed, { limit: maxSuggestions });
 
-            // Only update if query still matches
-            if (currentQueryRef.current === trimmed) {
-              const merged = mergeSuggestions(localResults, apiResults, maxSuggestions);
-              setSuggestions(merged);
+              // Only update if query still matches
+              if (currentQueryRef.current === trimmed) {
+                const merged = mergeSuggestions(localResults, apiResults, maxSuggestions);
+                setSuggestions(merged);
+              }
+            } catch (err) {
+              console.error('Suggestion API error:', err);
+              // Keep showing local results on API error
+            } finally {
+              if (currentQueryRef.current === trimmed) {
+                setIsLoading(false);
+              }
             }
-          } catch (err) {
-            console.error('Suggestion API error:', err);
-            // Keep showing local results on API error
-          } finally {
-            if (currentQueryRef.current === trimmed) {
-              setIsLoading(false);
-            }
-          }
+          })();
         }, DEBOUNCE_MS);
       } else {
         setIsLoading(false);

@@ -22,13 +22,15 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps): JSX.Element | 
   // Focus card input when modal opens
   useEffect(() => {
     if (isOpen) {
-      setTimeout(() => cardInputRef.current?.focus(), 100);
+      const timeoutId = setTimeout(() => cardInputRef.current?.focus(), 100);
+      return () => clearTimeout(timeoutId);
     }
+    return;
   }, [isOpen]);
 
   // Reset form when modal closes
   useEffect(() => {
-    if (!isOpen) {
+    if (isOpen === false) {
       setCardNumber('');
       setPin('');
       setError(null);
@@ -71,7 +73,7 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps): JSX.Element | 
     return () => window.removeEventListener('keydown', handleEscape);
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  if (isOpen === false) return null;
 
   return (
     <div className={styles.overlay} onClick={handleOverlayClick}>
@@ -129,7 +131,7 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps): JSX.Element | 
             />
           </div>
 
-          {error && (
+          {error != null && (
             <div className={styles.error}>
               <span>⚠</span>
               <Text variant="text-sm/normal">{error}</Text>
@@ -139,7 +141,7 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps): JSX.Element | 
           <button
             type="submit"
             className={styles.submitButton}
-            disabled={isLoading || !cardNumber.trim() || !pin.trim()}
+            disabled={isLoading || cardNumber.trim() === '' || pin.trim() === ''}
           >
             {isLoading ? <span className={styles.spinner} /> : 'Sign In'}
           </button>

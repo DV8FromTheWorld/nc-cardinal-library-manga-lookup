@@ -27,9 +27,10 @@ export function VolumePage(): JSX.Element {
   const [imageError, setImageError] = useState(false);
 
   // Reset image error state when ID changes
+  const resetImageError = useCallback(() => setImageError(false), []);
   useEffect(() => {
-    setImageError(false);
-  }, [id]);
+    resetImageError();
+  }, [id, resetImageError]);
 
   const { volume, isLoading, error } = useVolumeDetails({
     volumeId: id ?? '',
@@ -37,11 +38,11 @@ export function VolumePage(): JSX.Element {
   });
 
   const handleBack = () => {
-    navigate(-1);
+    void navigate(-1);
   };
 
   const handleSelectSeries = (seriesId: string) => {
-    navigate(`/series/${encodeURIComponent(seriesId)}`);
+    void navigate(`/series/${encodeURIComponent(seriesId)}`);
   };
 
   // Get the primary ISBN from the volume for cache clearing and external links
@@ -50,7 +51,7 @@ export function VolumePage(): JSX.Element {
   const amazonIsbn = volume?.isbns ? getBestIsbnForAmazon(volume.isbns) : undefined;
 
   const handleClearCache = useCallback(async () => {
-    if (primaryIsbn) {
+    if (primaryIsbn != null) {
       await clearCacheForBook(primaryIsbn);
       // Reload the page to show fresh data
       window.location.reload();
@@ -68,7 +69,7 @@ export function VolumePage(): JSX.Element {
     );
   }
 
-  if (error || !volume) {
+  if (error != null || volume == null) {
     return (
       <div className={styles.container}>
         <button type="button" className={styles.backButton} onClick={handleBack}>
@@ -121,7 +122,7 @@ export function VolumePage(): JSX.Element {
 
       <div className={styles.bookLayout}>
         <div className={styles.bookCover}>
-          {volume.coverImage && !imageError ? (
+          {volume.coverImage != null && imageError === false ? (
             <img 
               src={volume.coverImage} 
               alt={displayTitle}
@@ -141,7 +142,7 @@ export function VolumePage(): JSX.Element {
               </Text>
             )}
 
-            {volume.seriesInfo && seriesId && (
+            {volume.seriesInfo != null && seriesId != null && (
               <button
                 type="button"
                 className={styles.seriesLink}
@@ -154,7 +155,7 @@ export function VolumePage(): JSX.Element {
             )}
           </header>
 
-          {volume.summary && (
+          {volume.summary != null && (
             <section className={styles.descriptionSection}>
               <Heading level={2} className={styles.sectionTitle}>Description</Heading>
               <Text variant="text-md/normal" color="text-secondary" tag="p" className={styles.descriptionText}>
@@ -167,7 +168,7 @@ export function VolumePage(): JSX.Element {
             <Heading level={2} className={styles.sectionTitle}>Availability</Heading>
             <div className={styles.availabilityCard}>
               {/* Digital-only: in catalog but no physical copies */}
-              {volume.availability.totalCopies === 0 && volume.catalogUrl ? (
+              {volume.availability.totalCopies === 0 && volume.catalogUrl != null ? (
                 <div className={styles.availabilitySummary}>
                   <div className={`${styles.availabilityStatus} ${styles.digitalOnly}`}>
                     <span className={styles.digitalIcon}>📱</span>
@@ -230,7 +231,7 @@ export function VolumePage(): JSX.Element {
               {/* External links - only show for non-digital-only books or as secondary links */}
               <div className={styles.externalLinks}>
                 {/* Only show catalog link if not digital-only (digital-only has prominent button above) */}
-                {volume.catalogUrl && volume.availability.totalCopies > 0 && (
+                {volume.catalogUrl != null && volume.availability.totalCopies > 0 && (
                   <a 
                     href={volume.catalogUrl} 
                     target="_blank" 
@@ -242,7 +243,7 @@ export function VolumePage(): JSX.Element {
                   </a>
                 )}
                 <div className={styles.secondaryLinks}>
-                  {amazonIsbn && (
+                  {amazonIsbn != null && (
                     <a 
                       href={getAmazonUrl(amazonIsbn)} 
                       target="_blank" 
@@ -253,7 +254,7 @@ export function VolumePage(): JSX.Element {
                       <Text variant="text-sm/medium">Amazon</Text>
                     </a>
                   )}
-                  {volume.seriesInfo && (
+                  {volume.seriesInfo != null && (
                     <a 
                       href={`https://myanimelist.net/manga.php?q=${encodeURIComponent(volume.seriesInfo.title)}`} 
                       target="_blank" 
@@ -322,9 +323,9 @@ export function VolumePage(): JSX.Element {
             <section className={styles.metaSection}>
               <Heading level={2} className={styles.sectionTitle}>Subjects</Heading>
               <div className={styles.subjectTags}>
-                {/* Dedupe subjects and use index for key to handle duplicates */}
-                {[...new Set(volume.subjects)].slice(0, 10).map((subject, idx) => (
-                  <Text key={idx} variant="text-xs/normal" color="text-secondary" className={styles.subjectTag}>
+                {/* Dedupe subjects - unique strings can be used as keys */}
+                {[...new Set(volume.subjects)].slice(0, 10).map((subject) => (
+                  <Text key={subject} variant="text-xs/normal" color="text-secondary" className={styles.subjectTag}>
                     {subject.replace(/\.$/, '')}
                   </Text>
                 ))}
@@ -353,7 +354,7 @@ export function VolumePage(): JSX.Element {
       {/* Debug Panel with cache clearing */}
       <DebugPanel
         debug={undefined}
-        cacheContext={primaryIsbn ? { type: 'book', identifier: primaryIsbn } : undefined}
+        cacheContext={primaryIsbn != null ? { type: 'book', identifier: primaryIsbn } : undefined}
         onClearCache={handleClearCache}
       />
     </div>

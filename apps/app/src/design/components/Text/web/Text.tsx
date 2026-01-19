@@ -62,7 +62,7 @@ function getWeightClass(variant: TextVariant): string {
     return styles['weight-normal'] ?? '';
   }
 
-  if (parsed.weight) {
+  if (parsed.weight != null) {
     return styles[`weight-${parsed.weight}`] ?? '';
   }
 
@@ -101,7 +101,7 @@ export function Text({
     colorClass,
     className,
   ]
-    .filter(Boolean)
+    .filter((s): s is string => s != null && s !== '')
     .join(' ');
 
   // Build props object, only including defined values
@@ -109,11 +109,11 @@ export function Text({
     className: combinedClassName,
   };
 
-  if (style) elementProps.style = style;
-  if (id) elementProps.id = id;
-  if (ariaLabel) elementProps['aria-label'] = ariaLabel;
-  if (ariaDescribedBy) elementProps['aria-describedby'] = ariaDescribedBy;
-  if (htmlFor && Tag === 'label') elementProps.htmlFor = htmlFor;
+  if (style != null) elementProps.style = style;
+  if (id != null && id !== '') elementProps.id = id;
+  if (ariaLabel != null && ariaLabel !== '') elementProps['aria-label'] = ariaLabel;
+  if (ariaDescribedBy != null && ariaDescribedBy !== '') elementProps['aria-describedby'] = ariaDescribedBy;
+  if (htmlFor != null && htmlFor !== '' && Tag === 'label') elementProps.htmlFor = htmlFor;
 
   return <Tag {...elementProps}>{children}</Tag>;
 }

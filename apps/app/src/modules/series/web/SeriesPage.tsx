@@ -26,16 +26,16 @@ export function SeriesPage(): JSX.Element {
     homeLibrary,
   });
 
-  const handleBack = () => {
-    navigate(-1);
+  const handleBack = (): void => {
+    void navigate(-1);
   };
 
-  const handleSelectVolume = (volumeId: string) => {
-    navigate(`/volumes/${encodeURIComponent(volumeId)}`);
+  const handleSelectVolume = (volumeId: string): void => {
+    void navigate(`/volumes/${encodeURIComponent(volumeId)}`);
   };
 
   const handleClearCache = useCallback(async () => {
-    if (id) {
+    if (id != null) {
       await clearCacheForSeries(id);
       // Reload to show fresh data
       window.location.reload();
@@ -44,14 +44,14 @@ export function SeriesPage(): JSX.Element {
 
   // Compute summary stats
   const stats = useMemo(() => {
-    if (!series) return null;
+    if (series == null) return null;
     
     const total = series.volumes.length;
     const withEnglish = series.volumes.filter(v => 
       deriveVolumeStatus(v.editions) !== VolumeStatus.JapanOnly
     ).length;
     const inLibrary = series.volumes.filter(v => 
-      v.availability && !v.availability.notInCatalog
+      v.availability != null && v.availability.notInCatalog !== true
     ).length;
     const available = series.volumes.filter(v => 
       (v.availability?.availableCopies ?? 0) > 0
@@ -71,7 +71,7 @@ export function SeriesPage(): JSX.Element {
     );
   }
 
-  if (error || !series) {
+  if (error != null || series == null) {
     return (
       <div className={styles.container}>
         <button type="button" className={styles.backButton} onClick={handleBack}>
@@ -114,7 +114,7 @@ export function SeriesPage(): JSX.Element {
 
       <header className={styles.header}>
         <div className={styles.headerCover}>
-          {series.coverImage ? (
+          {series.coverImage != null ? (
             <img 
               src={series.coverImage} 
               alt={`${series.title} cover`}
@@ -124,25 +124,25 @@ export function SeriesPage(): JSX.Element {
                 if (img.naturalWidth < 10 || img.naturalHeight < 10) {
                   img.style.display = 'none';
                   const placeholder = img.nextElementSibling as HTMLElement;
-                  if (placeholder) placeholder.style.display = 'flex';
+                  if (placeholder != null) placeholder.style.display = 'flex';
                 }
               }}
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = 'none';
                 const placeholder = (e.target as HTMLElement).nextElementSibling as HTMLElement;
-                if (placeholder) placeholder.style.display = 'flex';
+                if (placeholder != null) placeholder.style.display = 'flex';
               }}
             />
           ) : null}
-          <div className={styles.coverPlaceholder} style={{ display: series.coverImage ? 'none' : 'flex' }}>📚</div>
+          <div className={styles.coverPlaceholder} style={{ display: series.coverImage != null ? 'none' : 'flex' }}>📚</div>
         </div>
         <div className={styles.headerContent}>
           <Heading level={1} className={styles.title}>{series.title}</Heading>
-          {series.author && (
+          {series.author != null && (
             <Text variant="text-md/normal" color="text-secondary" tag="p" className={styles.author}>by {series.author}</Text>
           )}
           <div className={styles.badges}>
-            {series.isComplete && (
+            {series.isComplete === true && (
               <Text variant="text-xs/semibold" className={styles.completeBadge}>✓ Complete Series</Text>
             )}
             <Text variant="text-xs/medium" className={styles.volumeBadge}>{stats?.total} volumes</Text>
@@ -172,7 +172,7 @@ export function SeriesPage(): JSX.Element {
       </header>
 
       {/* Series Description */}
-      {series.description && (
+      {series.description != null && (
         <section className={styles.descriptionSection}>
           <Heading level={2} className={styles.sectionTitle}>About</Heading>
           <Text variant="text-md/normal" color="text-secondary" className={styles.descriptionText}>{series.description}</Text>
@@ -254,8 +254,8 @@ export function SeriesPage(): JSX.Element {
       {/* Debug Panel */}
       <DebugPanel
         debug={series._debug}
-        onRefreshWithDebug={!series._debug ? refreshWithDebug : undefined}
-        cacheContext={id ? { type: 'series', identifier: id } : undefined}
+        onRefreshWithDebug={series._debug == null ? refreshWithDebug : undefined}
+        cacheContext={id != null ? { type: 'series', identifier: id } : undefined}
         onClearCache={handleClearCache}
       />
     </div>
@@ -275,11 +275,11 @@ function VolumeRow({ volume, seriesTitle, onClick }: VolumeRowProps): JSX.Elemen
   return (
     <button
       type="button"
-      className={`${styles.volumeRow} ${isAvailable ? styles.available : styles.unavailable}`}
+      className={`${styles.volumeRow} ${isAvailable === true ? styles.available : styles.unavailable}`}
       onClick={onClick}
     >
       <div className={styles.volumeCover}>
-        {volume.coverImage ? (
+        {volume.coverImage != null ? (
           <img 
             src={volume.coverImage} 
             alt={`${seriesTitle} Vol. ${volume.volumeNumber}`}
@@ -290,17 +290,17 @@ function VolumeRow({ volume, seriesTitle, onClick }: VolumeRowProps): JSX.Elemen
               if (img.naturalWidth < 10 || img.naturalHeight < 10) {
                 img.style.display = 'none';
                 const placeholder = img.nextElementSibling as HTMLElement;
-                if (placeholder) placeholder.style.display = 'flex';
+                if (placeholder != null) placeholder.style.display = 'flex';
               }
             }}
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = 'none';
               const placeholder = (e.target as HTMLElement).nextElementSibling as HTMLElement;
-              if (placeholder) placeholder.style.display = 'flex';
+              if (placeholder != null) placeholder.style.display = 'flex';
             }}
           />
         ) : null}
-        <div className={styles.volumeCoverPlaceholder} style={{ display: volume.coverImage ? 'none' : 'flex' }}>📖</div>
+        <div className={styles.volumeCoverPlaceholder} style={{ display: volume.coverImage != null ? 'none' : 'flex' }}>📖</div>
       </div>
       <div className={styles.volumeNumber}>
         <Text variant="text-xs/normal" color="text-muted" className={styles.volLabel}>Vol.</Text>
@@ -308,10 +308,10 @@ function VolumeRow({ volume, seriesTitle, onClick }: VolumeRowProps): JSX.Elemen
       </div>
       
       <div className={styles.volumeInfo}>
-        {volume.title && (
+        {volume.title != null && (
           <Text variant="text-sm/medium" className={styles.volumeTitle}>{volume.title}</Text>
         )}
-        {volume.primaryIsbn && (
+        {volume.primaryIsbn != null && (
           <Text variant="code" color="text-muted" className={styles.volumeIsbn}>ISBN: {volume.primaryIsbn}</Text>
         )}
       </div>
@@ -320,7 +320,7 @@ function VolumeRow({ volume, seriesTitle, onClick }: VolumeRowProps): JSX.Elemen
         <span className={styles.statusIcon}>{icon}</span>
         <div className={styles.statusText}>
           <Text variant="text-sm/normal">{label}</Text>
-          {sublabel && (
+          {sublabel != null && (
             <Text variant="text-xs/normal" color="text-muted">{sublabel}</Text>
           )}
         </div>

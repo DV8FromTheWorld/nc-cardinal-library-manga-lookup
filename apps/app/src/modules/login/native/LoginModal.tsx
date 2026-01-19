@@ -44,7 +44,7 @@ export function LoginModal({ visible, onClose }: LoginModalProps): JSX.Element {
   }, [visible]);
 
   const handleSubmit = useCallback(async () => {
-    if (!cardNumber.trim() || !pin.trim()) return;
+    if (cardNumber.trim() === '' || pin.trim() === '') return;
 
     setError(null);
     setIsLoading(true);
@@ -141,7 +141,7 @@ export function LoginModal({ visible, onClose }: LoginModalProps): JSX.Element {
               />
             </View>
 
-            {error && (
+            {error != null && (
               <View style={[styles.errorBox, { backgroundColor: theme.errorBg }]}>
                 <Text variant="text-sm/normal" color="error">⚠ {error}</Text>
               </View>
@@ -151,10 +151,10 @@ export function LoginModal({ visible, onClose }: LoginModalProps): JSX.Element {
               style={[
                 styles.submitButton,
                 { backgroundColor: theme.accent },
-                (isLoading || !cardNumber.trim() || !pin.trim()) && styles.submitButtonDisabled,
+                (isLoading || cardNumber.trim() === '' || pin.trim() === '') && styles.submitButtonDisabled,
               ]}
               onPress={handleSubmit}
-              disabled={isLoading || !cardNumber.trim() || !pin.trim()}
+              disabled={isLoading || cardNumber.trim() === '' || pin.trim() === ''}
             >
               {isLoading ? (
                 <ActivityIndicator color="#fff" size="small" />

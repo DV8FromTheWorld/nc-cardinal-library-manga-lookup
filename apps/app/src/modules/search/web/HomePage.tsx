@@ -70,27 +70,27 @@ export function HomePage(): JSX.Element {
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
-    if (query.trim()) {
+    if (query.trim() !== '') {
       addRecentSearch(query.trim());
       clearSuggestions();
-      navigate(`/search?q=${encodeURIComponent(query.trim())}`);
+      void navigate(`/search?q=${encodeURIComponent(query.trim())}`);
     }
   }, [query, addRecentSearch, clearSuggestions, navigate]);
 
   const handleSelectSuggestion = useCallback((title: string) => {
     addRecentSearch(title);
     clearSuggestions();
-    navigate(`/search?q=${encodeURIComponent(title)}`);
+    void navigate(`/search?q=${encodeURIComponent(title)}`);
   }, [addRecentSearch, clearSuggestions, navigate]);
 
   const handleSelectRecent = useCallback((recentQuery: string) => {
     clearSuggestions();
-    navigate(`/search?q=${encodeURIComponent(recentQuery)}`);
+    void navigate(`/search?q=${encodeURIComponent(recentQuery)}`);
   }, [clearSuggestions, navigate]);
 
   const handleSelectRecommendation = useCallback((title: string) => {
     addRecentSearch(title);
-    navigate(`/search?q=${encodeURIComponent(title)}`);
+    void navigate(`/search?q=${encodeURIComponent(title)}`);
   }, [addRecentSearch, navigate]);
 
   return (
@@ -141,7 +141,7 @@ export function HomePage(): JSX.Element {
             <button
               type="submit"
               className={styles.searchButton}
-              disabled={!query.trim()}
+              disabled={query.trim() === ''}
             >
               <span className={styles.searchIcon}>→</span>
             </button>
@@ -172,6 +172,7 @@ export function HomePage(): JSX.Element {
         {isRecommendationsLoading ? (
           <div className={styles.recommendationsGrid}>
             {Array.from({ length: 16 }).map((_, idx) => (
+              // eslint-disable-next-line @eslint-react/no-array-index-key -- Skeleton placeholders have no identity; index is appropriate
               <div key={idx} className={styles.skeletonCard}>
                 <div className={styles.skeletonCover} />
                 <div className={styles.skeletonInfo}>
@@ -236,7 +237,7 @@ function RecommendationCard({ item, onClick }: RecommendationCardProps): JSX.Ele
     if (item.status === 'RELEASING') {
       return { text: 'Ongoing', isOngoing: true };
     }
-    if (item.volumes) {
+    if (item.volumes != null && item.volumes > 0) {
       return { text: `${item.volumes} vol`, isOngoing: false };
     }
     return { text: 'Complete', isOngoing: false };
@@ -247,7 +248,7 @@ function RecommendationCard({ item, onClick }: RecommendationCardProps): JSX.Ele
   return (
     <button type="button" className={styles.recommendationCard} onClick={onClick}>
       <div className={styles.recommendationCover}>
-        {item.coverUrl && !imageError ? (
+        {item.coverUrl != null && !imageError ? (
           <img
             src={item.coverUrl}
             alt={item.title}

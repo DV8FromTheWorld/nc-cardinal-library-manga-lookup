@@ -62,7 +62,7 @@ export function UserMenu({ onLoginClick }: UserMenuProps): JSX.Element {
   }
 
   // Truncate long names
-  const shortName = displayName && displayName.length > 20 
+  const shortName = displayName != null && displayName.length > 20 
     ? displayName.slice(0, 17) + '...' 
     : displayName ?? 'Account';
 
@@ -80,11 +80,11 @@ export function UserMenu({ onLoginClick }: UserMenuProps): JSX.Element {
 
       {isMenuOpen && (
         <div className={styles.userMenu}>
-          {session?.displayName && (
+          {session?.displayName != null && (
             <>
               <div className={styles.userMenuHeader}>
                 <Text variant="text-sm/semibold">{session.displayName}</Text>
-                {session.cardNumber && (
+                {session.cardNumber != null && (
                   <Text variant="text-xs/normal" color="text-muted">
                     Card: {session.cardNumber}
                   </Text>

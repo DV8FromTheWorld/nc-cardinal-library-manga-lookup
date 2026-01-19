@@ -49,7 +49,7 @@ export function SearchSuggestions({
   const listRef = useRef<HTMLDivElement>(null);
 
   // Determine what to show
-  const showRecent = !query.trim() && recentSearches.length > 0;
+  const showRecent = query.trim() === '' && recentSearches.length > 0;
   const showSuggestions = query.trim().length > 0 && (suggestions.length > 0 || isLoading);
   const hasContent = showRecent || showSuggestions;
 
@@ -170,7 +170,7 @@ export function SearchSuggestions({
               onMouseEnter={() => setHighlightedIndex(index)}
             >
               <div className={styles.coverContainer}>
-                {suggestion.coverUrl ? (
+                {suggestion.coverUrl != null ? (
                   <img
                     src={suggestion.coverUrl}
                     alt=""
@@ -194,11 +194,11 @@ export function SearchSuggestions({
                   <span className={`${styles.formatBadge} ${styles[suggestion.format.toLowerCase()]}`}>
                     {getFormatLabel(suggestion.format)}
                   </span>
-                  {suggestion.volumes && (
+                  {suggestion.volumes != null && suggestion.volumes > 0 ? (
                     <Text variant="text-xs/normal" color="text-muted">
                       {suggestion.volumes} vol{suggestion.volumes !== 1 ? 's' : ''}
                     </Text>
-                  )}
+                  ) : null}
                 </div>
               </div>
             </button>

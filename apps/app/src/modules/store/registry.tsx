@@ -33,7 +33,7 @@ export function registerInitializer(fn: InitializerFn): void {
  * Call this once on app startup.
  */
 export async function initializeAll(): Promise<void> {
-  await Promise.all(initializers.map((fn) => fn()));
+  await Promise.all(initializers.map(async (fn) => fn()));
 }
 
 /**

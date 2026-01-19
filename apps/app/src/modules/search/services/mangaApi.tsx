@@ -71,8 +71,8 @@ export async function searchManga(
   options: { debug?: boolean | undefined; homeLibrary?: string | undefined } = {}
 ): Promise<SearchResult> {
   const params = new URLSearchParams({ q: query });
-  if (options.debug) params.set('debug', 'true');
-  if (options.homeLibrary) params.set('homeLibrary', options.homeLibrary);
+  if (options.debug === true) params.set('debug', 'true');
+  if (options.homeLibrary != null && options.homeLibrary !== '') params.set('homeLibrary', options.homeLibrary);
   return fetchApi<SearchResult>(`/manga/search?${params}`);
 }
 
@@ -85,10 +85,10 @@ export async function getSeriesDetails(
 ): Promise<SeriesDetails> {
   const encoded = encodeURIComponent(seriesId);
   const params = new URLSearchParams();
-  if (options.debug) params.set('debug', 'true');
-  if (options.homeLibrary) params.set('homeLibrary', options.homeLibrary);
+  if (options.debug === true) params.set('debug', 'true');
+  if (options.homeLibrary != null && options.homeLibrary !== '') params.set('homeLibrary', options.homeLibrary);
   const queryString = params.toString();
-  return fetchApi<SeriesDetails>(`/manga/series/${encoded}${queryString ? `?${queryString}` : ''}`);
+  return fetchApi<SeriesDetails>(`/manga/series/${encoded}${queryString !== '' ? `?${queryString}` : ''}`);
 }
 
 /**
@@ -100,9 +100,9 @@ export async function getVolumeDetails(
 ): Promise<BookDetails> {
   const encoded = encodeURIComponent(volumeId);
   const params = new URLSearchParams();
-  if (options.homeLibrary) params.set('homeLibrary', options.homeLibrary);
+  if (options.homeLibrary != null && options.homeLibrary !== '') params.set('homeLibrary', options.homeLibrary);
   const queryString = params.toString();
-  return fetchApi<BookDetails>(`/manga/volumes/${encoded}${queryString ? `?${queryString}` : ''}`);
+  return fetchApi<BookDetails>(`/manga/volumes/${encoded}${queryString !== '' ? `?${queryString}` : ''}`);
 }
 
 /**
@@ -113,9 +113,9 @@ export async function getBookDetails(
   options: { homeLibrary?: string | undefined } = {}
 ): Promise<BookDetails> {
   const params = new URLSearchParams();
-  if (options.homeLibrary) params.set('homeLibrary', options.homeLibrary);
+  if (options.homeLibrary != null && options.homeLibrary !== '') params.set('homeLibrary', options.homeLibrary);
   const queryString = params.toString();
-  return fetchApi<BookDetails>(`/manga/books/${isbn}${queryString ? `?${queryString}` : ''}`);
+  return fetchApi<BookDetails>(`/manga/books/${isbn}${queryString !== '' ? `?${queryString}` : ''}`);
 }
 
 // ============================================================================
@@ -140,7 +140,7 @@ export async function getSuggestions(
   options: { limit?: number | undefined } = {}
 ): Promise<SuggestionItem[]> {
   const params = new URLSearchParams({ q: query });
-  if (options.limit) params.set('limit', options.limit.toString());
+  if (options.limit != null && options.limit > 0) params.set('limit', options.limit.toString());
   const response = await fetchApi<SuggestionsResponse>(`/manga/suggestions?${params}`);
   return response.items;
 }
@@ -181,7 +181,7 @@ export async function getCacheStats(): Promise<AllCacheStats> {
 export async function clearAllCache(): Promise<CacheClearResult> {
   const url = `${env.apiUrl}/manga/cache`;
   const response = await fetch(url, { method: 'DELETE' });
-  const data = await response.json();
+  const data = (await response.json()) as CacheClearResult | ApiError;
   if (!response.ok) {
     throw new MangaApiError(response.status, data as ApiError);
   }
@@ -194,7 +194,7 @@ export async function clearAllCache(): Promise<CacheClearResult> {
 export async function clearCacheByType(type: 'wikipedia' | 'google-books' | 'bookcover' | 'nc-cardinal'): Promise<CacheClearResult> {
   const url = `${env.apiUrl}/manga/cache/type/${type}`;
   const response = await fetch(url, { method: 'DELETE' });
-  const data = await response.json();
+  const data = (await response.json()) as CacheClearResult | ApiError;
   if (!response.ok) {
     throw new MangaApiError(response.status, data as ApiError);
   }
@@ -207,7 +207,7 @@ export async function clearCacheByType(type: 'wikipedia' | 'google-books' | 'boo
 export async function clearCacheForBook(isbn: string): Promise<CacheClearResult> {
   const url = `${env.apiUrl}/manga/cache/book/${isbn}`;
   const response = await fetch(url, { method: 'DELETE' });
-  const data = await response.json();
+  const data = (await response.json()) as CacheClearResult | ApiError;
   if (!response.ok) {
     throw new MangaApiError(response.status, data as ApiError);
   }
@@ -220,7 +220,7 @@ export async function clearCacheForBook(isbn: string): Promise<CacheClearResult>
 export async function clearCacheForSeries(seriesId: string): Promise<CacheClearResult> {
   const url = `${env.apiUrl}/manga/cache/series/${encodeURIComponent(seriesId)}`;
   const response = await fetch(url, { method: 'DELETE' });
-  const data = await response.json();
+  const data = (await response.json()) as CacheClearResult | ApiError;
   if (!response.ok) {
     throw new MangaApiError(response.status, data as ApiError);
   }
@@ -233,7 +233,7 @@ export async function clearCacheForSeries(seriesId: string): Promise<CacheClearR
 export async function clearCacheForSearch(query: string): Promise<CacheClearResult> {
   const url = `${env.apiUrl}/manga/cache/search/${encodeURIComponent(query)}`;
   const response = await fetch(url, { method: 'DELETE' });
-  const data = await response.json();
+  const data = (await response.json()) as CacheClearResult | ApiError;
   if (!response.ok) {
     throw new MangaApiError(response.status, data as ApiError);
   }

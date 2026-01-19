@@ -23,6 +23,7 @@ export interface ThemeColors {
   textMuted: string;
   accent: string;
   accentHover: string;
+  accentAlpha: string;
   border: string;
   borderStrong: string;
   success: string;
@@ -42,6 +43,7 @@ export const colors: { light: ThemeColors; dark: ThemeColors } = {
     textMuted: '#999999',
     accent: '#c41e3a',
     accentHover: '#a01830',
+    accentAlpha: 'rgba(196, 30, 58, 0.1)',
     border: '#e0e0e0',
     borderStrong: '#cccccc',
     success: '#2e7d32',
@@ -59,6 +61,7 @@ export const colors: { light: ThemeColors; dark: ThemeColors } = {
     textMuted: '#707070',
     accent: '#e63950',
     accentHover: '#ff5a6e',
+    accentAlpha: 'rgba(230, 57, 80, 0.1)',
     border: '#333333',
     borderStrong: '#444444',
     success: '#66bb6a',

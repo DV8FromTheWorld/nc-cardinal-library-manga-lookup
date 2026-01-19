@@ -101,24 +101,24 @@ function getCurrentStep(event: SearchProgressEvent): StreamingSearchProgress['cu
 export function useStreamingSearch(options: UseStreamingSearchOptions = {}): UseStreamingSearchResult {
   const { initialQuery, homeLibrary, onQueryChange } = options;
   
-  const [query, setQueryState] = useState(initialQuery ?? '');
+  const [queryValue, setQueryValue] = useState(initialQuery ?? '');
   const [results, setResults] = useState<SearchResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<StreamingSearchProgress>(INITIAL_PROGRESS);
   
   const eventSourceRef = useRef<EventSource | null>(null);
-  const lastSearchedQuery = useRef<string | undefined>(undefined);
-  const hasInitialized = useRef(false);
+  const lastSearchedQueryRef = useRef<string | undefined>(undefined);
+  const hasInitializedRef = useRef(false);
 
   // Sync query input with initialQuery when it changes
   useEffect(() => {
     if (initialQuery !== undefined) {
-      setQueryState(initialQuery);
+      setQueryValue(initialQuery);
     }
   }, [initialQuery]);
 
-  // Cleanup on unmount - also reset hasInitialized so StrictMode remount works
+  // Cleanup on unmount - also reset hasInitializedRef so StrictMode remount works
   useEffect(() => {
     return () => {
       if (eventSourceRef.current) {
@@ -126,7 +126,7 @@ export function useStreamingSearch(options: UseStreamingSearchOptions = {}): Use
         eventSourceRef.current = null;
       }
       // Reset so the effect will re-execute search on StrictMode remount
-      hasInitialized.current = false;
+      hasInitializedRef.current = false;
     };
   }, []);
 
@@ -140,7 +140,7 @@ export function useStreamingSearch(options: UseStreamingSearchOptions = {}): Use
   }, []);
 
   const executeSearch = useCallback((searchQuery: string) => {
-    if (!searchQuery.trim()) {
+    if (searchQuery.trim() === '') {
       setResults(null);
       return;
     }
@@ -160,7 +160,7 @@ export function useStreamingSearch(options: UseStreamingSearchOptions = {}): Use
 
     // Build URL with query params
     const params = new URLSearchParams({ q: searchQuery });
-    if (homeLibrary) params.set('homeLibrary', homeLibrary);
+    if (homeLibrary != null && homeLibrary !== '') params.set('homeLibrary', homeLibrary);
     const url = `${env.apiUrl}/manga/search/stream?${params}`;
 
     // Create EventSource for SSE using react-native-sse
@@ -172,7 +172,7 @@ export function useStreamingSearch(options: UseStreamingSearchOptions = {}): Use
     eventSourceRef.current = es;
 
     es.addEventListener('message', (event) => {
-      if (!event.data) return;
+      if (event.data == null || event.data === '') return;
       
       try {
         const sseEvent = JSON.parse(event.data) as SearchProgressEvent;
@@ -222,7 +222,7 @@ export function useStreamingSearch(options: UseStreamingSearchOptions = {}): Use
           es.close();
           eventSourceRef.current = null;
         }
-      } catch (parseError) {
+      } catch {
         console.warn('[useStreamingSearch] Failed to parse SSE event:', event.data);
       }
     });
@@ -246,7 +246,7 @@ export function useStreamingSearch(options: UseStreamingSearchOptions = {}): Use
   }, [homeLibrary, isLoading]);
 
   const setQuery = useCallback((newQuery: string) => {
-    setQueryState(newQuery);
+    setQueryValue(newQuery);
     onQueryChange?.(newQuery);
   }, [onQueryChange]);
 
@@ -264,27 +264,27 @@ export function useStreamingSearch(options: UseStreamingSearchOptions = {}): Use
   // Execute search when initialQuery changes or on fresh mount with a query
   useEffect(() => {
     // On fresh mount, always execute search if we have an initialQuery
-    if (!hasInitialized.current) {
-      hasInitialized.current = true;
-      if (initialQuery) {
-        lastSearchedQuery.current = initialQuery;
+    if (!hasInitializedRef.current) {
+      hasInitializedRef.current = true;
+      if (initialQuery != null && initialQuery !== '') {
+        lastSearchedQueryRef.current = initialQuery;
         executeSearch(initialQuery);
       }
       return;
     }
     
     // After initialization, only execute when initialQuery actually changes
-    if (initialQuery && initialQuery !== lastSearchedQuery.current) {
-      lastSearchedQuery.current = initialQuery;
+    if (initialQuery != null && initialQuery !== '' && initialQuery !== lastSearchedQueryRef.current) {
+      lastSearchedQueryRef.current = initialQuery;
       executeSearch(initialQuery);
-    } else if (!initialQuery && lastSearchedQuery.current) {
-      lastSearchedQuery.current = undefined;
+    } else if ((initialQuery == null || initialQuery === '') && lastSearchedQueryRef.current != null) {
+      lastSearchedQueryRef.current = undefined;
       setResults(null);
     }
   }, [initialQuery, executeSearch]);
 
   return {
-    query,
+    query: queryValue,
     setQuery,
     results,
     isLoading,

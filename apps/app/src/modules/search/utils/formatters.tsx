@@ -59,14 +59,14 @@ export function getBestIsbnForAmazon(isbns: string[]): string | undefined {
   
   // Priority order: US English (9781), UK English (9780), any other 978, then first ISBN
   const usIsbn = cleaned.find(isbn => isbn.startsWith('9781'));
-  if (usIsbn) return usIsbn;
+  if (usIsbn != null) return usIsbn;
   
   const ukIsbn = cleaned.find(isbn => isbn.startsWith('9780'));
-  if (ukIsbn) return ukIsbn;
+  if (ukIsbn != null) return ukIsbn;
   
   // Any 978 prefix that isn't Japanese (9784)
   const otherEnglish = cleaned.find(isbn => isbn.startsWith('978') && !isbn.startsWith('9784'));
-  if (otherEnglish) return otherEnglish;
+  if (otherEnglish != null) return otherEnglish;
   
   // Fall back to first ISBN
   return cleaned[0];
@@ -79,7 +79,7 @@ export function getBestIsbnForAmazon(isbns: string[]): string | undefined {
 export function getAmazonUrl(isbn: string): string {
   const isbn10 = convertISBN13to10(isbn);
   
-  if (isbn10) {
+  if (isbn10 != null) {
     // Direct product page link (works with ISBN-10/ASIN)
     return `https://www.amazon.com/dp/${isbn10}`;
   }

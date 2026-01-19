@@ -39,7 +39,7 @@ export function useVolumeDetails(options: UseVolumeDetailsOptions): UseVolumeDet
       }
     }
 
-    fetchVolume();
+    void fetchVolume();
   }, [volumeId, homeLibrary]);
 
   return {

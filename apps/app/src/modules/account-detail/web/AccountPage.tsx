@@ -52,7 +52,7 @@ export function AccountPage(): JSX.Element {
     (tab: TabType) => {
       setActiveTab(tab);
       const path = tab === 'checkouts' ? '/account/checkouts' : `/account/${tab}`;
-      navigate(path, { replace: true });
+      void navigate(path, { replace: true });
     },
     [navigate]
   );
@@ -62,11 +62,11 @@ export function AccountPage(): JSX.Element {
     if (!isLoggedIn || !isInitialized) return;
 
     if (activeTab === 'checkouts' && checkouts.length === 0) {
-      fetchCheckouts();
+      void fetchCheckouts();
     } else if (activeTab === 'history' && history.length === 0) {
-      fetchHistory(0);
+      void fetchHistory(0);
     } else if (activeTab === 'holds' && holds.length === 0) {
-      fetchHolds();
+      void fetchHolds();
     }
   }, [activeTab, isLoggedIn, isInitialized, checkouts.length, history.length, holds.length]);
 
@@ -76,7 +76,7 @@ export function AccountPage(): JSX.Element {
 
   const handleLogout = useCallback(async () => {
     await logout();
-    navigate('/');
+    void navigate('/');
   }, [navigate]);
 
   if (!isInitialized) {
@@ -146,7 +146,7 @@ export function AccountPage(): JSX.Element {
           <Text variant="header-lg/bold"  className={styles.title}>
             My Account
           </Text>
-          {session?.displayName && (
+          {session?.displayName != null && (
             <Text variant="text-sm/normal" color="text-secondary">
               {session.displayName}
             </Text>
@@ -183,7 +183,7 @@ export function AccountPage(): JSX.Element {
         </button>
       </div>
 
-      {error && (
+      {error != null && (
         <div className={styles.error}>
           <span>⚠</span>
           <Text variant="text-md/normal">{error}</Text>
@@ -268,9 +268,9 @@ export function AccountPage(): JSX.Element {
           ) : (
             <>
               <div className={styles.itemList}>
-                {history.map((item, idx) => (
+                {history.map((item) => (
                   <HistoryCard
-                    key={`${item.recordId}-${idx}`}
+                    key={item.recordId}
                     item={item}
                     onClick={() => handleBookClick(item.recordId)}
                   />
@@ -345,7 +345,7 @@ function CheckoutCard({ item, onClick }: CheckoutCardProps): JSX.Element {
         <Text variant="text-md/semibold"  className={styles.itemTitle}>
           {item.title}
         </Text>
-        {item.author && (
+        {item.author != null && (
           <Text variant="text-sm/normal" color="text-secondary" tag="p" className={styles.itemAuthor}>
             {item.author}
           </Text>
@@ -355,8 +355,8 @@ function CheckoutCard({ item, onClick }: CheckoutCardProps): JSX.Element {
             <span className={styles.metaIcon}>📅</span>
             <Text variant="text-xs/normal">Due: {item.dueDate}</Text>
           </span>
-          {item.overdue && <span className={styles.overdueBadge}>Overdue</span>}
-          {item.callNumber && (
+          {item.overdue === true && <span className={styles.overdueBadge}>Overdue</span>}
+          {item.callNumber != null && (
             <span className={styles.metaItem}>
               <span className={styles.metaIcon}>📍</span>
               <Text variant="text-xs/normal">{item.callNumber}</Text>
@@ -383,7 +383,7 @@ function HistoryCard({ item, onClick }: HistoryCardProps): JSX.Element {
         <Text variant="text-md/semibold"  className={styles.itemTitle}>
           {item.title}
         </Text>
-        {item.author && (
+        {item.author != null && (
           <Text variant="text-sm/normal" color="text-secondary" tag="p" className={styles.itemAuthor}>
             {item.author}
           </Text>
@@ -393,7 +393,7 @@ function HistoryCard({ item, onClick }: HistoryCardProps): JSX.Element {
             <span className={styles.metaIcon}>📥</span>
             <Text variant="text-xs/normal">Checked out: {item.checkoutDate}</Text>
           </span>
-          {item.returnDate && (
+          {item.returnDate != null && (
             <span className={styles.metaItem}>
               <span className={styles.metaIcon}>📤</span>
               <Text variant="text-xs/normal">Returned: {item.returnDate}</Text>
@@ -420,7 +420,7 @@ function HoldCard({ item, onClick }: HoldCardProps): JSX.Element {
         <Text variant="text-md/semibold"  className={styles.itemTitle}>
           {item.title}
         </Text>
-        {item.author && (
+        {item.author != null && (
           <Text variant="text-sm/normal" color="text-secondary" tag="p" className={styles.itemAuthor}>
             {item.author}
           </Text>
@@ -430,17 +430,17 @@ function HoldCard({ item, onClick }: HoldCardProps): JSX.Element {
             <span className={styles.metaIcon}>📅</span>
             <Text variant="text-xs/normal">Placed: {item.holdDate}</Text>
           </span>
-          {item.status && (
+          {item.status !== '' && (
             <span className={styles.metaItem}>
               <span className={styles.metaIcon}>📍</span>
               <Text variant="text-xs/normal">{item.status}</Text>
             </span>
           )}
-          {item.position && (
+          {item.position != null && item.position > 0 ? (
             <span className={styles.metaItem}>
               <Text variant="text-xs/normal">Position: #{item.position}</Text>
             </span>
-          )}
+          ) : null}
         </div>
       </div>
     </button>

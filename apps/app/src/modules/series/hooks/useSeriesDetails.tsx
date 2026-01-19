@@ -40,11 +40,11 @@ export function useSeriesDetails(options: UseSeriesDetailsOptions): UseSeriesDet
   }, [seriesId, homeLibrary]);
 
   useEffect(() => {
-    fetchSeries(false);
+    void fetchSeries(false);
   }, [fetchSeries]);
 
   const refreshWithDebug = useCallback(() => {
-    fetchSeries(true);
+    void fetchSeries(true);
   }, [fetchSeries]);
 
   return {

@@ -60,16 +60,16 @@ export function AccountScreen({ navigation }: Props): JSX.Element {
     if (!isLoggedIn || !isInitialized) return;
 
     if (activeTab === 'checkouts' && checkouts.length === 0) {
-      fetchCheckouts();
+      void fetchCheckouts();
     } else if (activeTab === 'history' && history.length === 0) {
-      fetchHistory(0);
+      void fetchHistory(0);
     } else if (activeTab === 'holds' && holds.length === 0) {
-      fetchHolds();
+      void fetchHolds();
     }
   }, [activeTab, isLoggedIn, isInitialized, checkouts.length, history.length, holds.length]);
 
   const handleItemPress = useCallback((recordId: string) => {
-    Linking.openURL(`https://nccardinal.org/eg/opac/record/${recordId}`);
+    void Linking.openURL(`https://nccardinal.org/eg/opac/record/${recordId}`);
   }, []);
 
   const handleLogout = useCallback(async () => {
@@ -129,7 +129,7 @@ export function AccountScreen({ navigation }: Props): JSX.Element {
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
           <Heading level={1} variant="header-lg/bold">My Account</Heading>
-          {session?.displayName && (
+          {session?.displayName != null && (
             <Text variant="text-sm/normal" color="text-secondary">{session.displayName}</Text>
           )}
         </View>
@@ -185,7 +185,7 @@ export function AccountScreen({ navigation }: Props): JSX.Element {
         </TouchableOpacity>
       </View>
 
-      {error && (
+      {error != null && (
         <View style={[styles.errorBox, { backgroundColor: theme.errorBg }]}>
           <Text variant="text-sm/normal" color="error">⚠ {error}</Text>
         </View>
@@ -255,9 +255,9 @@ export function AccountScreen({ navigation }: Props): JSX.Element {
               </View>
             ) : (
               <>
-                {history.map((item, idx) => (
+                {history.map((item) => (
                   <HistoryCard
-                    key={`${item.recordId}-${idx}`}
+                    key={item.recordId}
                     item={item}
                     onPress={() => handleItemPress(item.recordId)}
                     theme={theme}
@@ -339,14 +339,14 @@ function CheckoutCard({ item, onPress, theme }: CheckoutCardProps): JSX.Element 
         <Text variant="text-md/semibold" color="text-primary" numberOfLines={2}>
           {item.title}
         </Text>
-        {item.author && (
+        {item.author != null && (
           <Text variant="text-sm/normal" color="text-secondary" numberOfLines={1}>
             {item.author}
           </Text>
         )}
         <View style={styles.itemMeta}>
           <Text variant="text-xs/normal" color="text-muted">📅 Due: {item.dueDate}</Text>
-          {item.overdue && (
+          {item.overdue === true && (
             <View style={[styles.overdueBadge, { backgroundColor: theme.error }]}>
               <Text variant="text-xs/semibold" style={styles.overdueBadgeText}>Overdue</Text>
             </View>
@@ -376,14 +376,14 @@ function HistoryCard({ item, onPress, theme }: HistoryCardProps): JSX.Element {
         <Text variant="text-md/semibold" color="text-primary" numberOfLines={2}>
           {item.title}
         </Text>
-        {item.author && (
+        {item.author != null && (
           <Text variant="text-sm/normal" color="text-secondary" numberOfLines={1}>
             {item.author}
           </Text>
         )}
         <View style={styles.itemMeta}>
           <Text variant="text-xs/normal" color="text-muted">📥 {item.checkoutDate}</Text>
-          {item.returnDate && (
+          {item.returnDate != null && (
             <Text variant="text-xs/normal" color="text-muted">📤 {item.returnDate}</Text>
           )}
         </View>
@@ -411,19 +411,19 @@ function HoldCard({ item, onPress, theme }: HoldCardProps): JSX.Element {
         <Text variant="text-md/semibold" color="text-primary" numberOfLines={2}>
           {item.title}
         </Text>
-        {item.author && (
+        {item.author != null && (
           <Text variant="text-sm/normal" color="text-secondary" numberOfLines={1}>
             {item.author}
           </Text>
         )}
         <View style={styles.itemMeta}>
           <Text variant="text-xs/normal" color="text-muted">📅 {item.holdDate}</Text>
-          {item.status && (
+          {item.status !== '' && (
             <Text variant="text-xs/normal" color="text-muted">{item.status}</Text>
           )}
-          {item.position && (
+          {item.position != null && item.position > 0 ? (
             <Text variant="text-xs/normal" color="text-muted">#{item.position}</Text>
-          )}
+          ) : null}
         </View>
       </View>
     </TouchableOpacity>

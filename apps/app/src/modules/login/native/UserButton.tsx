@@ -53,7 +53,7 @@ export function UserButton({ onLoginPress, onAccountPress }: UserButtonProps): J
   }
 
   // Get display name - truncate if too long
-  const shortName = displayName && displayName.length > 15 
+  const shortName = displayName != null && displayName.length > 15 
     ? displayName.slice(0, 12) + '...' 
     : displayName ?? 'Account';
 

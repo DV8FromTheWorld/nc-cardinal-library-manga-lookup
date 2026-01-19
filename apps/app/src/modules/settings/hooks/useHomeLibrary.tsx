@@ -24,7 +24,7 @@ export interface UseHomeLibraryResult {
 }
 
 export function useHomeLibrary(): UseHomeLibraryResult {
-  const [homeLibrary, setHomeLibraryState] = useState<string>(DEFAULT_LIBRARY);
+  const [homeLibraryValue, setHomeLibraryValue] = useState<string>(DEFAULT_LIBRARY);
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -35,8 +35,8 @@ export function useHomeLibrary(): UseHomeLibraryResult {
     async function loadStoredLibrary() {
       try {
         const stored = await storage.getItem(STORAGE_KEY);
-        if (!cancelled && stored) {
-          setHomeLibraryState(stored);
+        if (!cancelled && stored != null) {
+          setHomeLibraryValue(stored);
         }
       } catch (error) {
         console.error('Failed to load stored home library:', error);
@@ -46,9 +46,9 @@ export function useHomeLibrary(): UseHomeLibraryResult {
     // Handle both sync and async storage
     const result = storage.getItem(STORAGE_KEY);
     if (result instanceof Promise) {
-      loadStoredLibrary();
+      void loadStoredLibrary();
     } else if (typeof result === 'string') {
-      setHomeLibraryState(result);
+      setHomeLibraryValue(result);
     }
 
     return () => {
@@ -75,7 +75,7 @@ export function useHomeLibrary(): UseHomeLibraryResult {
       }
     }
 
-    fetchLibraries();
+    void fetchLibraries();
 
     return () => {
       cancelled = true;
@@ -83,16 +83,16 @@ export function useHomeLibrary(): UseHomeLibraryResult {
   }, []);
 
   const setHomeLibrary = useCallback((code: string) => {
-    setHomeLibraryState(code);
+    setHomeLibraryValue(code);
     // Fire and forget - storage.setItem may be async
     void storage.setItem(STORAGE_KEY, code);
   }, []);
 
   // Get the library name for the current selection
-  const libraryName = libraries.find((l) => l.code === homeLibrary)?.name;
+  const libraryName = libraries.find((l) => l.code === homeLibraryValue)?.name;
 
   return {
-    homeLibrary,
+    homeLibrary: homeLibraryValue,
     setHomeLibrary,
     libraries,
     isLoading,

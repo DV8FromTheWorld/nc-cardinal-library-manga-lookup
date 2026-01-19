@@ -50,7 +50,7 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
   }, [navigation]);
 
   const handleClearCache = useCallback(async () => {
-    if (id) {
+    if (id !== '') {
       await clearCacheForSeries(id);
       navigation.replace('Series', { id });
     }
@@ -77,11 +77,11 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
     [series?.title, handleSelectVolume, theme]
   );
 
-  const availabilityPercent = series ? getAvailabilityPercent(series.availableCount, series.totalVolumes) : 0;
+  const availabilityPercent = series != null ? getAvailabilityPercent(series.availableCount, series.totalVolumes) : 0;
 
   // Header component - safe with optional chaining
   const ListHeader = useMemo(
-    () => series ? (
+    () => series != null ? (
       <>
         {/* Back Button */}
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
@@ -90,16 +90,16 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
 
         {/* Header */}
         <View style={styles.header}>
-          {series.coverImage && (
+          {series.coverImage != null && (
             <SeriesCoverImage uri={series.coverImage} theme={theme} />
           )}
           <View style={styles.headerContent}>
             <Heading level={1} variant="header-lg/bold" style={styles.title}>{series.title}</Heading>
-            {series.author && (
+            {series.author != null && (
               <Text variant="text-sm/normal" color="text-secondary" style={styles.author}>by {series.author}</Text>
             )}
             <View style={styles.badges}>
-              {series.isComplete && (
+              {series.isComplete === true && (
                 <View style={[styles.badge, { backgroundColor: theme.successBg }]}>
                   <Text variant="text-xs/medium" color="success">✓ Complete Series</Text>
                 </View>
@@ -114,7 +114,7 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
         </View>
 
         {/* Description Section */}
-        {series.description && (
+        {series.description != null && (
           <View style={[styles.section, styles.descriptionSection, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}>
             <Heading level={2} variant="header-sm/semibold" style={styles.sectionTitle}>About</Heading>
             <Text variant="text-md/normal" color="text-secondary" style={styles.descriptionText}>
@@ -182,12 +182,12 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
 
   // Footer component with debug panel
   const ListFooter = useMemo(
-    () => series ? (
+    () => series != null ? (
       <View style={styles.footerContainer}>
         <DebugPanel
           debug={series._debug}
-          onRefreshWithDebug={!series._debug ? refreshWithDebug : undefined}
-          cacheContext={id ? { type: 'series', identifier: id } : undefined}
+          onRefreshWithDebug={series._debug == null ? refreshWithDebug : undefined}
+          cacheContext={id !== '' ? { type: 'series', identifier: id } : undefined}
           onClearCache={handleClearCache}
         />
       </View>
@@ -210,7 +210,7 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
   }
 
   // Error State - AFTER all hooks
-  if (error || !series) {
+  if (error != null || series == null) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
@@ -232,14 +232,10 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
         ListHeaderComponent={ListHeader}
         ListFooterComponent={ListFooter}
         showsVerticalScrollIndicator={false}
-        estimatedItemSize={VOLUME_ROW_HEIGHT}
       />
     </SafeAreaView>
   );
 }
-
-// Height of each volume row (padding + content + margin)
-const VOLUME_ROW_HEIGHT = 76 + spacing.sm;
 
 // ============================================================================
 // Sub-components
@@ -250,7 +246,7 @@ interface SeriesCoverImageProps {
   theme: ThemeColors;
 }
 
-function SeriesCoverImage({ uri, theme }: SeriesCoverImageProps): JSX.Element {
+function SeriesCoverImage({ uri, theme: _theme }: SeriesCoverImageProps): JSX.Element {
   const [imageError, setImageError] = useState(false);
 
   if (imageError) {
@@ -275,7 +271,7 @@ interface VolumeRowProps {
   theme: ThemeColors;
 }
 
-function VolumeRow({ volume, seriesTitle, onPress, theme }: VolumeRowProps): JSX.Element {
+function VolumeRow({ volume, seriesTitle: _seriesTitle, onPress, theme }: VolumeRowProps): JSX.Element {
   const isAvailable = volume.availability?.available ?? false;
   const [imageError, setImageError] = useState(false);
 
@@ -290,7 +286,7 @@ function VolumeRow({ volume, seriesTitle, onPress, theme }: VolumeRowProps): JSX
     >
       {/* Cover */}
       <View style={styles.volumeCover}>
-        {volume.coverImage && !imageError ? (
+        {volume.coverImage != null && imageError === false ? (
           <Image
             source={{ uri: volume.coverImage }}
             style={styles.volumeCoverImage}
@@ -311,12 +307,12 @@ function VolumeRow({ volume, seriesTitle, onPress, theme }: VolumeRowProps): JSX
 
       {/* Info */}
       <View style={styles.volumeInfo}>
-        {volume.title && (
+        {volume.title != null && (
           <Text variant="text-sm/medium" color="text-primary" numberOfLines={1}>
             {volume.title}
           </Text>
         )}
-        {volume.primaryIsbn && (
+        {volume.primaryIsbn != null && (
           <Text variant="text-xs/normal" color="text-muted" style={styles.volumeIsbn}>ISBN: {volume.primaryIsbn}</Text>
         )}
       </View>
@@ -326,11 +322,11 @@ function VolumeRow({ volume, seriesTitle, onPress, theme }: VolumeRowProps): JSX
         <View
           style={[
             styles.statusDot,
-            { backgroundColor: isAvailable ? theme.success : theme.textMuted },
+            { backgroundColor: isAvailable === true ? theme.success : theme.textMuted },
           ]}
         />
         <Text variant="text-xs/normal" color="text-muted">
-          {isAvailable
+          {isAvailable === true
             ? `${volume.availability?.totalCopies} ${volume.availability?.totalCopies === 1 ? 'copy' : 'copies'}`
             : 'Not available'}
         </Text>

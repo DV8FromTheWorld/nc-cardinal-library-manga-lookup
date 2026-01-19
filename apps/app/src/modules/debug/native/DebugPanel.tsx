@@ -91,14 +91,14 @@ export function DebugPanel({
             </TouchableOpacity>
           )}
 
-          {debug && (
+          {debug != null && (
             <ScrollView style={styles.debugContent} showsVerticalScrollIndicator={false}>
               {/* Data Issues - Show prominently */}
-              {debug.dataIssues && debug.dataIssues.length > 0 && (
+              {debug.dataIssues != null && debug.dataIssues.length > 0 && (
                 <View style={styles.section}>
                   <Text variant="text-sm/semibold" color="warning">⚠️ Data Issues</Text>
-                  {debug.dataIssues.map((issue, i) => (
-                    <Text key={i} variant="text-xs/normal" color="warning" style={styles.listItem}>
+                  {debug.dataIssues.map((issue) => (
+                    <Text key={issue} variant="text-xs/normal" color="warning" style={styles.listItem}>
                       • {issue}
                     </Text>
                   ))}
@@ -106,36 +106,36 @@ export function DebugPanel({
               )}
 
               {/* Source Summary */}
-              {debug.sourceSummary && (
+              {debug.sourceSummary != null && (
                 <View style={styles.section}>
                   <Text variant="text-sm/semibold" color="text-primary">Source Summary</Text>
-                  {debug.sourceSummary.wikipedia && (
+                  {debug.sourceSummary.wikipedia != null && (
                     <View style={[styles.sourceCard, { backgroundColor: debug.sourceSummary.wikipedia.found ? theme.successBg : theme.errorBg }]}>
                       <Text variant="text-xs/semibold" color="text-primary" style={styles.sourceLabel}>Wikipedia</Text>
                       <Text variant="text-xs/normal" color={debug.sourceSummary.wikipedia.found ? 'success' : 'error'} style={styles.sourceValue}>
                         {debug.sourceSummary.wikipedia.found
                           ? `✅ ${debug.sourceSummary.wikipedia.seriesTitle} (${debug.sourceSummary.wikipedia.volumeCount} vols)`
-                          : `❌ ${debug.sourceSummary.wikipedia.error || 'Not found'}`}
+                          : `❌ ${debug.sourceSummary.wikipedia.error ?? 'Not found'}`}
                       </Text>
                     </View>
                   )}
-                  {debug.sourceSummary.googleBooks && (
+                  {debug.sourceSummary.googleBooks != null && (
                     <View style={[styles.sourceCard, { backgroundColor: debug.sourceSummary.googleBooks.found ? theme.successBg : theme.errorBg }]}>
                       <Text variant="text-xs/semibold" color="text-primary" style={styles.sourceLabel}>Google Books</Text>
                       <Text variant="text-xs/normal" color={debug.sourceSummary.googleBooks.found ? 'success' : 'error'} style={styles.sourceValue}>
                         {debug.sourceSummary.googleBooks.found
                           ? `✅ ${debug.sourceSummary.googleBooks.volumesReturned} vols (${debug.sourceSummary.googleBooks.volumesWithSeriesId} with ID)`
-                          : `❌ ${debug.sourceSummary.googleBooks.error || 'Not found'}`}
+                          : `❌ ${debug.sourceSummary.googleBooks.error ?? 'Not found'}`}
                       </Text>
                     </View>
                   )}
-                  {debug.sourceSummary.ncCardinal && (
+                  {debug.sourceSummary.ncCardinal != null && (
                     <View style={[styles.sourceCard, { backgroundColor: debug.sourceSummary.ncCardinal.found ? theme.successBg : theme.errorBg }]}>
                       <Text variant="text-xs/semibold" color="text-primary" style={styles.sourceLabel}>NC Cardinal</Text>
                       <Text variant="text-xs/normal" color={debug.sourceSummary.ncCardinal.found ? 'success' : 'error'} style={styles.sourceValue}>
                         {debug.sourceSummary.ncCardinal.found
                           ? `✅ ${debug.sourceSummary.ncCardinal.volumesExtracted} vols from ${debug.sourceSummary.ncCardinal.recordCount} records`
-                          : `❌ ${debug.sourceSummary.ncCardinal.error || 'Not found'}`}
+                          : `❌ ${debug.sourceSummary.ncCardinal.error ?? 'Not found'}`}
                       </Text>
                     </View>
                   )}
@@ -172,11 +172,12 @@ export function DebugPanel({
               </View>
 
               {/* Log entries */}
-              {debug.log && debug.log.length > 0 && (
+              {debug.log != null && debug.log.length > 0 && (
                 <View style={styles.section}>
                   <Text variant="text-sm/semibold" color="text-primary">📋 Event Log ({debug.log.length})</Text>
                   {debug.log.map((entry, i) => (
-                    <Text key={i} variant="code" color="text-muted" style={styles.logText}>
+                    // eslint-disable-next-line @eslint-react/no-array-index-key -- Log entries may have duplicates; combined key ensures uniqueness
+                    <Text key={`${entry}-${i}`} variant="code" color="text-muted" style={styles.logText}>
                       {entry}
                     </Text>
                   ))}
@@ -189,7 +190,8 @@ export function DebugPanel({
                   <Text variant="text-sm/semibold" color="text-primary">Cache Hits</Text>
                   <View style={styles.tagsContainer}>
                     {debug.cacheHits.map((hit, i) => (
-                      <View key={i} style={[styles.tag, { backgroundColor: theme.successBg }]}>
+                      // eslint-disable-next-line @eslint-react/no-array-index-key -- Cache hits may have duplicates; combined key ensures uniqueness
+                      <View key={`${hit}-${i}`} style={[styles.tag, { backgroundColor: theme.successBg }]}>
                         <Text variant="text-xs/normal" color="success">{hit}</Text>
                       </View>
                     ))}
@@ -202,7 +204,8 @@ export function DebugPanel({
                 <View style={styles.section}>
                   <Text variant="text-sm/semibold" color="error">🚨 Errors</Text>
                   {debug.errors.map((error, i) => (
-                    <Text key={i} variant="text-xs/normal" color="error" style={styles.listItem}>
+                    // eslint-disable-next-line @eslint-react/no-array-index-key -- Errors may have duplicates; combined key ensures uniqueness
+                    <Text key={`${error}-${i}`} variant="text-xs/normal" color="error" style={styles.listItem}>
                       • {error}
                     </Text>
                   ))}
@@ -214,7 +217,8 @@ export function DebugPanel({
                 <View style={styles.section}>
                   <Text variant="text-sm/semibold" color="text-secondary">Warnings</Text>
                   {debug.warnings.map((warning, i) => (
-                    <Text key={i} variant="text-xs/normal" color="text-muted" style={styles.listItem}>
+                    // eslint-disable-next-line @eslint-react/no-array-index-key -- Warnings may have duplicates; combined key ensures uniqueness
+                    <Text key={`${warning}-${i}`} variant="text-xs/normal" color="text-muted" style={styles.listItem}>
                       • {warning}
                     </Text>
                   ))}
@@ -234,7 +238,7 @@ interface TimingItemProps {
   theme: typeof colors.light;
 }
 
-function TimingItem({ label, value, theme }: TimingItemProps): JSX.Element {
+function TimingItem({ label, value, theme: _theme }: TimingItemProps): JSX.Element {
   return (
     <View style={styles.timingItem}>
       <Text variant="header-sm/bold" color="text-primary">{value}ms</Text>

@@ -57,8 +57,8 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
   };
 
   const handleOpenCatalog = () => {
-    if (volume?.catalogUrl) {
-      Linking.openURL(volume.catalogUrl);
+    if (volume?.catalogUrl != null) {
+      void Linking.openURL(volume.catalogUrl);
     }
   };
 
@@ -68,7 +68,7 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
   const amazonIsbn = volume?.isbns ? getBestIsbnForAmazon(volume.isbns) : undefined;
 
   const handleClearCache = useCallback(async () => {
-    if (primaryIsbn) {
+    if (primaryIsbn != null) {
       await clearCacheForBook(primaryIsbn);
       // Navigation will reload the screen with fresh data
       navigation.replace('Volume', { id });
@@ -90,7 +90,7 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
   }
 
   // Error State
-  if (error || !volume) {
+  if (error != null || volume == null) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
@@ -127,7 +127,7 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
         <View style={styles.bookLayout}>
           {/* Cover */}
           <View style={styles.bookCover}>
-            {volume.coverImage && !imageError ? (
+            {volume.coverImage != null && imageError === false ? (
               <Image
                 source={{ uri: volume.coverImage }}
                 style={styles.coverImage}
@@ -150,7 +150,7 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
               </Text>
             )}
 
-            {volume.seriesInfo && seriesId && (
+            {volume.seriesInfo != null && seriesId != null && (
               <TouchableOpacity
                 style={[styles.seriesLink, { backgroundColor: theme.bgSecondary }]}
                 onPress={() => handleSelectSeries(seriesId)}
@@ -164,7 +164,7 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
         </View>
 
         {/* Description Section */}
-        {volume.summary && (
+        {volume.summary != null && (
           <View style={styles.section}>
             <Text variant="header-sm/semibold" style={styles.sectionTitle}>Description</Text>
             <Text variant="text-md/normal" color="text-secondary" style={styles.descriptionText}>
@@ -237,7 +237,7 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
             </View>
 
             {/* Catalog Link */}
-            {volume.catalogUrl && (
+            {volume.catalogUrl != null && (
               <TouchableOpacity style={[styles.catalogLink, { borderTopColor: theme.border }]} onPress={handleOpenCatalog}>
                 <Text variant="text-sm/medium" color="interactive-primary" style={styles.catalogLinkText}>
                   🔗 View in NC Cardinal Catalog
@@ -247,7 +247,7 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
 
             {/* External Links */}
             <View style={[styles.externalLinks, { borderTopColor: theme.border }]}>
-              {amazonIsbn && (
+              {amazonIsbn != null && (
                 <TouchableOpacity
                   style={[styles.externalLink, { backgroundColor: theme.bgTertiary }]}
                   onPress={() => Linking.openURL(getAmazonUrl(amazonIsbn))}
@@ -255,7 +255,7 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
                   <Text variant="text-sm/medium" style={styles.externalLinkText}>🛒 Amazon</Text>
                 </TouchableOpacity>
               )}
-              {volume.seriesInfo && (
+              {volume.seriesInfo != null && (
                 <TouchableOpacity
                   style={[styles.externalLink, { backgroundColor: theme.bgTertiary }]}
                   onPress={() => Linking.openURL(`https://myanimelist.net/manga.php?q=${encodeURIComponent(volume.seriesInfo?.title ?? '')}`)}
@@ -324,8 +324,8 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
           <View style={styles.section}>
             <Text variant="header-sm/semibold" style={styles.sectionTitle}>Subjects</Text>
             <View style={styles.subjectTags}>
-              {[...new Set(volume.subjects)].slice(0, 10).map((subject, idx) => (
-                <View key={idx} style={[styles.subjectTag, { backgroundColor: theme.bgSecondary }]}>
+              {[...new Set(volume.subjects)].slice(0, 10).map((subject) => (
+                <View key={subject} style={[styles.subjectTag, { backgroundColor: theme.bgSecondary }]}>
                   <Text variant="text-xs/normal" color="text-secondary" style={styles.subjectTagText}>
                     {subject.replace(/\.$/, '')}
                   </Text>
@@ -355,7 +355,7 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
         {/* Debug Panel */}
         <DebugPanel
           debug={undefined}
-          cacheContext={primaryIsbn ? { type: 'book', identifier: primaryIsbn } : undefined}
+          cacheContext={primaryIsbn != null && primaryIsbn !== '' ? { type: 'book', identifier: primaryIsbn } : undefined}
           onClearCache={handleClearCache}
         />
       </ScrollView>

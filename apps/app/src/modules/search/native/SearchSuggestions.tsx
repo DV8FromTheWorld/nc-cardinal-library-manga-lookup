@@ -61,7 +61,7 @@ export function SearchSuggestions({
   const theme = isDark ? colors.dark : colors.light;
 
   // Determine what to show
-  const showRecent = !query.trim() && recentSearches.length > 0;
+  const showRecent = query.trim() === '' && recentSearches.length > 0;
   const showSuggestions = query.trim().length > 0 && (suggestions.length > 0 || isLoading);
 
   if (!showRecent && !showSuggestions) {
@@ -225,7 +225,7 @@ function SuggestionItemRow({ suggestion, onPress, theme }: SuggestionItemRowProp
       onPress={onPress}
     >
       <View style={[styles.coverContainer, { backgroundColor: theme.bgSecondary }]}>
-        {suggestion.coverUrl ? (
+        {suggestion.coverUrl != null ? (
           <Image
             source={{ uri: suggestion.coverUrl }}
             style={styles.cover}
@@ -252,7 +252,7 @@ function SuggestionItemRow({ suggestion, onPress, theme }: SuggestionItemRowProp
               {getFormatLabel(suggestion.format)}
             </RNText>
           </View>
-          {suggestion.volumes && (
+          {suggestion.volumes != null && suggestion.volumes > 0 && (
             <Text variant="text-xs/normal" color="text-muted">
               {suggestion.volumes} vol{suggestion.volumes !== 1 ? 's' : ''}
             </Text>

@@ -23,7 +23,7 @@ export function useStoreInit(): { isInitialized: boolean } {
   const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
-    initializeAll().then(() => {
+    void initializeAll().then(() => {
       setIsInitialized(true);
     });
   }, []);

@@ -49,7 +49,7 @@ function getVariantStyles(variant: TextVariant): TextStyle {
     };
   }
 
-  if (parsed.type === 'text' && parsed.size) {
+  if (parsed.type === 'text' && parsed.size != null) {
     const size = fontSize[parsed.size as keyof typeof fontSize];
     return {
       fontFamily: 'DM Sans',
@@ -58,7 +58,7 @@ function getVariantStyles(variant: TextVariant): TextStyle {
     };
   }
 
-  if (parsed.type === 'header' && parsed.size) {
+  if (parsed.type === 'header' && parsed.size != null) {
     const size = headerSize[parsed.size as keyof typeof headerSize];
     return {
       fontFamily: 'Crimson Pro',
@@ -80,7 +80,7 @@ function getWeightStyle(variant: TextVariant): TextStyle {
     return { fontWeight: '400' };
   }
 
-  if (parsed.weight) {
+  if (parsed.weight != null) {
     const weight = fontWeightValues[parsed.weight];
     return { fontWeight: String(weight) as TextStyle['fontWeight'] };
   }
@@ -145,7 +145,7 @@ export function Text({
     styles.base,
     variantStyles,
     weightStyles,
-    colorValue ? { color: colorValue } : undefined,
+    colorValue != null ? { color: colorValue } : undefined,
     style,
   ];
 

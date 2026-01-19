@@ -75,15 +75,15 @@ export function DebugPanel({ debug, onRefreshWithDebug, cacheContext, onClearCac
             </button>
           )}
 
-          {debug && (
+          {debug != null && (
             <>
               {/* Data Issues - Show prominently if any */}
-              {debug.dataIssues && debug.dataIssues.length > 0 && (
+              {debug.dataIssues != null && debug.dataIssues.length > 0 && (
                 <div className={styles.section}>
                   <Text variant="text-sm/semibold" tag="div" className={styles.sectionTitle}>⚠️ Data Issues</Text>
                   <ul className={styles.warningList}>
-                    {debug.dataIssues.map((issue, i) => (
-                      <Text key={i} variant="text-xs/normal" tag="li" className={styles.warningItem}>
+                    {debug.dataIssues.map((issue) => (
+                      <Text key={issue} variant="text-xs/normal" tag="li" className={styles.warningItem}>
                         {issue}
                       </Text>
                     ))}
@@ -92,37 +92,37 @@ export function DebugPanel({ debug, onRefreshWithDebug, cacheContext, onClearCac
               )}
 
               {/* Source Summary */}
-              {debug.sourceSummary && (
+              {debug.sourceSummary != null && (
                 <div className={styles.section}>
                   <Text variant="text-sm/semibold" tag="div" className={styles.sectionTitle}>Source Summary</Text>
                   <div className={styles.sourceSummary}>
-                    {debug.sourceSummary.wikipedia && (
+                    {debug.sourceSummary.wikipedia != null && (
                       <div className={`${styles.sourceCard} ${debug.sourceSummary.wikipedia.found ? styles.sourceFound : styles.sourceNotFound}`}>
                         <Text variant="text-xs/bold" tag="strong">Wikipedia</Text>
                         {debug.sourceSummary.wikipedia.found ? (
                           <Text variant="text-xs/normal">✅ {debug.sourceSummary.wikipedia.seriesTitle} ({debug.sourceSummary.wikipedia.volumeCount} vols)</Text>
                         ) : (
-                          <Text variant="text-xs/normal">❌ {debug.sourceSummary.wikipedia.error || 'Not found'}</Text>
+                          <Text variant="text-xs/normal">❌ {debug.sourceSummary.wikipedia.error ?? 'Not found'}</Text>
                         )}
                       </div>
                     )}
-                    {debug.sourceSummary.googleBooks && (
+                    {debug.sourceSummary.googleBooks != null && (
                       <div className={`${styles.sourceCard} ${debug.sourceSummary.googleBooks.found ? styles.sourceFound : styles.sourceNotFound}`}>
                         <Text variant="text-xs/bold" tag="strong">Google Books</Text>
                         {debug.sourceSummary.googleBooks.found ? (
                           <Text variant="text-xs/normal">✅ {debug.sourceSummary.googleBooks.volumesReturned} vols ({debug.sourceSummary.googleBooks.volumesWithSeriesId} with seriesId)</Text>
                         ) : (
-                          <Text variant="text-xs/normal">❌ {debug.sourceSummary.googleBooks.error || 'Not found'}</Text>
+                          <Text variant="text-xs/normal">❌ {debug.sourceSummary.googleBooks.error ?? 'Not found'}</Text>
                         )}
                       </div>
                     )}
-                    {debug.sourceSummary.ncCardinal && (
+                    {debug.sourceSummary.ncCardinal != null && (
                       <div className={`${styles.sourceCard} ${debug.sourceSummary.ncCardinal.found ? styles.sourceFound : styles.sourceNotFound}`}>
                         <Text variant="text-xs/bold" tag="strong">NC Cardinal</Text>
                         {debug.sourceSummary.ncCardinal.found ? (
                           <Text variant="text-xs/normal">✅ {debug.sourceSummary.ncCardinal.volumesExtracted} vols from {debug.sourceSummary.ncCardinal.recordCount} records</Text>
                         ) : (
-                          <Text variant="text-xs/normal">❌ {debug.sourceSummary.ncCardinal.error || 'Not found'}</Text>
+                          <Text variant="text-xs/normal">❌ {debug.sourceSummary.ncCardinal.error ?? 'Not found'}</Text>
                         )}
                       </div>
                     )}
@@ -170,13 +170,14 @@ export function DebugPanel({ debug, onRefreshWithDebug, cacheContext, onClearCac
               </div>
 
               {/* Log entries - collapsible */}
-              {debug.log && debug.log.length > 0 && (
+              {debug.log != null && debug.log.length > 0 && (
                 <div className={styles.section}>
                   <details>
                     <Text variant="text-sm/semibold" tag="summary" className={styles.sectionTitle}>📋 Event Log ({debug.log.length} entries)</Text>
                     <ul className={styles.logList}>
                       {debug.log.map((entry, i) => (
-                        <Text key={i} variant="code" tag="li" className={styles.logItem}>
+                        // eslint-disable-next-line @eslint-react/no-array-index-key -- Log entries may have duplicates; combined key ensures uniqueness
+                        <Text key={`${entry}-${i}`} variant="code" tag="li" className={styles.logItem}>
                           {entry}
                         </Text>
                       ))}
@@ -190,7 +191,8 @@ export function DebugPanel({ debug, onRefreshWithDebug, cacheContext, onClearCac
                   <Text variant="text-sm/semibold" tag="div" className={styles.sectionTitle}>Cache Hits</Text>
                   <div className={styles.tags}>
                     {debug.cacheHits.map((hit, i) => (
-                      <Text key={i} variant="text-xs/medium" className={styles.cacheTag}>
+                      // eslint-disable-next-line @eslint-react/no-array-index-key -- Cache hits may have duplicates; combined key ensures uniqueness
+                      <Text key={`${hit}-${i}`} variant="text-xs/medium" className={styles.cacheTag}>
                         {hit}
                       </Text>
                     ))}
@@ -203,7 +205,8 @@ export function DebugPanel({ debug, onRefreshWithDebug, cacheContext, onClearCac
                   <Text variant="text-sm/semibold" tag="div" className={styles.sectionTitle}>🚨 Errors</Text>
                   <ul className={styles.errorList}>
                     {debug.errors.map((error, i) => (
-                      <Text key={i} variant="text-xs/normal" color="error" tag="li" className={styles.errorItem}>
+                      // eslint-disable-next-line @eslint-react/no-array-index-key -- Errors may have duplicates; combined key ensures uniqueness
+                      <Text key={`${error}-${i}`} variant="text-xs/normal" color="error" tag="li" className={styles.errorItem}>
                         {error}
                       </Text>
                     ))}
@@ -216,7 +219,8 @@ export function DebugPanel({ debug, onRefreshWithDebug, cacheContext, onClearCac
                   <Text variant="text-sm/semibold" tag="div" className={styles.sectionTitle}>Warnings</Text>
                   <ul className={styles.warningList}>
                     {debug.warnings.map((warning, i) => (
-                      <Text key={i} variant="text-xs/normal" color="warning" tag="li" className={styles.warningItem}>
+                      // eslint-disable-next-line @eslint-react/no-array-index-key -- Warnings may have duplicates; combined key ensures uniqueness
+                      <Text key={`${warning}-${i}`} variant="text-xs/normal" color="warning" tag="li" className={styles.warningItem}>
                         {warning}
                       </Text>
                     ))}

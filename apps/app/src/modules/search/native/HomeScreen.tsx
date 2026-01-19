@@ -76,7 +76,7 @@ export function HomeScreen({ navigation }: Props): JSX.Element {
   }, []);
 
   const handleSearch = useCallback(() => {
-    if (query.trim()) {
+    if (query.trim() !== '') {
       addRecentSearch(query.trim());
       clearSuggestions();
       setShowSuggestions(false);
@@ -206,7 +206,7 @@ export function HomeScreen({ navigation }: Props): JSX.Element {
               <TouchableOpacity
                 style={[styles.searchButton, { backgroundColor: theme.accent }]}
                 onPress={handleSearch}
-                disabled={!query.trim()}
+                disabled={query.trim() === ''}
               >
                 <RNText style={styles.searchButtonText}>→</RNText>
               </TouchableOpacity>
@@ -237,6 +237,7 @@ export function HomeScreen({ navigation }: Props): JSX.Element {
           {isRecommendationsLoading ? (
             <View style={styles.recommendationsGrid}>
               {Array.from({ length: 8 }).map((_, idx) => (
+                // eslint-disable-next-line @eslint-react/no-array-index-key -- Skeleton placeholders have no identity; index is appropriate
                 <View key={idx} style={[styles.skeletonCard, { backgroundColor: theme.bgSecondary }]}>
                   <View style={[styles.skeletonCover, { backgroundColor: theme.bgTertiary }]} />
                   <View style={styles.skeletonInfo}>
@@ -306,7 +307,7 @@ function RecommendationCard({ item, theme, onPress }: RecommendationCardProps): 
     if (item.status === 'RELEASING') {
       return { text: 'Ongoing', isOngoing: true };
     }
-    if (item.volumes) {
+    if (item.volumes != null && item.volumes > 0) {
       return { text: `${item.volumes} vol`, isOngoing: false };
     }
     return { text: 'Complete', isOngoing: false };
@@ -321,7 +322,7 @@ function RecommendationCard({ item, theme, onPress }: RecommendationCardProps): 
       activeOpacity={0.7}
     >
       <View style={[styles.recommendationCover, { backgroundColor: theme.bgTertiary }]}>
-        {item.coverUrl && !imageError ? (
+        {item.coverUrl != null && !imageError ? (
           <Image
             source={{ uri: item.coverUrl }}
             style={styles.recommendationCoverImage}
@@ -340,7 +341,7 @@ function RecommendationCard({ item, theme, onPress }: RecommendationCardProps): 
         </Text>
         <View style={[
           styles.recommendationBadge,
-          badge.isOngoing && { backgroundColor: theme.accentAlpha },
+          badge.isOngoing === true ? { backgroundColor: theme.accentAlpha } : null,
         ]}>
           <Text
             variant="text-xs/normal"

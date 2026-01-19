@@ -30,8 +30,8 @@ export function SearchPage(): JSX.Element {
 
   // Redirect to home if no query
   useEffect(() => {
-    if (!initialQuery) {
-      navigate('/', { replace: true });
+    if (initialQuery == null || initialQuery === '') {
+      void navigate('/', { replace: true });
     }
   }, [initialQuery, navigate]);
 
@@ -50,10 +50,10 @@ export function SearchPage(): JSX.Element {
   } = useAutocomplete();
 
   const handleQueryChange = useCallback((newQuery: string) => {
-    if (newQuery) {
-      navigate(`/search?q=${encodeURIComponent(newQuery)}`, { replace: true });
+    if (newQuery !== '') {
+      void navigate(`/search?q=${encodeURIComponent(newQuery)}`, { replace: true });
     } else {
-      navigate('/');
+      void navigate('/');
     }
   }, [navigate]);
 
@@ -74,7 +74,7 @@ export function SearchPage(): JSX.Element {
 
   // Focus input on mount (only if no initial query)
   useEffect(() => {
-    if (!initialQuery) {
+    if (initialQuery == null || initialQuery === '') {
       inputRef.current?.focus();
     }
   }, [initialQuery]);
@@ -92,11 +92,11 @@ export function SearchPage(): JSX.Element {
 
   const handleSelectSeries = useCallback((seriesId: string) => {
     // Use entity ID for navigation (stable across data source updates)
-    navigate(`/series/${encodeURIComponent(seriesId)}`);
+    void navigate(`/series/${encodeURIComponent(seriesId)}`);
   }, [navigate]);
 
   const handleSelectVolume = useCallback((volumeId: string) => {
-    navigate(`/volumes/${encodeURIComponent(volumeId)}`);
+    void navigate(`/volumes/${encodeURIComponent(volumeId)}`);
   }, [navigate]);
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -112,7 +112,7 @@ export function SearchPage(): JSX.Element {
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
-    if (query.trim()) {
+    if (query.trim() !== '') {
       addRecentSearch(query.trim());
       setShowSuggestions(false);
       clearSuggestions();
@@ -138,7 +138,7 @@ export function SearchPage(): JSX.Element {
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     // Let SearchSuggestions handle arrow keys and escape
     if (e.key === 'Enter' && !showSuggestions) {
-      if (query.trim()) {
+      if (query.trim() !== '') {
         addRecentSearch(query.trim());
         search(query);
       }
@@ -149,11 +149,11 @@ export function SearchPage(): JSX.Element {
     clearResults();
     clearSuggestions();
     setShowSuggestions(false);
-    navigate('/');
+    void navigate('/');
   }, [clearResults, clearSuggestions, navigate]);
 
   const handleClearCache = useCallback(async () => {
-    if (results?.query) {
+    if (results?.query != null && results.query !== '') {
       await clearCacheForSearch(results.query);
       // Re-run the search to get fresh data
       search(results.query);
@@ -189,7 +189,7 @@ export function SearchPage(): JSX.Element {
             onChange={(e) => {
               setHomeLibrary(e.target.value);
               // Re-run search with new home library if we have results
-              if (results?.query) {
+              if (results?.query != null && results.query !== '') {
                 search(results.query);
               }
             }}
@@ -220,7 +220,7 @@ export function SearchPage(): JSX.Element {
             <button
               type="submit"
               className={styles.searchButton}
-              disabled={isLoading || !query.trim()}
+              disabled={isLoading || query.trim() === ''}
             >
               {isLoading ? (
                 <span className={styles.spinner} />
@@ -241,14 +241,14 @@ export function SearchPage(): JSX.Element {
             onClose={() => setShowSuggestions(false)}
           />
         </div>
-        {results?.parsedQuery.volumeNumber && (
+        {results?.parsedQuery.volumeNumber != null && results.parsedQuery.volumeNumber > 0 && (
           <Text variant="text-sm/normal" color="text-secondary" tag="p" className={styles.parsedHint}>
             Searching for <Text variant="text-sm/semibold" tag="strong">{results.parsedQuery.title}</Text> volume <Text variant="text-sm/semibold" tag="strong">{results.parsedQuery.volumeNumber}</Text>
           </Text>
         )}
       </form>
 
-      {error && (
+      {error != null && (
         <div className={styles.error}>
           <Text variant="text-lg/medium" className={styles.errorIcon}>⚠</Text>
           <Text variant="text-md/normal" color="error">{error}</Text>
@@ -272,11 +272,11 @@ export function SearchPage(): JSX.Element {
                   highlighted
                 />
               )}
-              {results.bestMatch.type === 'volume' && results.bestMatch.volume && (
+              {results.bestMatch.type === 'volume' && results.bestMatch.volume != null && (
                 <VolumeCard
                   volume={results.bestMatch.volume}
                   onClick={() => {
-                    if (results.bestMatch!.volume!.id) {
+                    if (results.bestMatch!.volume!.id != null && results.bestMatch!.volume!.id !== '') {
                       handleSelectVolume(results.bestMatch!.volume!.id);
                     }
                   }}
@@ -289,14 +289,14 @@ export function SearchPage(): JSX.Element {
           {/* Series Results (excluding best match to avoid duplication) */}
           {(() => {
             const bestMatchSeriesId = results.bestMatch?.type === 'series' ? results.bestMatch.series?.id : undefined;
-            const filteredSeries = bestMatchSeriesId
+            const filteredSeries = bestMatchSeriesId != null
               ? results.series.filter((s) => s.id !== bestMatchSeriesId)
               : results.series;
             
             return filteredSeries.length > 0 ? (
               <section className={styles.section}>
                 <Heading level={2} className={styles.sectionTitle}>
-                  {bestMatchSeriesId ? 'Other Series' : 'Series'}
+                  {bestMatchSeriesId != null ? 'Other Series' : 'Series'}
                   <Text variant="text-sm/medium" color="text-muted" className={styles.count}>{filteredSeries.length}</Text>
                 </Heading>
                 <div className={styles.seriesGrid}>
@@ -325,7 +325,7 @@ export function SearchPage(): JSX.Element {
                     key={volume.id ?? `vol-${idx}`}
                     volume={volume}
                     onClick={() => {
-                      if (volume.id) {
+                      if (volume.id != null && volume.id !== '') {
                         handleSelectVolume(volume.id);
                       }
                     }}
@@ -365,7 +365,7 @@ export function SearchPage(): JSX.Element {
       {/* Debug Panel */}
       <DebugPanel
         debug={results?._debug}
-        cacheContext={results?.query ? { type: 'search', identifier: results.query } : undefined}
+        cacheContext={results?.query != null && results.query !== '' ? { type: 'search', identifier: results.query } : undefined}
         onClearCache={handleClearCache}
       />
 
@@ -393,13 +393,13 @@ function SeriesCard({ series, onClick, highlighted }: SeriesCardProps): JSX.Elem
 
   // Format media type for display
   const getMediaTypeLabel = (mediaType?: string) => {
-    if (!mediaType || mediaType === 'unknown') return null;
+    if (mediaType == null || mediaType === '' || mediaType === 'unknown') return null;
     return mediaType === 'light_novel' ? 'Light Novel' : 'Manga';
   };
 
   // Format relationship for display
   const getRelationshipLabel = (relationship?: string) => {
-    if (!relationship) return null;
+    if (relationship == null || relationship === '') return null;
     const labels: Record<string, string> = {
       adaptation: 'Adaptation',
       spinoff: 'Spin-off',
@@ -422,7 +422,7 @@ function SeriesCard({ series, onClick, highlighted }: SeriesCardProps): JSX.Elem
     >
       <div className={styles.seriesCardContent}>
         <div className={styles.seriesCover}>
-          {series.coverImage ? (
+          {series.coverImage != null ? (
             <img 
               src={series.coverImage} 
               alt={`${series.title} cover`}
@@ -434,24 +434,24 @@ function SeriesCard({ series, onClick, highlighted }: SeriesCardProps): JSX.Elem
                   img.style.display = 'none';
                   // Show the placeholder instead
                   const placeholder = img.nextElementSibling as HTMLElement;
-                  if (placeholder) placeholder.style.display = 'flex';
+                  if (placeholder != null) placeholder.style.display = 'flex';
                 }
               }}
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = 'none';
                 // Show the placeholder instead
                 const placeholder = (e.target as HTMLElement).nextElementSibling as HTMLElement;
-                if (placeholder) placeholder.style.display = 'flex';
+                if (placeholder != null) placeholder.style.display = 'flex';
               }}
             />
           ) : null}
-          <div className={styles.coverPlaceholder} style={{ display: series.coverImage ? 'none' : 'flex' }}>📚</div>
+          <div className={styles.coverPlaceholder} style={{ display: series.coverImage != null ? 'none' : 'flex' }}>📚</div>
         </div>
         <div className={styles.seriesInfo}>
           <div className={styles.seriesHeader}>
             <Text variant="header-sm/bold" tag="div" className={styles.seriesTitle}>{series.title}</Text>
             <div className={styles.seriesBadges}>
-              {mediaTypeLabel && (
+              {mediaTypeLabel != null && (
                 <Text 
                   variant="text-xs/semibold" 
                   className={`${styles.mediaTypeBadge} ${series.mediaType === 'light_novel' ? styles.lightNovel : styles.manga}`}
@@ -459,7 +459,7 @@ function SeriesCard({ series, onClick, highlighted }: SeriesCardProps): JSX.Elem
                   {mediaTypeLabel}
                 </Text>
               )}
-              {relationshipLabel && (
+              {relationshipLabel != null && (
                 <Text variant="text-xs/semibold" className={styles.relationshipBadge}>
                   {relationshipLabel}
                 </Text>
@@ -470,7 +470,7 @@ function SeriesCard({ series, onClick, highlighted }: SeriesCardProps): JSX.Elem
             </div>
           </div>
           
-          {series.author && (
+          {series.author != null && (
             <Text variant="text-sm/normal" color="text-secondary" tag="p" className={styles.seriesAuthor}>{series.author}</Text>
           )}
           
@@ -522,10 +522,10 @@ function VolumeCard({ volume, onClick, highlighted }: VolumeCardProps): JSX.Elem
       type="button"
       className={`${styles.volumeCard} ${highlighted ? styles.highlighted : ''}`}
       onClick={onClick}
-      disabled={!volume.isbn}
+      disabled={volume.isbn == null}
     >
       <div className={styles.volumeCover}>
-        {volume.coverImage ? (
+        {volume.coverImage != null ? (
           <img
             src={volume.coverImage}
             alt={volume.title}
@@ -537,23 +537,23 @@ function VolumeCard({ volume, onClick, highlighted }: VolumeCardProps): JSX.Elem
                 img.style.display = 'none';
                 // Show the placeholder instead
                 const placeholder = img.nextElementSibling as HTMLElement;
-                if (placeholder) placeholder.style.display = 'flex';
+                if (placeholder != null) placeholder.style.display = 'flex';
               }
             }}
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = 'none';
               // Show the placeholder instead
               const placeholder = (e.target as HTMLElement).nextElementSibling as HTMLElement;
-              if (placeholder) placeholder.style.display = 'flex';
+              if (placeholder != null) placeholder.style.display = 'flex';
             }}
           />
         ) : null}
-        <div className={styles.coverPlaceholder} style={{ display: volume.coverImage ? 'none' : 'flex' }}>📖</div>
+        <div className={styles.coverPlaceholder} style={{ display: volume.coverImage != null ? 'none' : 'flex' }}>📖</div>
       </div>
       <Text variant="text-sm/bold" tag="div" className={styles.volumeNumber}>{volume.volumeNumber ?? '?'}</Text>
       <div className={styles.volumeInfo}>
         <Text variant="text-sm/semibold" tag="div" className={styles.volumeTitle}>{volume.title}</Text>
-        {volume.seriesTitle && <Text variant="text-xs/normal" color="text-secondary" tag="p" className={styles.volumeSeries}>{volume.seriesTitle}</Text>}
+        {volume.seriesTitle != null && <Text variant="text-xs/normal" color="text-secondary" tag="p" className={styles.volumeSeries}>{volume.seriesTitle}</Text>}
         <div className={styles.volumeAvailability}>
           <span className={`${styles.availabilityDot} ${dotClass}`} />
           <Text variant="text-xs/normal">{statusText}</Text>
@@ -593,7 +593,7 @@ function SearchProgressIndicator({ progress }: SearchProgressIndicatorProps): JS
 
   // Calculate overall progress percentage
   const getOverallProgress = (): number => {
-    if (!progress.currentStep) return 0;
+    if (progress.currentStep == null) return 0;
     
     const stepWeights: Record<string, number> = {
       'wikipedia': 10,

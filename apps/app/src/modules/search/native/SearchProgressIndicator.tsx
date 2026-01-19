@@ -33,7 +33,7 @@ function getStepStatus(stepId: string, currentStep: string | null): StepStatus {
 }
 
 function getOverallProgress(progress: StreamingSearchProgress): number {
-  if (!progress.currentStep) return 0;
+  if (progress.currentStep == null) return 0;
 
   const stepWeights: Record<string, number> = {
     'wikipedia': 10,

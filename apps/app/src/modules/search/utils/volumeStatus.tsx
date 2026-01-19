@@ -3,7 +3,7 @@
  * Derives volume status from editions array - computed client-side, not from API.
  */
 
-import type { Edition, VolumeInfo, VolumeAvailability } from '../types';
+import type { Edition, VolumeInfo } from '../types';
 import { VolumeStatus } from '../types';
 
 /**
@@ -23,7 +23,7 @@ export function deriveVolumeStatus(editions: Edition[]): VolumeStatus {
   
   // Check if physical release date is in the future
   const now = new Date();
-  if (physicalEnglish?.releaseDate) {
+  if (physicalEnglish?.releaseDate != null) {
     const releaseDate = new Date(physicalEnglish.releaseDate);
     if (releaseDate > now) {
       return VolumeStatus.Upcoming;
@@ -87,7 +87,7 @@ export function getVolumeStatusDisplay(volume: VolumeInfo): VolumeDisplayInfo {
     const releaseDate = getEnglishReleaseDate(volume.editions);
     return { 
       icon: '⏳', 
-      label: releaseDate ? `Releases ${formatReleaseDate(releaseDate)}` : 'Coming soon'
+      label: releaseDate != null ? `Releases ${formatReleaseDate(releaseDate)}` : 'Coming soon'
     };
   }
   
@@ -116,13 +116,13 @@ export function getVolumeStatusDisplay(volume: VolumeInfo): VolumeDisplayInfo {
     };
   }
   
-  if (volume.availability.onOrderCopies && volume.availability.onOrderCopies > 0) {
+  if (volume.availability.onOrderCopies != null && volume.availability.onOrderCopies > 0) {
     return { icon: '📦', label: 'On order' };
   }
   
   return { 
     icon: '🟡', 
     label: 'Checked out',
-    sublabel: volume.availability.checkedOutCopies ? `${volume.availability.checkedOutCopies} copies` : undefined
+    sublabel: volume.availability.checkedOutCopies != null && volume.availability.checkedOutCopies > 0 ? `${volume.availability.checkedOutCopies} copies` : undefined
   };
 }

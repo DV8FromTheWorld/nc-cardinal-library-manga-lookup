@@ -58,10 +58,10 @@ async function fetchAccountApi<T>(
     },
   });
 
-  const data = await response.json();
+  const data = await response.json() as T | { error: string; message?: string | undefined };
 
   if (!response.ok) {
-    throw new AccountApiError(response.status, data);
+    throw new AccountApiError(response.status, data as { error: string; message?: string | undefined });
   }
 
   return data as T;
@@ -81,8 +81,8 @@ export async function getHistory(
   options: { limit?: number; offset?: number } = {}
 ): Promise<HistoryResponse> {
   const params: Record<string, string> = {};
-  if (options.limit) params.limit = options.limit.toString();
-  if (options.offset) params.offset = options.offset.toString();
+  if (options.limit != null) params.limit = options.limit.toString();
+  if (options.offset != null) params.offset = options.offset.toString();
 
   return fetchAccountApi<HistoryResponse>('/manga/user/history', { params });
 }

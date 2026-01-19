@@ -50,7 +50,7 @@ async function fetchAuthApi<T>(
     'Content-Type': 'application/json',
   };
 
-  if (sessionId) {
+  if (sessionId != null && sessionId !== '') {
     headers['X-Session-Id'] = sessionId;
   }
 
@@ -64,10 +64,10 @@ async function fetchAuthApi<T>(
 
   const response = await fetch(url, fetchOptions);
 
-  const data = await response.json();
+  const data = await response.json() as T | { error: string; message?: string | undefined };
 
   if (!response.ok) {
-    throw new AuthApiError(response.status, data);
+    throw new AuthApiError(response.status, data as { error: string; message?: string | undefined });
   }
 
   return data as T;

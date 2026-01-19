@@ -58,7 +58,7 @@ function getWeightClass(variant: TextVariant): string {
     return styles['weight-normal'] ?? '';
   }
 
-  if (parsed.weight) {
+  if (parsed.weight != null) {
     return styles[`weight-${parsed.weight}`] ?? '';
   }
 
@@ -87,24 +87,24 @@ export function Heading({
   // Build class list
   const classes: string[] = [];
   const headingClass = styles.heading;
-  if (headingClass) classes.push(headingClass);
+  if (headingClass != null && headingClass !== '') classes.push(headingClass);
 
-  if (variant) {
+  if (variant != null) {
     // Use variant-based styling
     const sizeClass = getSizeClass(variant);
     const weightClass = getWeightClass(variant);
-    if (sizeClass) classes.push(sizeClass);
-    if (weightClass) classes.push(weightClass);
+    if (sizeClass !== '') classes.push(sizeClass);
+    if (weightClass !== '') classes.push(weightClass);
   } else {
     // Use level-based default styling
     const levelClass = styles[`h${level}`];
-    if (levelClass) classes.push(levelClass);
+    if (levelClass != null) classes.push(levelClass);
   }
 
   const colorClass = getColorClass(color);
-  if (colorClass) classes.push(colorClass);
+  if (colorClass !== '') classes.push(colorClass);
 
-  if (className) {
+  if (className != null) {
     classes.push(className);
   }
 

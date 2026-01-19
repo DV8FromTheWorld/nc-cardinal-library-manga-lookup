@@ -29,7 +29,7 @@ import { clearCacheForSearch } from '../services/mangaApi';
 import { getAvailabilityPercent, getAvailabilityDisplayInfo } from '../utils/availability';
 import { SearchProgressIndicator } from './SearchProgressIndicator';
 import { SearchSuggestions } from './SearchSuggestions';
-import type { SeriesResult, VolumeResult } from '../types';
+import type { SeriesResult, VolumeResult, SearchResult } from '../types';
 import { Text } from '../../../design/components/Text/native/Text';
 import { Heading } from '../../../design/components/Heading/native/Heading';
 import { LoginModal } from '../../login/native/LoginModal';
@@ -52,7 +52,7 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
 
   // Redirect to Home if no query provided
   useEffect(() => {
-    if (!initialQuery) {
+    if (initialQuery == null || initialQuery === '') {
       navigation.replace('Home');
     }
   }, [initialQuery, navigation]);
@@ -70,21 +70,21 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
 
   const handleQueryChange = useCallback(
     (newQuery: string) => {
-      if (newQuery) {
+      if (newQuery !== '') {
         navigation.setParams({ query: newQuery });
       }
     },
     [navigation]
   );
 
-  const { query, setQuery, results, isLoading, error, progress, search, clearResults } = useStreamingSearch({
+  const { query, setQuery, results, isLoading, error, progress, search, clearResults: _clearResults } = useStreamingSearch({
     initialQuery,
     homeLibrary,
     onQueryChange: handleQueryChange,
   });
 
   const handleClearCache = useCallback(async () => {
-    if (results?.query) {
+    if (results?.query != null && results.query !== '') {
       await clearCacheForSearch(results.query);
       // Re-run the search to get fresh data
       search(results.query);
@@ -121,7 +121,7 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
   }, []);
 
   const handleSearch = useCallback(() => {
-    if (query.trim()) {
+    if (query.trim() !== '') {
       addRecentSearch(query.trim());
       setShowSuggestions(false);
       clearSuggestions();
@@ -213,7 +213,7 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
             <TouchableOpacity
               style={[styles.searchButton, { backgroundColor: theme.accent }]}
               onPress={handleSearch}
-              disabled={isLoading || !query.trim()}
+              disabled={isLoading || query.trim() === ''}
             >
               {isLoading ? (
                 <ActivityIndicator color="#fff" size="small" />
@@ -239,7 +239,7 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
       {/* Debug Panel - moved to header so it scrolls with content */}
       <DebugPanel
         debug={results?._debug}
-        cacheContext={results?.query ? { type: 'search', identifier: results.query } : undefined}
+        cacheContext={results?.query != null && results.query !== '' ? { type: 'search', identifier: results.query } : undefined}
         onClearCache={handleClearCache}
       />
     </View>
@@ -280,7 +280,7 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
                       setHomeLibrary(lib.code);
                       setShowLibraryPicker(false);
                       // Re-run search with new library if we have results
-                      if (results?.query) {
+                      if (results?.query != null && results.query !== '') {
                         search(results.query);
                       }
                     }}
@@ -352,7 +352,7 @@ function SeriesCard({ series, onPress, theme, highlighted }: SeriesCardProps): J
       activeOpacity={0.7}
     >
       <View style={styles.seriesCover}>
-        {series.coverImage && !imageError ? (
+        {series.coverImage != null && !imageError ? (
           <Image
             source={{ uri: series.coverImage }}
             style={styles.coverImage}
@@ -375,7 +375,7 @@ function SeriesCard({ series, onPress, theme, highlighted }: SeriesCardProps): J
             </View>
           )}
         </View>
-        {series.author && (
+        {series.author != null && (
           <Text variant="text-sm/normal" color="text-secondary" numberOfLines={1} style={styles.seriesAuthor}>
             {series.author}
           </Text>
@@ -431,10 +431,10 @@ function VolumeCard({ volume, onPress, theme, highlighted }: VolumeCardProps): J
       ]}
       onPress={onPress}
       activeOpacity={0.7}
-      disabled={!volume.isbn}
+      disabled={volume.isbn == null}
     >
       <View style={styles.volumeCover}>
-        {volume.coverImage && !imageError ? (
+        {volume.coverImage != null && !imageError ? (
           <Image
             source={{ uri: volume.coverImage }}
             style={styles.volumeCoverImage}
@@ -453,7 +453,7 @@ function VolumeCard({ volume, onPress, theme, highlighted }: VolumeCardProps): J
         <Text variant="text-sm/medium" color="text-primary" numberOfLines={1}>
           {volume.title}
         </Text>
-        {volume.seriesTitle && (
+        {volume.seriesTitle != null && (
           <Text variant="text-xs/normal" color="text-secondary" numberOfLines={1} style={styles.volumeSeries}>
             {volume.seriesTitle}
           </Text>
@@ -484,7 +484,7 @@ type NoResultsItem = { type: 'noResults'; id: string };
 type ResultItem = SectionHeaderItem | BestMatchItem | SeriesItem | VolumeItem | ShowMoreItem | NoResultsItem;
 
 // Estimated heights for different item types (used by FlashList)
-const ITEM_HEIGHTS = {
+const _ITEM_HEIGHTS = {
   sectionHeader: 48,
   bestMatch: 140, // SeriesCard or VolumeCard (variable, use larger estimate)
   series: 140,
@@ -494,7 +494,7 @@ const ITEM_HEIGHTS = {
 };
 
 interface ResultsListProps {
-  results: NonNullable<ReturnType<typeof useSearch>['results']> | null;
+  results: SearchResult | null;
   theme: ThemeColors;
   showAllVolumes: boolean;
   onToggleShowAllVolumes: () => void;
@@ -521,24 +521,24 @@ function ResultsList({
   // Build flattened list from results (including section headers as items)
   const items = useMemo((): ResultItem[] => {
     // If no results yet (loading or error), return empty array
-    if (!results) return [];
+    if (results == null) return [];
     
     const result: ResultItem[] = [];
     
     // Best Match section
-    if (results.bestMatch) {
+    if (results.bestMatch != null) {
       result.push({ type: 'sectionHeader', id: 'header-best-match', title: 'Best Match' });
       result.push({ type: 'bestMatch', id: 'best-match' });
     }
     
     // Series section (excluding best match)
     const bestMatchSeriesId = results.bestMatch?.type === 'series' ? results.bestMatch.series?.id : undefined;
-    const filteredSeries = bestMatchSeriesId
+    const filteredSeries = bestMatchSeriesId != null
       ? results.series.filter((s) => s.id !== bestMatchSeriesId)
       : results.series;
     
     if (filteredSeries.length > 0) {
-      const title = bestMatchSeriesId 
+      const title = bestMatchSeriesId != null 
         ? `Other Series (${filteredSeries.length})` 
         : `Series (${filteredSeries.length})`;
       result.push({ type: 'sectionHeader', id: 'header-series', title });
@@ -579,12 +579,12 @@ function ResultsList({
   const ListHeader = useMemo(() => (
     <View>
       {headerComponent}
-      {error && (
+      {error != null && (
         <View style={[styles.errorContainer, { backgroundColor: theme.errorBg }]}>
           <Text variant="text-sm/normal" color="error">⚠ {error}</Text>
         </View>
       )}
-      {isLoading && (
+      {isLoading && progress != null && (
         <SearchProgressIndicator progress={progress} />
       )}
     </View>
@@ -618,7 +618,7 @@ function ResultsList({
               <VolumeCard
                 volume={results.bestMatch.volume}
                 onPress={() => {
-                  if (results.bestMatch!.volume!.id) {
+                  if (results.bestMatch!.volume!.id != null && results.bestMatch!.volume!.id !== '') {
                     onSelectVolume(results.bestMatch!.volume!.id);
                   }
                 }}
@@ -641,12 +641,13 @@ function ResultsList({
           return (
             <VolumeCard
               volume={item.volume}
-              onPress={() => item.volume.id && onSelectVolume(item.volume.id)}
+              onPress={() => { if (item.volume.id != null && item.volume.id !== '') onSelectVolume(item.volume.id); }}
               theme={theme}
             />
           );
         case 'showMore':
-          return (
+          // Note: 'showMore' items are only added when results.volumes.length > 12
+          return results != null ? (
             <TouchableOpacity
               style={[styles.showMoreButton, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}
               onPress={onToggleShowAllVolumes}
@@ -655,7 +656,7 @@ function ResultsList({
                 {showAllVolumes ? 'Show less' : `Show all ${results.volumes.length} volumes`}
               </Text>
             </TouchableOpacity>
-          );
+          ) : null;
         case 'noResults':
           return (
             <View style={styles.noResults}>

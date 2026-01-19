@@ -67,7 +67,7 @@ export function useRecommendations(): UseRecommendationsResult {
       }
     }
 
-    fetchRecommendations();
+    void fetchRecommendations();
 
     return () => {
       cancelled = true;

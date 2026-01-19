@@ -27,22 +27,22 @@ export interface UseSearchResult {
 export function useSearch(options: UseSearchOptions = {}): UseSearchResult {
   const { initialQuery, homeLibrary, onQueryChange } = options;
   
-  const [query, setQueryState] = useState(initialQuery ?? '');
+  const [query, setQuery] = useState(initialQuery ?? '');
   const [results, setResults] = useState<SearchResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [debugMode, setDebugMode] = useState(false);
-  const lastSearchedQuery = useRef<string | undefined>(undefined);
+  const lastSearchedQueryRef = useRef<string | undefined>(undefined);
 
   // Sync query input with initialQuery when it changes (e.g., browser back/forward)
   useEffect(() => {
     if (initialQuery !== undefined) {
-      setQueryState(initialQuery);
+      setQuery(initialQuery);
     }
   }, [initialQuery]);
 
   const executeSearch = useCallback(async (searchQuery: string, debug: boolean) => {
-    if (!searchQuery.trim()) {
+    if (searchQuery.trim() === '') {
       setResults(null);
       return;
     }
@@ -63,37 +63,33 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchResult {
 
   // Execute search when initialQuery changes (URL navigation)
   useEffect(() => {
-    if (initialQuery && initialQuery !== lastSearchedQuery.current) {
-      lastSearchedQuery.current = initialQuery;
-      executeSearch(initialQuery, false);
-    } else if (!initialQuery && lastSearchedQuery.current) {
-      lastSearchedQuery.current = undefined;
+    if (initialQuery != null && initialQuery !== '' && initialQuery !== lastSearchedQueryRef.current) {
+      lastSearchedQueryRef.current = initialQuery;
+      void executeSearch(initialQuery, false);
+    } else if ((initialQuery == null || initialQuery === '') && lastSearchedQueryRef.current != null) {
+      lastSearchedQueryRef.current = undefined;
       setResults(null);
     }
   }, [initialQuery, executeSearch]);
 
-  const setQuery = useCallback((newQuery: string) => {
-    setQueryState(newQuery);
-  }, []);
-
   const search = useCallback((searchQuery: string) => {
     onQueryChange?.(searchQuery);
-    executeSearch(searchQuery, debugMode);
+    void executeSearch(searchQuery, debugMode);
   }, [onQueryChange, executeSearch, debugMode]);
 
   const refreshWithDebug = useCallback(() => {
-    if (results?.query) {
+    if (results?.query != null && results.query !== '') {
       setDebugMode(true);
-      executeSearch(results.query, true);
+      void executeSearch(results.query, true);
     }
   }, [results, executeSearch]);
 
   const clearResults = useCallback(() => {
-    setQueryState('');
+    setQuery('');
     setResults(null);
-    lastSearchedQuery.current = undefined;
+    lastSearchedQueryRef.current = undefined;
     onQueryChange?.('');
-  }, [onQueryChange]);
+  }, [onQueryChange, setQuery]);
 
   return {
     query,
