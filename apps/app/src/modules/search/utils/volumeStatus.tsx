@@ -100,6 +100,13 @@ export function getVolumeStatusDisplay(volume: VolumeInfo): VolumeDisplayInfo {
     return { icon: '⚪', label: 'Not in library' };
   }
   
+  // Layer 3.5: Has physical copies?
+  // A book can be in the catalog (has a record) but have 0 physical copies
+  // This typically means it's digital-only (e.g., available via hoopla)
+  if (volume.availability.totalCopies === 0) {
+    return { icon: '📱', label: 'Digital only' };
+  }
+  
   // Layer 4: Is it available?
   if (volume.availability.availableCopies > 0) {
     return { 

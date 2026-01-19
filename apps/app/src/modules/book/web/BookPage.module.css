@@ -294,6 +294,47 @@
   color: var(--color-text-muted);
 }
 
+.availabilityStatus.digitalOnly {
+  color: #7c4dff;
+}
+
+.digitalIcon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.digitalDescription {
+  margin: var(--spacing-sm) 0 var(--spacing-md);
+  line-height: 1.5;
+}
+
+.digitalAccessButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: linear-gradient(135deg, #7c4dff 0%, #536dfe 100%);
+  border: none;
+  border-radius: var(--radius-md);
+  color: white;
+  text-decoration: none;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(124, 77, 255, 0.3);
+}
+
+.digitalAccessButton:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(124, 77, 255, 0.4);
+}
+
+.digitalAccessButton .buttonIcon {
+  font-size: 1.25rem;
+}
+
 .statusIndicator {
   width: 12px;
   height: 12px;

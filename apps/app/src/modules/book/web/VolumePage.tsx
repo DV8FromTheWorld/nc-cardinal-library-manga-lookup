@@ -166,45 +166,71 @@ export function VolumePage(): JSX.Element {
           <section className={styles.availabilitySection}>
             <Heading level={2} className={styles.sectionTitle}>Availability</Heading>
             <div className={styles.availabilityCard}>
-              <div className={styles.availabilitySummary}>
-                <div className={`${styles.availabilityStatus} ${volume.availability.available ? styles.available : styles.unavailable}`}>
-                  <span className={styles.statusIndicator} />
-                  <Text variant="text-lg/semibold">
-                    {volume.availability.available ? 'Available Now' : 'Not Currently Available'}
-                  </Text>
-                </div>
-                <div className={styles.copyCount}>
-                  <Text variant="header-lg/bold" className={styles.copyNumber}>{volume.availability.availableCopies}</Text>
-                  <Text variant="text-md/normal" color="text-secondary" className={styles.copyLabel}>
-                    of {volume.availability.totalCopies} copies available
-                  </Text>
-                </div>
-                {/* Local vs Remote breakdown */}
-                {volume.availability.localCopies !== undefined && (
-                  <div className={styles.localRemote}>
-                    <div className={styles.localStatus}>
-                      <span className={`${styles.localDot} ${(volume.availability.localAvailable ?? 0) > 0 ? styles.available : styles.unavailable}`} />
-                      <Text variant="text-md/normal">
-                        {homeLibraryName ?? 'Your Library'}: 
-                        {(volume.availability.localAvailable ?? 0) > 0 
-                          ? ` ${volume.availability.localAvailable} available`
-                          : volume.availability.localCopies > 0 
-                            ? ' All checked out'
-                            : ' None'}
-                      </Text>
-                    </div>
-                    {(volume.availability.remoteCopies ?? 0) > 0 && (
-                      <Text variant="text-sm/normal" color="text-secondary" tag="div" className={styles.remoteStatus}>
-                        Other libraries: {volume.availability.remoteAvailable ?? 0} available
-                      </Text>
-                    )}
+              {/* Digital-only: in catalog but no physical copies */}
+              {volume.availability.totalCopies === 0 && volume.catalogUrl ? (
+                <div className={styles.availabilitySummary}>
+                  <div className={`${styles.availabilityStatus} ${styles.digitalOnly}`}>
+                    <span className={styles.digitalIcon}>📱</span>
+                    <Text variant="text-lg/semibold">
+                      Digital Only
+                    </Text>
                   </div>
-                )}
-              </div>
+                  <Text variant="text-md/normal" color="text-secondary" tag="p" className={styles.digitalDescription}>
+                    This title is available digitally through the library's e-book services (like hoopla). 
+                    No physical copies are available.
+                  </Text>
+                  <a 
+                    href={volume.catalogUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className={styles.digitalAccessButton}
+                  >
+                    <span className={styles.buttonIcon}>📖</span>
+                    <Text variant="text-md/semibold">Access Digital Copy</Text>
+                  </a>
+                </div>
+              ) : (
+                <div className={styles.availabilitySummary}>
+                  <div className={`${styles.availabilityStatus} ${volume.availability.available ? styles.available : styles.unavailable}`}>
+                    <span className={styles.statusIndicator} />
+                    <Text variant="text-lg/semibold">
+                      {volume.availability.available ? 'Available Now' : 'Not Currently Available'}
+                    </Text>
+                  </div>
+                  <div className={styles.copyCount}>
+                    <Text variant="header-lg/bold" className={styles.copyNumber}>{volume.availability.availableCopies}</Text>
+                    <Text variant="text-md/normal" color="text-secondary" className={styles.copyLabel}>
+                      of {volume.availability.totalCopies} copies available
+                    </Text>
+                  </div>
+                  {/* Local vs Remote breakdown */}
+                  {volume.availability.localCopies !== undefined && (
+                    <div className={styles.localRemote}>
+                      <div className={styles.localStatus}>
+                        <span className={`${styles.localDot} ${(volume.availability.localAvailable ?? 0) > 0 ? styles.available : styles.unavailable}`} />
+                        <Text variant="text-md/normal">
+                          {homeLibraryName ?? 'Your Library'}: 
+                          {(volume.availability.localAvailable ?? 0) > 0 
+                            ? ` ${volume.availability.localAvailable} available`
+                            : volume.availability.localCopies > 0 
+                              ? ' All checked out'
+                              : ' None'}
+                        </Text>
+                      </div>
+                      {(volume.availability.remoteCopies ?? 0) > 0 && (
+                        <Text variant="text-sm/normal" color="text-secondary" tag="div" className={styles.remoteStatus}>
+                          Other libraries: {volume.availability.remoteAvailable ?? 0} available
+                        </Text>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               
-              {/* Catalog and external links */}
+              {/* External links - only show for non-digital-only books or as secondary links */}
               <div className={styles.externalLinks}>
-                {volume.catalogUrl && (
+                {/* Only show catalog link if not digital-only (digital-only has prominent button above) */}
+                {volume.catalogUrl && volume.availability.totalCopies > 0 && (
                   <a 
                     href={volume.catalogUrl} 
                     target="_blank" 
@@ -243,49 +269,52 @@ export function VolumePage(): JSX.Element {
                 </div>
               </div>
 
-              <div className={styles.libraryList}>
-                <Heading level={3} className={styles.libraryListTitle}>
-                  Available at {volume.availability.libraries.length} {volume.availability.libraries.length === 1 ? 'library' : 'libraries'}
-                </Heading>
-                
-                {displayLibraries.map((libraryName) => {
-                  const holdings = holdingsByLibrary[libraryName];
-                  const firstHolding = holdings?.[0];
-                  if (!holdings || !firstHolding) return null;
-
-                  const availableCount = getAvailableCount(holdings);
+              {/* Library list - only show if there are physical copies */}
+              {volume.availability.totalCopies > 0 && (
+                <div className={styles.libraryList}>
+                  <Heading level={3} className={styles.libraryListTitle}>
+                    Available at {volume.availability.libraries.length} {volume.availability.libraries.length === 1 ? 'library' : 'libraries'}
+                  </Heading>
                   
-                  return (
-                    <div key={libraryName} className={styles.libraryItem}>
-                      <div className={styles.libraryInfo}>
-                        <Text variant="text-md/medium" className={styles.libraryName}>{libraryName}</Text>
-                        <Text variant="text-xs/normal" color="text-muted" className={styles.libraryLocation}>
-                          {firstHolding.location} • {firstHolding.callNumber}
-                        </Text>
-                      </div>
-                      <div className={styles.libraryCopies}>
-                        <Text variant="text-xs/medium" className={`${styles.copyBadge} ${availableCount > 0 ? styles.available : styles.unavailable}`}>
-                          {availableCount > 0 ? `${availableCount} available` : 'Checked out'}
-                        </Text>
-                      </div>
-                    </div>
-                  );
-                })}
+                  {displayLibraries.map((libraryName) => {
+                    const holdings = holdingsByLibrary[libraryName];
+                    const firstHolding = holdings?.[0];
+                    if (!holdings || !firstHolding) return null;
 
-                {libraryNames.length > 5 && (
-                  <button
-                    type="button"
-                    className={styles.expandButton}
-                    onClick={() => setExpandedLibraries(!expandedLibraries)}
-                  >
-                    <Text variant="text-sm/normal">
-                      {expandedLibraries 
-                        ? 'Show fewer libraries' 
-                        : `Show ${libraryNames.length - 5} more libraries`}
-                    </Text>
-                  </button>
-                )}
-              </div>
+                    const availableCount = getAvailableCount(holdings);
+                    
+                    return (
+                      <div key={libraryName} className={styles.libraryItem}>
+                        <div className={styles.libraryInfo}>
+                          <Text variant="text-md/medium" className={styles.libraryName}>{libraryName}</Text>
+                          <Text variant="text-xs/normal" color="text-muted" className={styles.libraryLocation}>
+                            {firstHolding.location} • {firstHolding.callNumber}
+                          </Text>
+                        </div>
+                        <div className={styles.libraryCopies}>
+                          <Text variant="text-xs/medium" className={`${styles.copyBadge} ${availableCount > 0 ? styles.available : styles.unavailable}`}>
+                            {availableCount > 0 ? `${availableCount} available` : 'Checked out'}
+                          </Text>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {libraryNames.length > 5 && (
+                    <button
+                      type="button"
+                      className={styles.expandButton}
+                      onClick={() => setExpandedLibraries(!expandedLibraries)}
+                    >
+                      <Text variant="text-sm/normal">
+                        {expandedLibraries 
+                          ? 'Show fewer libraries' 
+                          : `Show ${libraryNames.length - 5} more libraries`}
+                      </Text>
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </section>
 
