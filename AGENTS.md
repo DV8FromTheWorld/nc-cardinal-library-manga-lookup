@@ -211,11 +211,19 @@ cliclick c:615,700
 ## Known Gotchas
 
 1. **Wikipedia redirects**: Always use `redirects=1` parameter (handles special characters)
-2. **Transcluded pages**: One Piece splits volumes across 6 subpages - must fetch all
+2. **Transcluded pages**: Wikipedia uses TWO different transclusion syntaxes:
+   - `{{:Page Name}}` - Direct transclusion (One Piece style, 6 subpages)
+   - `{{#section-h::Page Name|Section}}` - Section transclusion (Naruto style, 3 subpages)
+   - Both must be detected and fetched to get complete volume lists
 3. **ISBN formats**: Wikipedia has ISBN-10, library needs ISBN-13 - conversion required
 4. **Mixed media**: Some pages have both manga and light novels - detect via section headers
 5. **CORS**: API needs `@fastify/cors` configured for localhost:3000
 6. **Duplicate React**: Monorepo can have multiple React instances - use `resolve.alias` in bundler
+7. **Digital-only books**: Some books exist in NC Cardinal but only as e-books (no physical copies):
+   - Detection: `totalCopies === 0` AND `catalogUrl` exists
+   - UI: Show "📱 Digital only" on series page, "Digital Only" card with access button on volume page
+   - Don't confuse with "checked out" (which requires `totalCopies > 0`)
+   - See `volumeStatus.tsx` and `VolumePage.tsx` for implementation
 
 ## Git Commits
 

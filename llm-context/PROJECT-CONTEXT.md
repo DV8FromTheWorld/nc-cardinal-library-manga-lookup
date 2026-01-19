@@ -208,17 +208,20 @@ https://bookcover.longitood.com/bookcover/{isbn}
 - Returns clean 404 when no image (allows proper placeholder handling)
 - Aggregates from Amazon, Goodreads, etc.
 - Cached in `.cache/bookcover/`
+- **Performance note**: Uses 5-second timeout. The API responds quickly (~0.5s) when covers are found, but takes 25+ seconds to return "not found" because it searches multiple sources. Timeout prevents blocking.
 
 **2. Google Books API** (Fallback)
 - `thumbnail` field in search results
 - May return placeholder images when no cover exists
+- **Placeholder detection**: Uses HEAD request to check `content-type` header - real covers are JPEG, placeholders are PNG. HEAD avoids downloading full image just for detection.
+- Cached in `.cache/google-books-covers/`
 
 **3. OpenLibrary Covers API** (Last Resort)
 ```
 https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg
 ```
 - May return placeholder GIFs instead of 404
-- UI handles via `onError` image handler
+- UI handles via `onLoad` (check if image is 1x1 pixel) and `onError` handlers
 
 ### 4. Google Books API (Series Data Fallback)
 
@@ -502,6 +505,32 @@ Returns book details with holdings from all libraries.
 
 **Cause**: Google Books and OpenLibrary return placeholder images
 **Solution**: Prioritize Bookcover API which returns clean 404
+
+### 10. "Checked out" shown for digital-only books
+
+**Cause**: Books exist in NC Cardinal catalog with `totalCopies: 0` (no physical holdings) but have a `catalogUrl`. Frontend incorrectly displays "Checked out" instead of distinguishing digital-only items.
+
+**Detection logic**:
+- `notInCatalog: true` → Book not found in catalog at all
+- `totalCopies === 0` AND `catalogUrl` exists → Digital-only (e-book via hoopla, etc.)
+- `totalCopies > 0` AND `availableCopies === 0` → Checked out
+
+**Frontend solution** (`getVolumeStatusDisplay` and `VolumePage`):
+```typescript
+// Series page (volumeStatus.tsx)
+if (volume.availability.totalCopies === 0 && volume.availability.catalogUrl) {
+  return { icon: '📱', label: 'Digital only' };
+}
+
+// Volume detail page (VolumePage.tsx)
+if (volume.availability.totalCopies === 0 && volume.catalogUrl) {
+  // Show "Digital Only" card with link to access e-book
+}
+```
+
+**UI treatment**:
+- Series page: Shows 📱 icon with "Digital only" label
+- Volume page: Shows prominent "Digital Only" status with "Access Digital Copy" button linking to catalog
 
 ## TypeScript Conventions
 

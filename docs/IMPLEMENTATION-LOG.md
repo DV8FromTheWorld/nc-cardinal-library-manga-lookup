@@ -146,3 +146,88 @@ This document tracks the implementation progress, decisions, and notes for the f
 - `apps/app/src/modules/search/native/SearchScreen.tsx` - Navigation push, back button, cache clearing
 - `apps/app/src/modules/book/native/BookScreen.tsx` - Cache clearing
 - `apps/app/src/modules/series/native/SeriesScreen.tsx` - Cache clearing
+
+---
+
+## Performance Fix: Cover Image Loading (2026-01-18)
+
+### Problem
+Book covers were taking 60+ seconds to load for series with many volumes. Users reported covers "taking forever."
+
+### Investigation
+Profiled the cover fetching flow and found two major bottlenecks:
+
+1. **Bookcover API slow timeout**: The `bookcover.longitood.com` API returns quickly (~0.5s) when it finds a cover, but takes **25+ seconds** to return "not found" because it searches multiple sources (Amazon, Goodreads, OpenLibrary, etc.) before giving up.
+
+2. **Google Books full image download**: The placeholder detection was using `fetch()` (GET) to download entire images just to check the `content-type` header to determine if it's a placeholder (PNG) or real cover (JPEG).
+
+### Solutions
+
+#### 1. Bookcover API Timeout (5 seconds)
+Added an `AbortController` with 5-second timeout to `fetchBookcoverUrl()`. If the API doesn't respond quickly, it's unlikely to find a cover - we fall back to Google Books or OpenLibrary instead of waiting 25+ seconds.
+
+```typescript
+const controller = new AbortController();
+const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+const response = await fetch(url, { signal: controller.signal });
+clearTimeout(timeoutId);
+```
+
+#### 2. HEAD Request for Placeholder Detection
+Changed Google Books placeholder detection from `fetch(imageUrl)` to `fetch(imageUrl, { method: 'HEAD' })`. This fetches only the response headers (~1KB) instead of the full image (~100KB+).
+
+### Results
+- **Before**: 60+ seconds for uncached covers (worst case)
+- **After**: ~10 seconds even with fresh cache
+
+### Files Modified
+- `apps/api/src/scripts/manga-search.ts`:
+  - `fetchBookcoverUrl()` - Added 5-second AbortController timeout
+  - `fetchGoogleBooksCoverUrl()` - Changed to HEAD request for placeholder detection
+
+### Testing
+Verified with "Spy × Family" search after clearing cover caches - all 15+ volume covers loaded in ~10 seconds with images displaying correctly.
+
+---
+
+## Investigation: Fairy Tail (2026-01-19)
+
+### Problem
+Search for "Fairy Tail" was returning "Fairy Tail Zero" (1 volume) instead of the main series (63 volumes).
+
+### Root Cause
+Stale cache data. The Wikipedia search result scoring was selecting "Fairy Tail Zero" as the best result, but the `pagesToTry` list in `getSeries()` correctly tries chapter list pages first (`List of Fairy Tail chapters`). Old cached parsed series data was pointing to the wrong series.
+
+### Solution
+Clear the Wikipedia cache: `rm -rf apps/api/.cache/wikipedia/*fairy*`
+
+### Franchise Structure Discovered
+
+| Series | Type | Volumes |
+|--------|------|---------|
+| **Fairy Tail** | Main | 63 |
+| └─ Fairy Tail: Ice Trail | Spinoff | 2 |
+| └─ Fairy Tail Gaiden | Side Story | 3 |
+| └─ Fairy Tail: Happy's Heroic Adventure | Spinoff | 8 |
+| **Fairy Tail: 100 Years Quest** | Sequel | 22 |
+| **Fairy Tail Zero** | Prequel | 1 |
+| **Total** | | **99** |
+
+### Technical Notes
+- The main series Wikipedia page uses 4 transcluded subpages:
+  - `List of Fairy Tail chapters (volumes 1–15)`
+  - `List of Fairy Tail chapters (volumes 16–30)`
+  - `List of Fairy Tail chapters (volumes 31–45)`
+  - `List of Fairy Tail chapters (volumes 46–63)`
+- Spinoffs (Ice Trail, Gaiden, Happy's Adventure) are correctly detected and attached as `relatedSeries` on the main series
+- Sequel (100 Years Quest) and prequel (Zero) require separate searches - they are not attached to main series
+- All 63 main series volumes were found in NC Cardinal catalog
+
+### Verification
+```bash
+# Clear cache and test
+rm -rf apps/api/.cache/wikipedia/*fairy*
+curl "http://localhost:3001/manga/search/stream?q=Fairy+Tail" | head -20
+# Should show: volumeCount: 63
+```
