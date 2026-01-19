@@ -3,7 +3,8 @@
  */
 
 export const routes = {
-  search: '/',
+  home: '/',
+  search: '/search',
   series: '/series/:id',
   volume: '/volumes/:id',
 } as const;

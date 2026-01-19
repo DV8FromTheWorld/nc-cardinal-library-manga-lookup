@@ -198,7 +198,7 @@ query GetPopularManga($page: Int, $perPage: Int, $sort: [MediaSort]) {
       volumes
       status
       coverImage {
-        medium
+        extraLarge
       }
     }
   }
@@ -218,7 +218,7 @@ query SearchSuggestions($search: String!, $perPage: Int) {
       volumes
       status
       coverImage {
-        medium
+        extraLarge
       }
     }
   }
@@ -381,7 +381,7 @@ export async function getPopularManga(
         format: AniListFormat | null;
         volumes: number | null;
         status: string;
-        coverImage: { medium: string | null } | null;
+        coverImage: { extraLarge: string | null } | null;
       }>;
     };
   }>(GET_POPULAR_MANGA_QUERY, { 
@@ -399,7 +399,7 @@ export async function getPopularManga(
         format: AniListFormat | null;
         volumes: number | null;
         status: string;
-        coverImage: { medium: string | null } | null;
+        coverImage: { extraLarge: string | null } | null;
       }>;
     };
   }>(GET_POPULAR_MANGA_QUERY, { 
@@ -418,7 +418,7 @@ export async function getPopularManga(
     format: AniListFormat | null;
     volumes: number | null;
     status: string;
-    coverImage: { medium: string | null } | null;
+    coverImage: { extraLarge: string | null } | null;
   }) => {
     if (seenIds.has(media.id)) return;
     seenIds.add(media.id);
@@ -430,7 +430,7 @@ export async function getPopularManga(
       format: media.format ?? 'MANGA',
       volumes: media.volumes,
       status: media.status,
-      coverUrl: media.coverImage?.medium ?? null,
+      coverUrl: media.coverImage?.extraLarge ?? null,
     });
   };
 
@@ -480,7 +480,7 @@ export async function getSuggestions(
         format: AniListFormat | null;
         volumes: number | null;
         status: string;
-        coverImage: { medium: string | null } | null;
+        coverImage: { extraLarge: string | null } | null;
       }>;
     };
   }>(SEARCH_SUGGESTIONS_QUERY, { search: query, perPage: limit });
@@ -492,7 +492,7 @@ export async function getSuggestions(
     format: media.format ?? 'MANGA',
     volumes: media.volumes,
     status: media.status,
-    coverUrl: media.coverImage?.medium ?? null,
+    coverUrl: media.coverImage?.extraLarge ?? null,
   }));
 
   // Cache the result

@@ -5,6 +5,7 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import '../../store/stores'; // Register all store initializers
 import { useStoreInit } from '../../store/useStoreInit';
+import { HomePage } from '../../search/web/HomePage';
 import { SearchPage } from '../../search/web/SearchPage';
 import { SeriesPage } from '../../series/web/SeriesPage';
 import { VolumePage } from '../../book/web/VolumePage';
@@ -13,7 +14,7 @@ import { AccountPage } from '../../account-detail/web/AccountPage';
 const router = createBrowserRouter([
   {
     path: '/',
-    element: <SearchPage />,
+    element: <HomePage />,
   },
   {
     path: '/search',

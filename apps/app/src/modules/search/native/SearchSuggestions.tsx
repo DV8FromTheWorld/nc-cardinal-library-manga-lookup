@@ -13,7 +13,7 @@ import {
   Text as RNText,
   Image,
   StyleSheet,
-  FlatList,
+  ScrollView,
   Pressable,
   ActivityIndicator,
   useColorScheme,
@@ -87,13 +87,14 @@ export function SearchSuggestions({
     }
   }
 
-  const renderItem = ({ item }: { item: ListItem }) => {
+  const renderItem = (item: ListItem) => {
     switch (item.type) {
       case 'header':
-        return <SectionHeader title={item.title} theme={theme} />;
+        return <SectionHeader key={item.id} title={item.title} theme={theme} />;
       case 'recent':
         return (
           <RecentSearchItem
+            key={item.id}
             query={item.query}
             onPress={() => onSelectRecent(item.query)}
             onRemove={() => onRemoveRecent(item.query)}
@@ -103,13 +104,14 @@ export function SearchSuggestions({
       case 'suggestion':
         return (
           <SuggestionItemRow
+            key={item.id}
             suggestion={item.item}
             onPress={() => onSelect(item.item.title)}
             theme={theme}
           />
         );
       case 'loading':
-        return <LoadingIndicator theme={theme} />;
+        return <LoadingIndicator key={item.id} theme={theme} />;
       default:
         return null;
     }
@@ -117,14 +119,14 @@ export function SearchSuggestions({
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bgPrimary, borderColor: theme.border }]}>
-      <FlatList
-        data={data}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.id}
+      <ScrollView
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         style={styles.list}
-      />
+        nestedScrollEnabled
+      >
+        {data.map(renderItem)}
+      </ScrollView>
       {isLoading && suggestions.length > 0 && (
         <View style={[styles.loadingMore, { borderTopColor: theme.border }]}>
           <ActivityIndicator size="small" color={theme.accent} />
