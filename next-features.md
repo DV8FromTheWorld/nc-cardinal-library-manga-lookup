@@ -27,6 +27,7 @@
 - [x] We need to fix book titles. They often are wrong. Every volume in Bleach except the first one is wrong. One piece is the same way. It shows the right names on the search page / series page, but the book detail page is wrong.
 - [ ] Use an actual icon system instead of using emojis
 - [ ] Fix the MAL icon. We should download and use the official one.
+- [ ] Make the user account and debug functionality be a slide-out menu to access them?
 
 
 ## Technical Debt / Improvements
