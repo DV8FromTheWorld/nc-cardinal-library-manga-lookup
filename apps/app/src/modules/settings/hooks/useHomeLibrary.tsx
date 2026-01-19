@@ -7,10 +7,11 @@
  * Supports both sync (web localStorage) and async (native AsyncStorage).
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { storage } from '../../storage/storage';
+import { useCallback, useEffect, useState } from 'react';
+
 import { getLibraries } from '../../search/services/mangaApi';
 import type { Library } from '../../search/types';
+import { storage } from '../../storage/storage';
 
 const STORAGE_KEY = 'nc-cardinal-home-library';
 const DEFAULT_LIBRARY = 'HIGH_POINT_MAIN';

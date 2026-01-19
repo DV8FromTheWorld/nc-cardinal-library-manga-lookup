@@ -3,18 +3,19 @@
  * Renders text with heading-appropriate typography.
  */
 
-import { Text, StyleSheet, useColorScheme } from 'react-native';
 import type { ReactNode } from 'react';
-import type { TextStyle, StyleProp } from 'react-native';
-import type { TextVariant, TextColor } from '../../../types';
-import { parseVariant } from '../../Text/variant';
+import type { StyleProp, TextStyle } from 'react-native';
+import { StyleSheet, Text, useColorScheme } from 'react-native';
+
 import {
   colors,
   fontFamily,
   fontSize,
-  headerSize,
   fontWeight as fontWeightValues,
+  headerSize,
 } from '../../../theme';
+import type { TextColor, TextVariant } from '../../../types';
+import { parseVariant } from '../../Text/variant';
 
 type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -132,7 +133,7 @@ function getWeightStyle(variant: TextVariant): TextStyle {
  */
 function getColorValue(
   colorToken: TextColor,
-  themeColors: typeof colors.light,
+  themeColors: typeof colors.light
 ): string | undefined {
   switch (colorToken) {
     case 'text-primary':

@@ -2,34 +2,35 @@
  * Volume detail screen component for React Native.
  */
 
-import { useState, useCallback } from 'react';
-import {
-  View,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  StyleSheet,
-  Image,
-  useColorScheme,
-  SafeAreaView,
-  Linking,
-  Text as RNText,
-} from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../../routing/native/Router';
-import { useVolumeDetails } from '../hooks/useVolumeDetails';
-import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
+import { useCallback, useState } from 'react';
+import {
+  ActivityIndicator,
+  Image,
+  Linking,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text as RNText,
+  TouchableOpacity,
+  useColorScheme,
+  View,
+} from 'react-native';
+
+import { Text } from '../../../design/components/Text/native/Text';
 import { DebugPanel } from '../../debug/native/DebugPanel';
+import type { RootStackParamList } from '../../routing/native/Router';
+import { colors, spacing } from '../../search/native/theme';
 import { clearCacheForBook } from '../../search/services/mangaApi';
+import { getAvailableCount, groupHoldingsByLibrary } from '../../search/utils/availability';
 import {
   cleanDisplayTitle,
   formatAuthorName,
   getAmazonUrl,
   getBestIsbnForAmazon,
 } from '../../search/utils/formatters';
-import { groupHoldingsByLibrary, getAvailableCount } from '../../search/utils/availability';
-import { Text } from '../../../design/components/Text/native/Text';
-import { colors, spacing } from '../../search/native/theme';
+import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
+import { useVolumeDetails } from '../hooks/useVolumeDetails';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Volume'>;
 
@@ -94,10 +95,14 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Text variant="text-md/medium" color="interactive-primary" style={styles.backButtonText}>← Back</Text>
+          <Text variant="text-md/medium" color="interactive-primary" style={styles.backButtonText}>
+            ← Back
+          </Text>
         </TouchableOpacity>
         <View style={[styles.errorContainer, { backgroundColor: theme.errorBg }]}>
-          <Text variant="text-md/normal" color="error" style={styles.errorText}>⚠ {error ?? 'Volume not found'}</Text>
+          <Text variant="text-md/normal" color="error" style={styles.errorText}>
+            ⚠ {error ?? 'Volume not found'}
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -120,7 +125,9 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Back Button */}
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Text variant="text-md/medium" color="interactive-primary" style={styles.backButtonText}>← Back</Text>
+          <Text variant="text-md/medium" color="interactive-primary" style={styles.backButtonText}>
+            ← Back
+          </Text>
         </TouchableOpacity>
 
         {/* Volume Layout */}
@@ -142,7 +149,9 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
 
           {/* Header Info */}
           <View style={styles.bookMain}>
-            <Text variant="header-md/bold" style={styles.title}>{displayTitle}</Text>
+            <Text variant="header-md/bold" style={styles.title}>
+              {displayTitle}
+            </Text>
 
             {displayAuthors.length > 0 && (
               <Text variant="text-sm/normal" color="text-secondary" style={styles.authors}>
@@ -155,7 +164,11 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
                 style={[styles.seriesLink, { backgroundColor: theme.bgSecondary }]}
                 onPress={() => handleSelectSeries(seriesId)}
               >
-                <Text variant="text-sm/medium" color="interactive-primary" style={styles.seriesLinkText}>
+                <Text
+                  variant="text-sm/medium"
+                  color="interactive-primary"
+                  style={styles.seriesLinkText}
+                >
                   📚 Part of: {volume.seriesInfo.title}
                 </Text>
               </TouchableOpacity>
@@ -166,7 +179,9 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
         {/* Description Section */}
         {volume.summary != null && (
           <View style={styles.section}>
-            <Text variant="header-sm/semibold" style={styles.sectionTitle}>Description</Text>
+            <Text variant="header-sm/semibold" style={styles.sectionTitle}>
+              Description
+            </Text>
             <Text variant="text-md/normal" color="text-secondary" style={styles.descriptionText}>
               {volume.summary}
             </Text>
@@ -175,20 +190,33 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
 
         {/* Availability Section */}
         <View style={styles.section}>
-          <Text variant="header-sm/semibold" style={styles.sectionTitle}>Availability</Text>
-          <View style={[styles.availabilityCard, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}>
+          <Text variant="header-sm/semibold" style={styles.sectionTitle}>
+            Availability
+          </Text>
+          <View
+            style={[
+              styles.availabilityCard,
+              { backgroundColor: theme.bgSecondary, borderColor: theme.border },
+            ]}
+          >
             {/* Status */}
             <View style={styles.availabilitySummary}>
               <View
                 style={[
                   styles.availabilityStatus,
-                  { backgroundColor: volume.availability.available ? theme.successBg : theme.errorBg },
+                  {
+                    backgroundColor: volume.availability.available
+                      ? theme.successBg
+                      : theme.errorBg,
+                  },
                 ]}
               >
                 <View
                   style={[
                     styles.statusIndicator,
-                    { backgroundColor: volume.availability.available ? theme.success : theme.error },
+                    {
+                      backgroundColor: volume.availability.available ? theme.success : theme.error,
+                    },
                   ]}
                 />
                 <Text
@@ -202,7 +230,10 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
 
               <View style={styles.copyCount}>
                 <Text variant="header-lg/bold">{volume.availability.availableCopies}</Text>
-                <Text variant="text-sm/normal" color="text-secondary"> of {volume.availability.totalCopies} copies available</Text>
+                <Text variant="text-sm/normal" color="text-secondary">
+                  {' '}
+                  of {volume.availability.totalCopies} copies available
+                </Text>
               </View>
 
               {/* Local vs Remote */}
@@ -214,7 +245,9 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
                         styles.localDot,
                         {
                           backgroundColor:
-                            (volume.availability.localAvailable ?? 0) > 0 ? theme.success : theme.textMuted,
+                            (volume.availability.localAvailable ?? 0) > 0
+                              ? theme.success
+                              : theme.textMuted,
                         },
                       ]}
                     />
@@ -238,8 +271,15 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
 
             {/* Catalog Link */}
             {volume.catalogUrl != null && (
-              <TouchableOpacity style={[styles.catalogLink, { borderTopColor: theme.border }]} onPress={handleOpenCatalog}>
-                <Text variant="text-sm/medium" color="interactive-primary" style={styles.catalogLinkText}>
+              <TouchableOpacity
+                style={[styles.catalogLink, { borderTopColor: theme.border }]}
+                onPress={handleOpenCatalog}
+              >
+                <Text
+                  variant="text-sm/medium"
+                  color="interactive-primary"
+                  style={styles.catalogLinkText}
+                >
                   🔗 View in NC Cardinal Catalog
                 </Text>
               </TouchableOpacity>
@@ -252,15 +292,23 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
                   style={[styles.externalLink, { backgroundColor: theme.bgTertiary }]}
                   onPress={() => Linking.openURL(getAmazonUrl(amazonIsbn))}
                 >
-                  <Text variant="text-sm/medium" style={styles.externalLinkText}>🛒 Amazon</Text>
+                  <Text variant="text-sm/medium" style={styles.externalLinkText}>
+                    🛒 Amazon
+                  </Text>
                 </TouchableOpacity>
               )}
               {volume.seriesInfo != null && (
                 <TouchableOpacity
                   style={[styles.externalLink, { backgroundColor: theme.bgTertiary }]}
-                  onPress={() => Linking.openURL(`https://myanimelist.net/manga.php?q=${encodeURIComponent(volume.seriesInfo?.title ?? '')}`)}
+                  onPress={() =>
+                    Linking.openURL(
+                      `https://myanimelist.net/manga.php?q=${encodeURIComponent(volume.seriesInfo?.title ?? '')}`
+                    )
+                  }
                 >
-                  <Text variant="text-sm/medium" style={styles.externalLinkText}>📊 MyAnimeList</Text>
+                  <Text variant="text-sm/medium" style={styles.externalLinkText}>
+                    📊 MyAnimeList
+                  </Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -280,17 +328,28 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
                 const availableCount = getAvailableCount(holdings);
 
                 return (
-                  <View key={libraryName} style={[styles.libraryItem, { borderBottomColor: theme.border }]}>
+                  <View
+                    key={libraryName}
+                    style={[styles.libraryItem, { borderBottomColor: theme.border }]}
+                  >
                     <View style={styles.libraryInfo}>
-                      <Text variant="text-sm/medium" style={styles.libraryName}>{libraryName}</Text>
-                      <Text variant="text-xs/normal" color="text-muted" style={styles.libraryLocation}>
+                      <Text variant="text-sm/medium" style={styles.libraryName}>
+                        {libraryName}
+                      </Text>
+                      <Text
+                        variant="text-xs/normal"
+                        color="text-muted"
+                        style={styles.libraryLocation}
+                      >
                         {firstHolding.location} • {firstHolding.callNumber}
                       </Text>
                     </View>
                     <View
                       style={[
                         styles.copyBadge,
-                        { backgroundColor: availableCount > 0 ? theme.successBg : theme.bgTertiary },
+                        {
+                          backgroundColor: availableCount > 0 ? theme.successBg : theme.bgTertiary,
+                        },
                       ]}
                     >
                       <Text
@@ -310,8 +369,14 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
                   style={styles.expandButton}
                   onPress={() => setExpandedLibraries(!expandedLibraries)}
                 >
-                  <Text variant="text-sm/medium" color="interactive-primary" style={styles.expandButtonText}>
-                    {expandedLibraries ? 'Show fewer libraries' : `Show ${libraryNames.length - 5} more libraries`}
+                  <Text
+                    variant="text-sm/medium"
+                    color="interactive-primary"
+                    style={styles.expandButtonText}
+                  >
+                    {expandedLibraries
+                      ? 'Show fewer libraries'
+                      : `Show ${libraryNames.length - 5} more libraries`}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -322,11 +387,20 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
         {/* Subjects */}
         {volume.subjects.length > 0 && (
           <View style={styles.section}>
-            <Text variant="header-sm/semibold" style={styles.sectionTitle}>Subjects</Text>
+            <Text variant="header-sm/semibold" style={styles.sectionTitle}>
+              Subjects
+            </Text>
             <View style={styles.subjectTags}>
               {[...new Set(volume.subjects)].slice(0, 10).map((subject) => (
-                <View key={subject} style={[styles.subjectTag, { backgroundColor: theme.bgSecondary }]}>
-                  <Text variant="text-xs/normal" color="text-secondary" style={styles.subjectTagText}>
+                <View
+                  key={subject}
+                  style={[styles.subjectTag, { backgroundColor: theme.bgSecondary }]}
+                >
+                  <Text
+                    variant="text-xs/normal"
+                    color="text-secondary"
+                    style={styles.subjectTagText}
+                  >
                     {subject.replace(/\.$/, '')}
                   </Text>
                 </View>
@@ -337,17 +411,32 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
 
         {/* Identifiers */}
         <View style={styles.section}>
-          <Text variant="header-sm/semibold" style={styles.sectionTitle}>Identifiers</Text>
-          <View style={[styles.identifiers, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}>
+          <Text variant="header-sm/semibold" style={styles.sectionTitle}>
+            Identifiers
+          </Text>
+          <View
+            style={[
+              styles.identifiers,
+              { backgroundColor: theme.bgSecondary, borderColor: theme.border },
+            ]}
+          >
             {volume.isbns.map((isbn) => (
               <View key={isbn} style={styles.identifier}>
-                <Text variant="text-sm/normal" color="text-muted" style={styles.identifierLabel}>ISBN</Text>
-                <Text variant="code" style={styles.identifierValue}>{isbn}</Text>
+                <Text variant="text-sm/normal" color="text-muted" style={styles.identifierLabel}>
+                  ISBN
+                </Text>
+                <Text variant="code" style={styles.identifierValue}>
+                  {isbn}
+                </Text>
               </View>
             ))}
             <View style={styles.identifier}>
-              <Text variant="text-sm/normal" color="text-muted" style={styles.identifierLabel}>Volume ID</Text>
-              <Text variant="code" style={styles.identifierValue}>{volume.id}</Text>
+              <Text variant="text-sm/normal" color="text-muted" style={styles.identifierLabel}>
+                Volume ID
+              </Text>
+              <Text variant="code" style={styles.identifierValue}>
+                {volume.id}
+              </Text>
             </View>
           </View>
         </View>
@@ -355,7 +444,11 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
         {/* Debug Panel */}
         <DebugPanel
           debug={undefined}
-          cacheContext={primaryIsbn != null && primaryIsbn !== '' ? { type: 'book', identifier: primaryIsbn } : undefined}
+          cacheContext={
+            primaryIsbn != null && primaryIsbn !== ''
+              ? { type: 'book', identifier: primaryIsbn }
+              : undefined
+          }
           onClearCache={handleClearCache}
         />
       </ScrollView>

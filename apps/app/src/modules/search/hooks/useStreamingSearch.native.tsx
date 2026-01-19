@@ -3,14 +3,11 @@
  * Native implementation using react-native-sse for true SSE streaming.
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import EventSource from 'react-native-sse';
+
 import { env } from '../../../config/env';
-import type {
-  SearchResult,
-  SearchProgressEvent,
-  StreamingSearchProgress,
-} from '../types';
+import type { SearchProgressEvent, SearchResult, StreamingSearchProgress } from '../types';
 
 export interface UseStreamingSearchOptions {
   initialQuery?: string | undefined;
@@ -75,6 +72,9 @@ function getProgressMessage(event: SearchProgressEvent): string {
 
 function getCurrentStep(event: SearchProgressEvent): StreamingSearchProgress['currentStep'] {
   switch (event.type) {
+    case 'started':
+    case 'error':
+      return null;
     case 'wikipedia:searching':
     case 'wikipedia:found':
     case 'wikipedia:not-found':
@@ -93,20 +93,20 @@ function getCurrentStep(event: SearchProgressEvent): StreamingSearchProgress['cu
       return 'covers';
     case 'complete':
       return 'done';
-    default:
-      return null;
   }
 }
 
-export function useStreamingSearch(options: UseStreamingSearchOptions = {}): UseStreamingSearchResult {
+export function useStreamingSearch(
+  options: UseStreamingSearchOptions = {}
+): UseStreamingSearchResult {
   const { initialQuery, homeLibrary, onQueryChange } = options;
-  
+
   const [queryValue, setQueryValue] = useState(initialQuery ?? '');
   const [results, setResults] = useState<SearchResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<StreamingSearchProgress>(INITIAL_PROGRESS);
-  
+
   const eventSourceRef = useRef<EventSource | null>(null);
   const lastSearchedQueryRef = useRef<string | undefined>(undefined);
   const hasInitializedRef = useRef(false);
@@ -139,121 +139,133 @@ export function useStreamingSearch(options: UseStreamingSearchOptions = {}): Use
     setProgress(INITIAL_PROGRESS);
   }, []);
 
-  const executeSearch = useCallback((searchQuery: string) => {
-    if (searchQuery.trim() === '') {
-      setResults(null);
-      return;
-    }
-
-    // Abort any existing search
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-    }
-
-    setIsLoading(true);
-    setError(null);
-    setProgress({
-      status: 'searching',
-      currentStep: null,
-      message: 'Starting search...',
-    });
-
-    // Build URL with query params
-    const params = new URLSearchParams({ q: searchQuery });
-    if (homeLibrary != null && homeLibrary !== '') params.set('homeLibrary', homeLibrary);
-    const url = `${env.apiUrl}/manga/search/stream?${params}`;
-
-    // Create EventSource for SSE using react-native-sse
-    const es = new EventSource(url, {
-      headers: {
-        'Accept': 'text/event-stream',
-      },
-    });
-    eventSourceRef.current = es;
-
-    es.addEventListener('message', (event) => {
-      if (event.data == null || event.data === '') return;
-      
-      try {
-        const sseEvent = JSON.parse(event.data) as SearchProgressEvent;
-        
-        // Update progress state
-        const currentStep = getCurrentStep(sseEvent);
-        const message = getProgressMessage(sseEvent);
-        
-        setProgress((prev) => ({
-          ...prev,
-          status: sseEvent.type === 'complete' ? 'complete' : 
-                  sseEvent.type === 'error' ? 'error' : 'searching',
-          currentStep,
-          message,
-          // Update specific progress fields
-          ...(sseEvent.type === 'wikipedia:found' && {
-            seriesFound: sseEvent.seriesTitle,
-            volumeCount: sseEvent.volumeCount,
-          }),
-          ...(sseEvent.type === 'availability:progress' && {
-            availabilityProgress: {
-              completed: sseEvent.completed,
-              total: sseEvent.total,
-              foundInCatalog: sseEvent.foundInCatalog,
-            },
-          }),
-          ...(sseEvent.type === 'covers:progress' && {
-            coversProgress: {
-              completed: sseEvent.completed,
-              total: sseEvent.total,
-            },
-          }),
-        }));
-
-        // Handle completion
-        if (sseEvent.type === 'complete') {
-          setResults(sseEvent.result);
-          setIsLoading(false);
-          es.close();
-          eventSourceRef.current = null;
-        }
-
-        // Handle error
-        if (sseEvent.type === 'error') {
-          setError(sseEvent.message);
-          setIsLoading(false);
-          es.close();
-          eventSourceRef.current = null;
-        }
-      } catch {
-        console.warn('[useStreamingSearch] Failed to parse SSE event:', event.data);
+  const executeSearch = useCallback(
+    (searchQuery: string) => {
+      if (searchQuery.trim() === '') {
+        setResults(null);
+        return;
       }
-    });
 
-    es.addEventListener('error', (event) => {
-      console.error('[useStreamingSearch] EventSource error:', event);
-      // Only set error if we're still loading (i.e., this isn't just the stream ending)
-      if (isLoading) {
-        setError('Connection error during search');
-        setIsLoading(false);
-        setProgress({
-          status: 'error',
-          currentStep: null,
-          message: 'Connection error during search',
-        });
+      // Abort any existing search
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
       }
-      es.close();
-      eventSourceRef.current = null;
-    });
 
-  }, [homeLibrary, isLoading]);
+      setIsLoading(true);
+      setError(null);
+      setProgress({
+        status: 'searching',
+        currentStep: null,
+        message: 'Starting search...',
+      });
 
-  const setQuery = useCallback((newQuery: string) => {
-    setQueryValue(newQuery);
-    onQueryChange?.(newQuery);
-  }, [onQueryChange]);
+      // Build URL with query params
+      const params = new URLSearchParams({ q: searchQuery });
+      if (homeLibrary != null && homeLibrary !== '') params.set('homeLibrary', homeLibrary);
+      const url = `${env.apiUrl}/manga/search/stream?${params}`;
 
-  const search = useCallback((searchQuery: string) => {
-    setQuery(searchQuery);
-    executeSearch(searchQuery);
-  }, [setQuery, executeSearch]);
+      // Create EventSource for SSE using react-native-sse
+      const es = new EventSource(url, {
+        headers: {
+          Accept: 'text/event-stream',
+        },
+      });
+      eventSourceRef.current = es;
+
+      es.addEventListener('message', (event) => {
+        if (event.data == null || event.data === '') return;
+
+        try {
+          const sseEvent = JSON.parse(event.data) as SearchProgressEvent;
+
+          // Update progress state
+          const currentStep = getCurrentStep(sseEvent);
+          const message = getProgressMessage(sseEvent);
+
+          setProgress((prev) => ({
+            ...prev,
+            status:
+              sseEvent.type === 'complete'
+                ? 'complete'
+                : sseEvent.type === 'error'
+                  ? 'error'
+                  : 'searching',
+            currentStep,
+            message,
+            // Update specific progress fields
+            ...(sseEvent.type === 'wikipedia:found' && {
+              seriesFound: sseEvent.seriesTitle,
+              volumeCount: sseEvent.volumeCount,
+            }),
+            ...(sseEvent.type === 'availability:progress' && {
+              availabilityProgress: {
+                completed: sseEvent.completed,
+                total: sseEvent.total,
+                foundInCatalog: sseEvent.foundInCatalog,
+              },
+            }),
+            ...(sseEvent.type === 'covers:progress' && {
+              coversProgress: {
+                completed: sseEvent.completed,
+                total: sseEvent.total,
+              },
+            }),
+          }));
+
+          // Handle completion
+          if (sseEvent.type === 'complete') {
+            setResults(sseEvent.result);
+            setIsLoading(false);
+            es.close();
+            eventSourceRef.current = null;
+          }
+
+          // Handle error
+          if (sseEvent.type === 'error') {
+            setError(sseEvent.message);
+            setIsLoading(false);
+            es.close();
+            eventSourceRef.current = null;
+          }
+        } catch {
+          console.warn('[useStreamingSearch] Failed to parse SSE event:', event.data);
+        }
+      });
+
+      es.addEventListener('error', (event) => {
+        console.error('[useStreamingSearch] EventSource error:', event);
+        // Only set error if we're still loading (i.e., this isn't just the stream ending)
+        if (isLoading) {
+          setError('Connection error during search');
+          setIsLoading(false);
+          setProgress({
+            status: 'error',
+            currentStep: null,
+            message: 'Connection error during search',
+          });
+        }
+        es.close();
+        eventSourceRef.current = null;
+      });
+    },
+    [homeLibrary, isLoading]
+  );
+
+  const setQuery = useCallback(
+    (newQuery: string) => {
+      setQueryValue(newQuery);
+      onQueryChange?.(newQuery);
+    },
+    [onQueryChange]
+  );
+
+  const search = useCallback(
+    (searchQuery: string) => {
+      setQuery(searchQuery);
+      executeSearch(searchQuery);
+    },
+    [setQuery, executeSearch]
+  );
 
   const clearResults = useCallback(() => {
     setResults(null);
@@ -272,12 +284,19 @@ export function useStreamingSearch(options: UseStreamingSearchOptions = {}): Use
       }
       return;
     }
-    
+
     // After initialization, only execute when initialQuery actually changes
-    if (initialQuery != null && initialQuery !== '' && initialQuery !== lastSearchedQueryRef.current) {
+    if (
+      initialQuery != null &&
+      initialQuery !== '' &&
+      initialQuery !== lastSearchedQueryRef.current
+    ) {
       lastSearchedQueryRef.current = initialQuery;
       executeSearch(initialQuery);
-    } else if ((initialQuery == null || initialQuery === '') && lastSearchedQueryRef.current != null) {
+    } else if (
+      (initialQuery == null || initialQuery === '') &&
+      lastSearchedQueryRef.current != null
+    ) {
       lastSearchedQueryRef.current = undefined;
       setResults(null);
     }

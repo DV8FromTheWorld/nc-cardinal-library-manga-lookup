@@ -2,14 +2,16 @@
  * Web router implementation using react-router-dom.
  */
 
-import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import '../../store/stores'; // Register all store initializers
-import { useStoreInit } from '../../store/useStoreInit';
+
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+
+import { AccountPage } from '../../account-detail/web/AccountPage';
+import { VolumePage } from '../../book/web/VolumePage';
 import { HomePage } from '../../search/web/HomePage';
 import { SearchPage } from '../../search/web/SearchPage';
 import { SeriesPage } from '../../series/web/SeriesPage';
-import { VolumePage } from '../../book/web/VolumePage';
-import { AccountPage } from '../../account-detail/web/AccountPage';
+import { useStoreInit } from '../../store/useStoreInit';
 
 const router = createBrowserRouter([
   {

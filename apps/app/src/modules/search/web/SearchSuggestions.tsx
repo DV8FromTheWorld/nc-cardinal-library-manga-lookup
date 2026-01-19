@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+
 import { Text } from '../../../design/components/Text/web/Text';
 import type { SuggestionItem } from '../types';
 import styles from './SearchSuggestions.module.css';
@@ -79,9 +80,11 @@ export function SearchSuggestions({
           if (highlightedIndex >= 0 && highlightedIndex <= maxIndex) {
             e.preventDefault();
             if (showRecent) {
-              onSelectRecent(recentSearches[highlightedIndex]!);
+              const recent = recentSearches[highlightedIndex];
+              if (recent != null) onSelectRecent(recent);
             } else {
-              onSelect(suggestions[highlightedIndex]!.title);
+              const suggestion = suggestions[highlightedIndex];
+              if (suggestion != null) onSelect(suggestion.title);
             }
           }
           break;
@@ -91,7 +94,17 @@ export function SearchSuggestions({
           break;
       }
     },
-    [isOpen, hasContent, showRecent, recentSearches, suggestions, highlightedIndex, onSelect, onSelectRecent, onClose]
+    [
+      isOpen,
+      hasContent,
+      showRecent,
+      recentSearches,
+      suggestions,
+      highlightedIndex,
+      onSelect,
+      onSelectRecent,
+      onClose,
+    ]
   );
 
   // Attach keyboard listener
@@ -130,7 +143,9 @@ export function SearchSuggestions({
       {showRecent && (
         <>
           <div className={styles.sectionHeader}>
-            <Text variant="text-xs/semibold" color="text-muted">Recent Searches</Text>
+            <Text variant="text-xs/semibold" color="text-muted">
+              Recent Searches
+            </Text>
           </div>
           {recentSearches.map((search, index) => (
             <button
@@ -141,7 +156,9 @@ export function SearchSuggestions({
               onMouseEnter={() => setHighlightedIndex(index)}
             >
               <span className={styles.recentIcon}>🕐</span>
-              <Text variant="text-sm/normal" className={styles.recentText}>{search}</Text>
+              <Text variant="text-sm/normal" className={styles.recentText}>
+                {search}
+              </Text>
               <button
                 type="button"
                 className={styles.removeButton}
@@ -171,12 +188,7 @@ export function SearchSuggestions({
             >
               <div className={styles.coverContainer}>
                 {suggestion.coverUrl != null ? (
-                  <img
-                    src={suggestion.coverUrl}
-                    alt=""
-                    className={styles.cover}
-                    loading="lazy"
-                  />
+                  <img src={suggestion.coverUrl} alt="" className={styles.cover} loading="lazy" />
                 ) : (
                   <div className={styles.coverPlaceholder}>📚</div>
                 )}
@@ -186,12 +198,18 @@ export function SearchSuggestions({
                   {suggestion.title}
                 </Text>
                 {suggestion.title !== suggestion.titleRomaji && (
-                  <Text variant="text-xs/normal" color="text-muted" className={styles.suggestionRomaji}>
+                  <Text
+                    variant="text-xs/normal"
+                    color="text-muted"
+                    className={styles.suggestionRomaji}
+                  >
                     {suggestion.titleRomaji}
                   </Text>
                 )}
                 <div className={styles.suggestionMeta}>
-                  <span className={`${styles.formatBadge} ${styles[suggestion.format.toLowerCase()]}`}>
+                  <span
+                    className={`${styles.formatBadge} ${styles[suggestion.format.toLowerCase()]}`}
+                  >
                     {getFormatLabel(suggestion.format)}
                   </span>
                   {suggestion.volumes != null && suggestion.volumes > 0 ? (
@@ -208,7 +226,9 @@ export function SearchSuggestions({
           {isLoading && suggestions.length === 0 && (
             <div className={styles.loadingContainer}>
               <span className={styles.spinner} />
-              <Text variant="text-sm/normal" color="text-muted">Searching...</Text>
+              <Text variant="text-sm/normal" color="text-muted">
+                Searching...
+              </Text>
             </div>
           )}
 

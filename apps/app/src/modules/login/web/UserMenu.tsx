@@ -3,9 +3,10 @@
  * Shows sign-in button when logged out, or user menu when logged in.
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { useAuthStore, selectDisplayName, logout } from '../../authentication/store';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
 import { Text } from '../../../design/components/Text/web/Text';
+import { logout, selectDisplayName, useAuthStore } from '../../authentication/store';
 import styles from './LoginModal.module.css';
 
 interface UserMenuProps {
@@ -50,11 +51,7 @@ export function UserMenu({ onLoginClick }: UserMenuProps): JSX.Element {
 
   if (!isLoggedIn) {
     return (
-      <button
-        type="button"
-        className={styles.userMenuButton}
-        onClick={onLoginClick}
-      >
+      <button type="button" className={styles.userMenuButton} onClick={onLoginClick}>
         <span className={styles.userIcon}>👤</span>
         <Text variant="text-sm/medium">Sign In</Text>
       </button>
@@ -62,9 +59,10 @@ export function UserMenu({ onLoginClick }: UserMenuProps): JSX.Element {
   }
 
   // Truncate long names
-  const shortName = displayName != null && displayName.length > 20 
-    ? displayName.slice(0, 17) + '...' 
-    : displayName ?? 'Account';
+  const shortName =
+    displayName != null && displayName.length > 20
+      ? displayName.slice(0, 17) + '...'
+      : (displayName ?? 'Account');
 
   return (
     <div ref={menuRef} style={{ position: 'relative' }}>
@@ -124,12 +122,10 @@ export function UserMenu({ onLoginClick }: UserMenuProps): JSX.Element {
             <Text variant="text-sm/normal">Holds</Text>
           </button>
           <div className={styles.userMenuDivider} />
-          <button
-            type="button"
-            className={styles.userMenuItem}
-            onClick={handleLogout}
-          >
-            <Text variant="text-sm/normal" color="error">Sign Out</Text>
+          <button type="button" className={styles.userMenuItem} onClick={handleLogout}>
+            <Text variant="text-sm/normal" color="error">
+              Sign Out
+            </Text>
           </button>
         </div>
       )}

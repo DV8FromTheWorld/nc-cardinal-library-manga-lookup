@@ -2,7 +2,8 @@
  * Hook for managing manga search state and operations.
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
 import { searchManga } from '../services/mangaApi';
 import type { SearchResult } from '../types';
 
@@ -26,7 +27,7 @@ export interface UseSearchResult {
 
 export function useSearch(options: UseSearchOptions = {}): UseSearchResult {
   const { initialQuery, homeLibrary, onQueryChange } = options;
-  
+
   const [query, setQuery] = useState(initialQuery ?? '');
   const [results, setResults] = useState<SearchResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -41,41 +42,54 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchResult {
     }
   }, [initialQuery]);
 
-  const executeSearch = useCallback(async (searchQuery: string, debug: boolean) => {
-    if (searchQuery.trim() === '') {
-      setResults(null);
-      return;
-    }
+  const executeSearch = useCallback(
+    async (searchQuery: string, debug: boolean) => {
+      if (searchQuery.trim() === '') {
+        setResults(null);
+        return;
+      }
 
-    setIsLoading(true);
-    setError(null);
+      setIsLoading(true);
+      setError(null);
 
-    try {
-      const data = await searchManga(searchQuery, { debug, homeLibrary });
-      setResults(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Search failed');
-      setResults(null);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [homeLibrary]);
+      try {
+        const data = await searchManga(searchQuery, { debug, homeLibrary });
+        setResults(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Search failed');
+        setResults(null);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [homeLibrary]
+  );
 
   // Execute search when initialQuery changes (URL navigation)
   useEffect(() => {
-    if (initialQuery != null && initialQuery !== '' && initialQuery !== lastSearchedQueryRef.current) {
+    if (
+      initialQuery != null &&
+      initialQuery !== '' &&
+      initialQuery !== lastSearchedQueryRef.current
+    ) {
       lastSearchedQueryRef.current = initialQuery;
       void executeSearch(initialQuery, false);
-    } else if ((initialQuery == null || initialQuery === '') && lastSearchedQueryRef.current != null) {
+    } else if (
+      (initialQuery == null || initialQuery === '') &&
+      lastSearchedQueryRef.current != null
+    ) {
       lastSearchedQueryRef.current = undefined;
       setResults(null);
     }
   }, [initialQuery, executeSearch]);
 
-  const search = useCallback((searchQuery: string) => {
-    onQueryChange?.(searchQuery);
-    void executeSearch(searchQuery, debugMode);
-  }, [onQueryChange, executeSearch, debugMode]);
+  const search = useCallback(
+    (searchQuery: string) => {
+      onQueryChange?.(searchQuery);
+      void executeSearch(searchQuery, debugMode);
+    },
+    [onQueryChange, executeSearch, debugMode]
+  );
 
   const refreshWithDebug = useCallback(() => {
     if (results?.query != null && results.query !== '') {

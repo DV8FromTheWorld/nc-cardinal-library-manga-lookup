@@ -2,29 +2,30 @@
  * Series detail screen component for React Native.
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { FlashList } from '@shopify/flash-list';
+import { useCallback, useMemo, useState } from 'react';
 import {
-  View,
+  ActivityIndicator,
+  Image,
+  SafeAreaView,
+  StyleSheet,
   Text as RNText,
   TouchableOpacity,
-  ActivityIndicator,
-  StyleSheet,
-  Image,
   useColorScheme,
-  SafeAreaView,
+  View,
 } from 'react-native';
-import { FlashList } from '@shopify/flash-list';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../../routing/native/Router';
-import { useSeriesDetails } from '../hooks/useSeriesDetails';
-import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
-import { DebugPanel } from '../../debug/native/DebugPanel';
-import { clearCacheForSeries } from '../../search/services/mangaApi';
-import { getAvailabilityPercent } from '../../search/utils/availability';
-import type { VolumeInfo } from '../../search/types';
-import { Text } from '../../../design/components/Text/native/Text';
+
 import { Heading } from '../../../design/components/Heading/native/Heading';
+import { Text } from '../../../design/components/Text/native/Text';
+import { DebugPanel } from '../../debug/native/DebugPanel';
+import type { RootStackParamList } from '../../routing/native/Router';
 import { colors, spacing, type ThemeColors } from '../../search/native/theme';
+import { clearCacheForSeries } from '../../search/services/mangaApi';
+import type { VolumeInfo } from '../../search/types';
+import { getAvailabilityPercent } from '../../search/utils/availability';
+import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
+import { useSeriesDetails } from '../hooks/useSeriesDetails';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Series'>;
 
@@ -45,9 +46,12 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
     navigation.goBack();
   }, [navigation]);
 
-  const handleSelectVolume = useCallback((volumeId: string) => {
-    navigation.navigate('Volume', { id: volumeId });
-  }, [navigation]);
+  const handleSelectVolume = useCallback(
+    (volumeId: string) => {
+      navigation.navigate('Volume', { id: volumeId });
+    },
+    [navigation]
+  );
 
   const handleClearCache = useCallback(async () => {
     if (id !== '') {
@@ -58,10 +62,7 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
 
   // All hooks must be called before any early returns!
   // Memoize key extractor (doesn't depend on series)
-  const keyExtractor = useCallback(
-    (item: VolumeInfo) => item.id ?? String(item.volumeNumber),
-    []
-  );
+  const keyExtractor = useCallback((item: VolumeInfo) => item.id ?? String(item.volumeNumber), []);
 
   // Memoize the render function - safe to use series?.title etc
   const renderVolumeItem = useCallback(
@@ -77,121 +78,155 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
     [series?.title, handleSelectVolume, theme]
   );
 
-  const availabilityPercent = series != null ? getAvailabilityPercent(series.availableCount, series.totalVolumes) : 0;
+  const availabilityPercent =
+    series != null ? getAvailabilityPercent(series.availableCount, series.totalVolumes) : 0;
 
   // Header component - safe with optional chaining
   const ListHeader = useMemo(
-    () => series != null ? (
-      <>
-        {/* Back Button */}
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Text variant="text-md/medium" color="accent">← Back to search</Text>
-        </TouchableOpacity>
+    () =>
+      series != null ? (
+        <>
+          {/* Back Button */}
+          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+            <Text variant="text-md/medium" color="accent">
+              ← Back to search
+            </Text>
+          </TouchableOpacity>
 
-        {/* Header */}
-        <View style={styles.header}>
-          {series.coverImage != null && (
-            <SeriesCoverImage uri={series.coverImage} theme={theme} />
-          )}
-          <View style={styles.headerContent}>
-            <Heading level={1} variant="header-lg/bold" style={styles.title}>{series.title}</Heading>
-            {series.author != null && (
-              <Text variant="text-sm/normal" color="text-secondary" style={styles.author}>by {series.author}</Text>
+          {/* Header */}
+          <View style={styles.header}>
+            {series.coverImage != null && (
+              <SeriesCoverImage uri={series.coverImage} theme={theme} />
             )}
-            <View style={styles.badges}>
-              {series.isComplete === true && (
-                <View style={[styles.badge, { backgroundColor: theme.successBg }]}>
-                  <Text variant="text-xs/medium" color="success">✓ Complete Series</Text>
+            <View style={styles.headerContent}>
+              <Heading level={1} variant="header-lg/bold" style={styles.title}>
+                {series.title}
+              </Heading>
+              {series.author != null && (
+                <Text variant="text-sm/normal" color="text-secondary" style={styles.author}>
+                  by {series.author}
+                </Text>
+              )}
+              <View style={styles.badges}>
+                {series.isComplete === true && (
+                  <View style={[styles.badge, { backgroundColor: theme.successBg }]}>
+                    <Text variant="text-xs/medium" color="success">
+                      ✓ Complete Series
+                    </Text>
+                  </View>
+                )}
+                <View style={[styles.badge, { backgroundColor: theme.bgSecondary }]}>
+                  <Text variant="text-xs/medium" color="text-secondary">
+                    {series.totalVolumes} volumes
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* Description Section */}
+          {series.description != null && (
+            <View
+              style={[
+                styles.section,
+                styles.descriptionSection,
+                { backgroundColor: theme.bgSecondary, borderColor: theme.border },
+              ]}
+            >
+              <Heading level={2} variant="header-sm/semibold" style={styles.sectionTitle}>
+                About
+              </Heading>
+              <Text variant="text-md/normal" color="text-secondary" style={styles.descriptionText}>
+                {series.description}
+              </Text>
+            </View>
+          )}
+
+          {/* Availability Section */}
+          <View style={styles.section}>
+            <Heading level={2} variant="header-sm/semibold" style={styles.sectionTitle}>
+              Library Availability
+            </Heading>
+            <View
+              style={[
+                styles.availabilityCard,
+                { backgroundColor: theme.bgSecondary, borderColor: theme.border },
+              ]}
+            >
+              <View style={styles.availabilityStats}>
+                <Text variant="header-md/bold" color="text-primary">
+                  {series.availableCount}
+                  <Text variant="text-sm/normal" color="text-primary">
+                    {' '}
+                    of {series.totalVolumes} available
+                  </Text>
+                </Text>
+              </View>
+              <View style={[styles.availabilityBar, { backgroundColor: theme.bgTertiary }]}>
+                <View
+                  style={[
+                    styles.availabilityFill,
+                    { width: `${availabilityPercent}%`, backgroundColor: theme.success },
+                  ]}
+                />
+              </View>
+              <Text variant="text-xs/normal" color="text-muted">
+                {availabilityPercent}% in NC Cardinal
+              </Text>
+
+              {/* Missing Volumes */}
+              {series.missingVolumes.length > 0 && series.missingVolumes.length <= 10 && (
+                <View style={styles.missingVolumes}>
+                  <Text variant="text-sm/medium" color="text-secondary" style={styles.missingTitle}>
+                    Missing from library:
+                  </Text>
+                  <View style={styles.missingList}>
+                    {series.missingVolumes.map((vol) => (
+                      <View
+                        key={vol}
+                        style={[styles.missingVolume, { backgroundColor: theme.bgTertiary }]}
+                      >
+                        <Text variant="text-xs/normal" color="text-muted">
+                          Vol. {vol}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
                 </View>
               )}
-              <View style={[styles.badge, { backgroundColor: theme.bgSecondary }]}>
-                <Text variant="text-xs/medium" color="text-secondary">
-                  {series.totalVolumes} volumes
+
+              {series.missingVolumes.length > 10 && (
+                <Text variant="text-sm/normal" color="text-muted" style={styles.missingNote}>
+                  {series.missingVolumes.length} volumes not available in the library
                 </Text>
-              </View>
+              )}
             </View>
           </View>
-        </View>
 
-        {/* Description Section */}
-        {series.description != null && (
-          <View style={[styles.section, styles.descriptionSection, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}>
-            <Heading level={2} variant="header-sm/semibold" style={styles.sectionTitle}>About</Heading>
-            <Text variant="text-md/normal" color="text-secondary" style={styles.descriptionText}>
-              {series.description}
-            </Text>
+          {/* Volumes Section Title */}
+          <View style={styles.sectionHeader}>
+            <Heading level={2} variant="header-sm/semibold" style={styles.sectionTitle}>
+              All Volumes
+            </Heading>
           </View>
-        )}
-
-        {/* Availability Section */}
-        <View style={styles.section}>
-          <Heading level={2} variant="header-sm/semibold" style={styles.sectionTitle}>Library Availability</Heading>
-          <View style={[styles.availabilityCard, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}>
-            <View style={styles.availabilityStats}>
-              <Text variant="header-md/bold" color="text-primary">
-                {series.availableCount}
-                <Text variant="text-sm/normal" color="text-primary"> of {series.totalVolumes} available</Text>
-              </Text>
-            </View>
-            <View style={[styles.availabilityBar, { backgroundColor: theme.bgTertiary }]}>
-              <View
-                style={[
-                  styles.availabilityFill,
-                  { width: `${availabilityPercent}%`, backgroundColor: theme.success },
-                ]}
-              />
-            </View>
-            <Text variant="text-xs/normal" color="text-muted">
-              {availabilityPercent}% in NC Cardinal
-            </Text>
-
-            {/* Missing Volumes */}
-            {series.missingVolumes.length > 0 && series.missingVolumes.length <= 10 && (
-              <View style={styles.missingVolumes}>
-                <Text variant="text-sm/medium" color="text-secondary" style={styles.missingTitle}>
-                  Missing from library:
-                </Text>
-                <View style={styles.missingList}>
-                  {series.missingVolumes.map((vol) => (
-                    <View key={vol} style={[styles.missingVolume, { backgroundColor: theme.bgTertiary }]}>
-                      <Text variant="text-xs/normal" color="text-muted">
-                        Vol. {vol}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {series.missingVolumes.length > 10 && (
-              <Text variant="text-sm/normal" color="text-muted" style={styles.missingNote}>
-                {series.missingVolumes.length} volumes not available in the library
-              </Text>
-            )}
-          </View>
-        </View>
-
-        {/* Volumes Section Title */}
-        <View style={styles.sectionHeader}>
-          <Heading level={2} variant="header-sm/semibold" style={styles.sectionTitle}>All Volumes</Heading>
-        </View>
-      </>
-    ) : null,
+        </>
+      ) : null,
     [handleBack, series, theme, availabilityPercent]
   );
 
   // Footer component with debug panel
   const ListFooter = useMemo(
-    () => series != null ? (
-      <View style={styles.footerContainer}>
-        <DebugPanel
-          debug={series._debug}
-          onRefreshWithDebug={series._debug == null ? refreshWithDebug : undefined}
-          cacheContext={id !== '' ? { type: 'series', identifier: id } : undefined}
-          onClearCache={handleClearCache}
-        />
-      </View>
-    ) : null,
+    () =>
+      series != null ? (
+        <View style={styles.footerContainer}>
+          <DebugPanel
+            debug={series._debug}
+            onRefreshWithDebug={series._debug == null ? refreshWithDebug : undefined}
+            cacheContext={id !== '' ? { type: 'series', identifier: id } : undefined}
+            onClearCache={handleClearCache}
+          />
+        </View>
+      ) : null,
     [series, refreshWithDebug, id, handleClearCache]
   );
 
@@ -214,10 +249,14 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Text variant="text-md/medium" color="accent">← Back to search</Text>
+          <Text variant="text-md/medium" color="accent">
+            ← Back to search
+          </Text>
         </TouchableOpacity>
         <View style={[styles.errorContainer, { backgroundColor: theme.errorBg }]}>
-          <Text variant="text-sm/normal" color="error">⚠ {error ?? 'Series not found'}</Text>
+          <Text variant="text-sm/normal" color="error">
+            ⚠ {error ?? 'Series not found'}
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -255,11 +294,7 @@ function SeriesCoverImage({ uri, theme: _theme }: SeriesCoverImageProps): JSX.El
 
   return (
     <View style={styles.headerCover}>
-      <Image
-        source={{ uri }}
-        style={styles.headerCoverImage}
-        onError={() => setImageError(true)}
-      />
+      <Image source={{ uri }} style={styles.headerCoverImage} onError={() => setImageError(true)} />
     </View>
   );
 }
@@ -271,16 +306,18 @@ interface VolumeRowProps {
   theme: ThemeColors;
 }
 
-function VolumeRow({ volume, seriesTitle: _seriesTitle, onPress, theme }: VolumeRowProps): JSX.Element {
+function VolumeRow({
+  volume,
+  seriesTitle: _seriesTitle,
+  onPress,
+  theme,
+}: VolumeRowProps): JSX.Element {
   const isAvailable = volume.availability?.available ?? false;
   const [imageError, setImageError] = useState(false);
 
   return (
     <TouchableOpacity
-      style={[
-        styles.volumeRow,
-        { backgroundColor: theme.bgSecondary, borderColor: theme.border },
-      ]}
+      style={[styles.volumeRow, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}
       onPress={onPress}
       activeOpacity={0.7}
     >
@@ -301,8 +338,12 @@ function VolumeRow({ volume, seriesTitle: _seriesTitle, onPress, theme }: Volume
 
       {/* Volume Number */}
       <View style={styles.volumeNumberContainer}>
-        <Text variant="text-xs/normal" color="text-muted">Vol.</Text>
-        <Text variant="header-sm/bold" color="text-primary">{volume.volumeNumber}</Text>
+        <Text variant="text-xs/normal" color="text-muted">
+          Vol.
+        </Text>
+        <Text variant="header-sm/bold" color="text-primary">
+          {volume.volumeNumber}
+        </Text>
       </View>
 
       {/* Info */}
@@ -313,7 +354,9 @@ function VolumeRow({ volume, seriesTitle: _seriesTitle, onPress, theme }: Volume
           </Text>
         )}
         {volume.primaryIsbn != null && (
-          <Text variant="text-xs/normal" color="text-muted" style={styles.volumeIsbn}>ISBN: {volume.primaryIsbn}</Text>
+          <Text variant="text-xs/normal" color="text-muted" style={styles.volumeIsbn}>
+            ISBN: {volume.primaryIsbn}
+          </Text>
         )}
       </View>
 
@@ -333,7 +376,9 @@ function VolumeRow({ volume, seriesTitle: _seriesTitle, onPress, theme }: Volume
       </View>
 
       {/* View Arrow */}
-      <Text variant="text-md/semibold" color="accent">→</Text>
+      <Text variant="text-md/semibold" color="accent">
+        →
+      </Text>
     </TouchableOpacity>
   );
 }

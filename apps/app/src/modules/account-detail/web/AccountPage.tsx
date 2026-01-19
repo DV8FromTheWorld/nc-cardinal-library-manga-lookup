@@ -2,18 +2,19 @@
  * Account page for viewing checkouts, history, and holds.
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuthStore, logout } from '../../authentication/store';
+import { useCallback, useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+
+import { Text } from '../../../design/components/Text/web/Text';
+import { logout, useAuthStore } from '../../authentication/store';
+import { LoginModal } from '../../login/web/LoginModal';
 import {
-  useAccountStore,
   fetchCheckouts,
   fetchHistory,
-  fetchMoreHistory,
   fetchHolds,
+  fetchMoreHistory,
+  useAccountStore,
 } from '../store';
-import { LoginModal } from '../../login/web/LoginModal';
-import { Text } from '../../../design/components/Text/web/Text';
 import type { CheckedOutItem, HistoryItem, HoldItem } from '../types';
 import styles from './AccountPage.module.css';
 
@@ -22,7 +23,7 @@ type TabType = 'checkouts' | 'history' | 'holds';
 export function AccountPage(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   const session = useAuthStore((s) => s.session);
   const isInitialized = useAuthStore((s) => s.isInitialized);
   const isLoggedIn = session !== null;
@@ -96,14 +97,10 @@ export function AccountPage(): JSX.Element {
     return (
       <div className={styles.container}>
         <header className={styles.header}>
-          <button
-            type="button"
-            className={styles.backButton}
-            onClick={() => navigate('/')}
-          >
+          <button type="button" className={styles.backButton} onClick={() => navigate('/')}>
             ←
           </button>
-          <Text variant="header-lg/bold"  className={styles.title}>
+          <Text variant="header-lg/bold" className={styles.title}>
             My Account
           </Text>
         </header>
@@ -135,15 +132,11 @@ export function AccountPage(): JSX.Element {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <button
-          type="button"
-          className={styles.backButton}
-          onClick={() => navigate('/')}
-        >
+        <button type="button" className={styles.backButton} onClick={() => navigate('/')}>
           ←
         </button>
         <div className={styles.headerTitleSection}>
-          <Text variant="header-lg/bold"  className={styles.title}>
+          <Text variant="header-lg/bold" className={styles.title}>
             My Account
           </Text>
           {session?.displayName != null && (
@@ -215,7 +208,11 @@ export function AccountPage(): JSX.Element {
           ) : (
             <div className={styles.itemList}>
               {checkouts.map((item) => (
-                <CheckoutCard key={item.barcode} item={item} onClick={() => handleBookClick(item.recordId)} />
+                <CheckoutCard
+                  key={item.barcode}
+                  item={item}
+                  onClick={() => handleBookClick(item.recordId)}
+                />
               ))}
             </div>
           )}
@@ -240,9 +237,14 @@ export function AccountPage(): JSX.Element {
               <Text variant="header-sm/semibold" tag="p" className={styles.historyDisabledTitle}>
                 History Tracking Disabled
               </Text>
-              <Text variant="text-md/normal" color="text-secondary" tag="p" className={styles.historyDisabledText}>
-                To track your checkout history, enable it in your NC Cardinal account settings.
-                Only future checkouts will be recorded.
+              <Text
+                variant="text-md/normal"
+                color="text-secondary"
+                tag="p"
+                className={styles.historyDisabledText}
+              >
+                To track your checkout history, enable it in your NC Cardinal account settings. Only
+                future checkouts will be recorded.
               </Text>
               <a
                 href="https://nccardinal.org/eg/opac/myopac/prefs_settings"
@@ -316,7 +318,11 @@ export function AccountPage(): JSX.Element {
           ) : (
             <div className={styles.itemList}>
               {holds.map((item) => (
-                <HoldCard key={item.recordId} item={item} onClick={() => handleBookClick(item.recordId)} />
+                <HoldCard
+                  key={item.recordId}
+                  item={item}
+                  onClick={() => handleBookClick(item.recordId)}
+                />
               ))}
             </div>
           )}
@@ -337,16 +343,25 @@ interface CheckoutCardProps {
 
 function CheckoutCard({ item, onClick }: CheckoutCardProps): JSX.Element {
   return (
-    <button type="button" className={`${styles.item} ${item.overdue ? styles.overdue : ''}`} onClick={onClick}>
+    <button
+      type="button"
+      className={`${styles.item} ${item.overdue ? styles.overdue : ''}`}
+      onClick={onClick}
+    >
       <div className={styles.itemCover}>
         <div className={styles.coverPlaceholder}>📚</div>
       </div>
       <div className={styles.itemInfo}>
-        <Text variant="text-md/semibold"  className={styles.itemTitle}>
+        <Text variant="text-md/semibold" className={styles.itemTitle}>
           {item.title}
         </Text>
         {item.author != null && (
-          <Text variant="text-sm/normal" color="text-secondary" tag="p" className={styles.itemAuthor}>
+          <Text
+            variant="text-sm/normal"
+            color="text-secondary"
+            tag="p"
+            className={styles.itemAuthor}
+          >
             {item.author}
           </Text>
         )}
@@ -380,11 +395,16 @@ function HistoryCard({ item, onClick }: HistoryCardProps): JSX.Element {
         <div className={styles.coverPlaceholder}>📖</div>
       </div>
       <div className={styles.itemInfo}>
-        <Text variant="text-md/semibold"  className={styles.itemTitle}>
+        <Text variant="text-md/semibold" className={styles.itemTitle}>
           {item.title}
         </Text>
         {item.author != null && (
-          <Text variant="text-sm/normal" color="text-secondary" tag="p" className={styles.itemAuthor}>
+          <Text
+            variant="text-sm/normal"
+            color="text-secondary"
+            tag="p"
+            className={styles.itemAuthor}
+          >
             {item.author}
           </Text>
         )}
@@ -417,11 +437,16 @@ function HoldCard({ item, onClick }: HoldCardProps): JSX.Element {
         <div className={styles.coverPlaceholder}>🔖</div>
       </div>
       <div className={styles.itemInfo}>
-        <Text variant="text-md/semibold"  className={styles.itemTitle}>
+        <Text variant="text-md/semibold" className={styles.itemTitle}>
           {item.title}
         </Text>
         {item.author != null && (
-          <Text variant="text-sm/normal" color="text-secondary" tag="p" className={styles.itemAuthor}>
+          <Text
+            variant="text-sm/normal"
+            color="text-secondary"
+            tag="p"
+            className={styles.itemAuthor}
+          >
             {item.author}
           </Text>
         )}

@@ -2,15 +2,17 @@
  * Native router implementation using @react-navigation.
  */
 
+import '../../store/stores'; // Register all store initializers
+
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import '../../store/stores'; // Register all store initializers
-import { useStoreInit } from '../../store/useStoreInit';
+
+import { AccountScreen } from '../../account-detail/native/AccountScreen';
+import { VolumeScreen } from '../../book/native/VolumeScreen';
 import { HomeScreen } from '../../search/native/HomeScreen';
 import { SearchScreen } from '../../search/native/SearchScreen';
 import { SeriesScreen } from '../../series/native/SeriesScreen';
-import { VolumeScreen } from '../../book/native/VolumeScreen';
-import { AccountScreen } from '../../account-detail/native/AccountScreen';
+import { useStoreInit } from '../../store/useStoreInit';
 
 /**
  * Type-safe route params for navigation.
@@ -32,6 +34,7 @@ export function Router(): JSX.Element {
   return (
     <NavigationContainer>
       <Stack.Navigator
+        id="RootStack"
         initialRouteName="Home"
         screenOptions={{
           headerShown: false,

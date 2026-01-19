@@ -2,38 +2,39 @@
  * Search screen component for React Native - shows search results.
  */
 
-import { useCallback, useState, useMemo, useEffect } from 'react';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View,
+  ActivityIndicator,
+  FlatList,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
   Text as RNText,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
-  StyleSheet,
-  Image,
   useColorScheme,
-  SafeAreaView,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Modal,
-  FlatList,
+  View,
 } from 'react-native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../../routing/native/Router';
-import { useStreamingSearch } from '../hooks/useStreamingSearch';
-import { useAutocomplete } from '../hooks/useAutocomplete';
-import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
-import { DebugPanel } from '../../debug/native/DebugPanel';
-import { clearCacheForSearch } from '../services/mangaApi';
-import { getAvailabilityPercent, getAvailabilityDisplayInfo } from '../utils/availability';
-import { SearchProgressIndicator } from './SearchProgressIndicator';
-import { SearchSuggestions } from './SearchSuggestions';
-import type { SeriesResult, VolumeResult, SearchResult } from '../types';
-import { Text } from '../../../design/components/Text/native/Text';
+
 import { Heading } from '../../../design/components/Heading/native/Heading';
+import { Text } from '../../../design/components/Text/native/Text';
+import { DebugPanel } from '../../debug/native/DebugPanel';
 import { LoginModal } from '../../login/native/LoginModal';
 import { UserButton } from '../../login/native/UserButton';
+import type { RootStackParamList } from '../../routing/native/Router';
+import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
+import { useAutocomplete } from '../hooks/useAutocomplete';
+import { useStreamingSearch } from '../hooks/useStreamingSearch';
+import { clearCacheForSearch } from '../services/mangaApi';
+import type { SearchResult, SeriesResult, VolumeResult } from '../types';
+import { getAvailabilityDisplayInfo, getAvailabilityPercent } from '../utils/availability';
+import { SearchProgressIndicator } from './SearchProgressIndicator';
+import { SearchSuggestions } from './SearchSuggestions';
 import { colors, spacing, type ThemeColors } from './theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Search'>;
@@ -77,7 +78,16 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
     [navigation]
   );
 
-  const { query, setQuery, results, isLoading, error, progress, search, clearResults: _clearResults } = useStreamingSearch({
+  const {
+    query,
+    setQuery,
+    results,
+    isLoading,
+    error,
+    progress,
+    search,
+    clearResults: _clearResults,
+  } = useStreamingSearch({
     initialQuery,
     homeLibrary,
     onQueryChange: handleQueryChange,
@@ -105,11 +115,14 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
     [navigation]
   );
 
-  const handleInputChange = useCallback((text: string) => {
-    setQuery(text);
-    setAutocompleteQuery(text);
-    setShowSuggestions(true);
-  }, [setQuery, setAutocompleteQuery]);
+  const handleInputChange = useCallback(
+    (text: string) => {
+      setQuery(text);
+      setAutocompleteQuery(text);
+      setShowSuggestions(true);
+    },
+    [setQuery, setAutocompleteQuery]
+  );
 
   const handleInputFocus = useCallback(() => {
     setShowSuggestions(true);
@@ -137,19 +150,25 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
     }
   }, [query, search, initialQuery, navigation, addRecentSearch, clearSuggestions]);
 
-  const handleSelectSuggestion = useCallback((title: string) => {
-    addRecentSearch(title);
-    setShowSuggestions(false);
-    clearSuggestions();
-    // Push a new search screen with this title
-    navigation.push('Search', { query: title, skipAnimation: true });
-  }, [navigation, addRecentSearch, clearSuggestions]);
+  const handleSelectSuggestion = useCallback(
+    (title: string) => {
+      addRecentSearch(title);
+      setShowSuggestions(false);
+      clearSuggestions();
+      // Push a new search screen with this title
+      navigation.push('Search', { query: title, skipAnimation: true });
+    },
+    [navigation, addRecentSearch, clearSuggestions]
+  );
 
-  const handleSelectRecent = useCallback((recentQuery: string) => {
-    setShowSuggestions(false);
-    clearSuggestions();
-    navigation.push('Search', { query: recentQuery, skipAnimation: true });
-  }, [navigation, clearSuggestions]);
+  const handleSelectRecent = useCallback(
+    (recentQuery: string) => {
+      setShowSuggestions(false);
+      clearSuggestions();
+      navigation.push('Search', { query: recentQuery, skipAnimation: true });
+    },
+    [navigation, clearSuggestions]
+  );
 
   // Header component for the scrollable list
   const headerContent = (
@@ -165,37 +184,58 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
         </View>
         {/* Back button when there's navigation history */}
         {navigation.canGoBack() && (
-          <TouchableOpacity 
-            onPress={() => navigation.goBack()} 
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
             style={[styles.backButton, { borderColor: theme.border }]}
           >
-            <Text variant="text-sm/normal" color="text-secondary">← Back</Text>
+            <Text variant="text-sm/normal" color="text-secondary">
+              ← Back
+            </Text>
           </TouchableOpacity>
         )}
         <TouchableOpacity onPress={() => navigation.navigate('Home')} style={styles.titleButton}>
           <RNText style={styles.titleIcon}>📚</RNText>
-          <Heading level={1} variant="header-lg/bold" style={styles.titleText}>NC Cardinal Manga</Heading>
+          <Heading level={1} variant="header-lg/bold" style={styles.titleText}>
+            NC Cardinal Manga
+          </Heading>
         </TouchableOpacity>
         <Text variant="text-md/normal" color="text-secondary" style={styles.subtitle}>
           Find manga series at your local NC library
         </Text>
         {/* Library Selector */}
         <TouchableOpacity
-          style={[styles.librarySelector, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}
+          style={[
+            styles.librarySelector,
+            { backgroundColor: theme.bgSecondary, borderColor: theme.border },
+          ]}
           onPress={() => setShowLibraryPicker(true)}
         >
-          <Text variant="text-sm/normal" color="text-muted">📍 My Library:</Text>
-          <Text variant="text-sm/medium" color="text-primary" numberOfLines={1} style={styles.librarySelectorValue}>
+          <Text variant="text-sm/normal" color="text-muted">
+            📍 My Library:
+          </Text>
+          <Text
+            variant="text-sm/medium"
+            color="text-primary"
+            numberOfLines={1}
+            style={styles.librarySelectorValue}
+          >
             {libraryName ?? 'Select...'}
           </Text>
-          <Text variant="text-xs/normal" color="text-muted">▼</Text>
+          <Text variant="text-xs/normal" color="text-muted">
+            ▼
+          </Text>
         </TouchableOpacity>
       </View>
 
       {/* Search Input */}
       <View style={styles.searchContainer}>
         <View style={styles.searchInputContainer}>
-          <View style={[styles.searchInputWrapper, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}>
+          <View
+            style={[
+              styles.searchInputWrapper,
+              { backgroundColor: theme.bgSecondary, borderColor: theme.border },
+            ]}
+          >
             <TextInput
               style={[styles.searchInput, { color: theme.textPrimary }]}
               placeholder="Search for manga..."
@@ -239,7 +279,11 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
       {/* Debug Panel - moved to header so it scrolls with content */}
       <DebugPanel
         debug={results?._debug}
-        cacheContext={results?.query != null && results.query !== '' ? { type: 'search', identifier: results.query } : undefined}
+        cacheContext={
+          results?.query != null && results.query !== ''
+            ? { type: 'search', identifier: results.query }
+            : undefined
+        }
         onClearCache={handleClearCache}
       />
     </View>
@@ -262,9 +306,13 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { backgroundColor: theme.bgPrimary }]}>
               <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
-                <Heading level={2} variant="header-sm/semibold">Select Your Library</Heading>
+                <Heading level={2} variant="header-sm/semibold">
+                  Select Your Library
+                </Heading>
                 <TouchableOpacity onPress={() => setShowLibraryPicker(false)}>
-                  <Text variant="text-md/medium" color="accent">Done</Text>
+                  <Text variant="text-md/medium" color="accent">
+                    Done
+                  </Text>
                 </TouchableOpacity>
               </View>
               <ScrollView style={styles.libraryList}>
@@ -293,7 +341,9 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
                       {lib.name}
                     </Text>
                     {homeLibrary === lib.code && (
-                      <Text variant="text-md/semibold" color="accent">✓</Text>
+                      <Text variant="text-md/semibold" color="accent">
+                        ✓
+                      </Text>
                     )}
                   </TouchableOpacity>
                 ))}
@@ -303,10 +353,7 @@ export function SearchScreen({ navigation, route }: Props): JSX.Element {
         </Modal>
 
         {/* Login Modal */}
-        <LoginModal
-          visible={showLoginModal}
-          onClose={() => setShowLoginModal(false)}
-        />
+        <LoginModal visible={showLoginModal} onClose={() => setShowLoginModal(false)} />
 
         {/* Results list with header - always rendered to enable scrolling */}
         <ResultsList
@@ -345,7 +392,10 @@ function SeriesCard({ series, onPress, theme, highlighted }: SeriesCardProps): J
     <TouchableOpacity
       style={[
         styles.seriesCard,
-        { backgroundColor: theme.bgSecondary, borderColor: highlighted ? theme.accent : theme.border },
+        {
+          backgroundColor: theme.bgSecondary,
+          borderColor: highlighted ? theme.accent : theme.border,
+        },
         highlighted && styles.seriesCardHighlighted,
       ]}
       onPress={onPress}
@@ -366,26 +416,44 @@ function SeriesCard({ series, onPress, theme, highlighted }: SeriesCardProps): J
       </View>
       <View style={styles.seriesInfo}>
         <View style={styles.seriesHeader}>
-          <Text variant="text-md/semibold" color="text-primary" numberOfLines={2} style={styles.seriesTitle}>
+          <Text
+            variant="text-md/semibold"
+            color="text-primary"
+            numberOfLines={2}
+            style={styles.seriesTitle}
+          >
             {series.title}
           </Text>
           {series.isComplete && (
             <View style={[styles.completeBadge, { backgroundColor: theme.successBg }]}>
-              <Text variant="text-xs/medium" color="success">Complete</Text>
+              <Text variant="text-xs/medium" color="success">
+                Complete
+              </Text>
             </View>
           )}
         </View>
         {series.author != null && (
-          <Text variant="text-sm/normal" color="text-secondary" numberOfLines={1} style={styles.seriesAuthor}>
+          <Text
+            variant="text-sm/normal"
+            color="text-secondary"
+            numberOfLines={1}
+            style={styles.seriesAuthor}
+          >
             {series.author}
           </Text>
         )}
         <View style={styles.seriesStats}>
           <Text variant="text-md/bold" color="text-primary">
-            {series.totalVolumes} <Text variant="text-xs/normal" color="text-primary">volumes</Text>
+            {series.totalVolumes}{' '}
+            <Text variant="text-xs/normal" color="text-primary">
+              volumes
+            </Text>
           </Text>
           <Text variant="text-md/bold" color="text-primary">
-            {series.availableVolumes} <Text variant="text-xs/normal" color="text-primary">in library</Text>
+            {series.availableVolumes}{' '}
+            <Text variant="text-xs/normal" color="text-primary">
+              in library
+            </Text>
           </Text>
         </View>
         <View style={[styles.availabilityBar, { backgroundColor: theme.bgTertiary }]}>
@@ -426,7 +494,10 @@ function VolumeCard({ volume, onPress, theme, highlighted }: VolumeCardProps): J
     <TouchableOpacity
       style={[
         styles.volumeCard,
-        { backgroundColor: theme.bgSecondary, borderColor: highlighted ? theme.accent : theme.border },
+        {
+          backgroundColor: theme.bgSecondary,
+          borderColor: highlighted ? theme.accent : theme.border,
+        },
         highlighted && styles.volumeCardHighlighted,
       ]}
       onPress={onPress}
@@ -454,7 +525,12 @@ function VolumeCard({ volume, onPress, theme, highlighted }: VolumeCardProps): J
           {volume.title}
         </Text>
         {volume.seriesTitle != null && (
-          <Text variant="text-xs/normal" color="text-secondary" numberOfLines={1} style={styles.volumeSeries}>
+          <Text
+            variant="text-xs/normal"
+            color="text-secondary"
+            numberOfLines={1}
+            style={styles.volumeSeries}
+          >
             {volume.seriesTitle}
           </Text>
         )}
@@ -481,7 +557,13 @@ type VolumeItem = { type: 'volume'; id: string; volume: VolumeResult };
 type ShowMoreItem = { type: 'showMore'; id: string };
 type NoResultsItem = { type: 'noResults'; id: string };
 
-type ResultItem = SectionHeaderItem | BestMatchItem | SeriesItem | VolumeItem | ShowMoreItem | NoResultsItem;
+type ResultItem =
+  | SectionHeaderItem
+  | BestMatchItem
+  | SeriesItem
+  | VolumeItem
+  | ShowMoreItem
+  | NoResultsItem;
 
 // Estimated heights for different item types (used by FlashList)
 const _ITEM_HEIGHTS = {
@@ -522,73 +604,79 @@ function ResultsList({
   const items = useMemo((): ResultItem[] => {
     // If no results yet (loading or error), return empty array
     if (results == null) return [];
-    
+
     const result: ResultItem[] = [];
-    
+
     // Best Match section
     if (results.bestMatch != null) {
       result.push({ type: 'sectionHeader', id: 'header-best-match', title: 'Best Match' });
       result.push({ type: 'bestMatch', id: 'best-match' });
     }
-    
+
     // Series section (excluding best match)
-    const bestMatchSeriesId = results.bestMatch?.type === 'series' ? results.bestMatch.series?.id : undefined;
-    const filteredSeries = bestMatchSeriesId != null
-      ? results.series.filter((s) => s.id !== bestMatchSeriesId)
-      : results.series;
-    
+    const bestMatchSeriesId =
+      results.bestMatch?.type === 'series' ? results.bestMatch.series?.id : undefined;
+    const filteredSeries =
+      bestMatchSeriesId != null
+        ? results.series.filter((s) => s.id !== bestMatchSeriesId)
+        : results.series;
+
     if (filteredSeries.length > 0) {
-      const title = bestMatchSeriesId != null 
-        ? `Other Series (${filteredSeries.length})` 
-        : `Series (${filteredSeries.length})`;
+      const title =
+        bestMatchSeriesId != null
+          ? `Other Series (${filteredSeries.length})`
+          : `Series (${filteredSeries.length})`;
       result.push({ type: 'sectionHeader', id: 'header-series', title });
-      
+
       for (const series of filteredSeries) {
         result.push({ type: 'series', id: series.id, series });
       }
     }
-    
+
     // Volumes section
     if (results.volumes.length > 0) {
-      result.push({ 
-        type: 'sectionHeader', 
-        id: 'header-volumes', 
-        title: `Volumes (${results.volumes.length})` 
+      result.push({
+        type: 'sectionHeader',
+        id: 'header-volumes',
+        title: `Volumes (${results.volumes.length})`,
       });
-      
+
       const displayVolumes = showAllVolumes ? results.volumes : results.volumes.slice(0, 12);
       displayVolumes.forEach((volume, idx) => {
         result.push({ type: 'volume', id: volume.id ?? `vol-${idx}`, volume });
       });
-      
+
       // Add "Show more" button if needed
       if (results.volumes.length > 12) {
         result.push({ type: 'showMore', id: 'show-more' });
       }
     }
-    
+
     // No results
     if (results.series.length === 0 && results.volumes.length === 0) {
       result.push({ type: 'noResults', id: 'no-results' });
     }
-    
+
     return result;
   }, [results, showAllVolumes]);
-  
+
   // Combined header with loading/error states
-  const ListHeader = useMemo(() => (
-    <View>
-      {headerComponent}
-      {error != null && (
-        <View style={[styles.errorContainer, { backgroundColor: theme.errorBg }]}>
-          <Text variant="text-sm/normal" color="error">⚠ {error}</Text>
-        </View>
-      )}
-      {isLoading && progress != null && (
-        <SearchProgressIndicator progress={progress} />
-      )}
-    </View>
-  ), [headerComponent, error, isLoading, theme.errorBg]);
+  const ListHeader = useMemo(
+    () => (
+      <View>
+        {headerComponent}
+        {error != null && (
+          <View style={[styles.errorContainer, { backgroundColor: theme.errorBg }]}>
+            <Text variant="text-sm/normal" color="error">
+              ⚠ {error}
+            </Text>
+          </View>
+        )}
+        {isLoading && progress != null && <SearchProgressIndicator progress={progress} />}
+      </View>
+    ),
+    [headerComponent, error, isLoading, progress, theme.errorBg]
+  );
 
   const renderItem = useCallback(
     ({ item }: { item: ResultItem }) => {
@@ -604,22 +692,24 @@ function ResultsList({
         case 'bestMatch': {
           if (!results?.bestMatch) return null;
           if (results.bestMatch.type === 'series' && results.bestMatch.series) {
+            const seriesId = results.bestMatch.series.id;
             return (
               <SeriesCard
                 series={results.bestMatch.series}
-                onPress={() => onSelectSeries(results.bestMatch!.series!.id)}
+                onPress={() => onSelectSeries(seriesId)}
                 theme={theme}
                 highlighted
               />
             );
           }
           if (results.bestMatch.type === 'volume' && results.bestMatch.volume) {
+            const volumeId = results.bestMatch.volume.id;
             return (
               <VolumeCard
                 volume={results.bestMatch.volume}
                 onPress={() => {
-                  if (results.bestMatch!.volume!.id != null && results.bestMatch!.volume!.id !== '') {
-                    onSelectVolume(results.bestMatch!.volume!.id);
+                  if (volumeId != null && volumeId !== '') {
+                    onSelectVolume(volumeId);
                   }
                 }}
                 theme={theme}
@@ -641,7 +731,9 @@ function ResultsList({
           return (
             <VolumeCard
               volume={item.volume}
-              onPress={() => { if (item.volume.id != null && item.volume.id !== '') onSelectVolume(item.volume.id); }}
+              onPress={() => {
+                if (item.volume.id != null && item.volume.id !== '') onSelectVolume(item.volume.id);
+              }}
               theme={theme}
             />
           );
@@ -649,7 +741,10 @@ function ResultsList({
           // Note: 'showMore' items are only added when results.volumes.length > 12
           return results != null ? (
             <TouchableOpacity
-              style={[styles.showMoreButton, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}
+              style={[
+                styles.showMoreButton,
+                { backgroundColor: theme.bgSecondary, borderColor: theme.border },
+              ]}
               onPress={onToggleShowAllVolumes}
             >
               <Text variant="text-sm/normal" color="text-secondary">

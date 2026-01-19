@@ -22,8 +22,11 @@
  *   );
  */
 
-import { create, StateCreator } from 'zustand';
-import { persist, createJSONStorage, PersistOptions } from 'zustand/middleware';
+import type { StateCreator } from 'zustand';
+import { create } from 'zustand';
+import type { PersistOptions } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
+
 import { storage } from '../storage/storage';
 
 // ============================================================================

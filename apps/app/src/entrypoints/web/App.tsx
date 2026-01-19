@@ -3,8 +3,9 @@
  * Sets up the app shell and renders the router.
  */
 
-import { Router } from '../../modules/routing/web/Router';
 import '../../styles/variables.css';
+
+import { Router } from '../../modules/routing/web/Router';
 
 export function App(): JSX.Element {
   return <Router />;

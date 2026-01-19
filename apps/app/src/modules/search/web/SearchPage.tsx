@@ -2,21 +2,22 @@
  * Search page component for web - shows search results.
  */
 
-import { useRef, useEffect, useCallback, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { useStreamingSearch } from '../hooks/useStreamingSearch';
-import { useAutocomplete } from '../hooks/useAutocomplete';
-import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
-import { DebugPanel } from '../../debug/web/DebugPanel';
-import { clearCacheForSearch } from '../services/mangaApi';
-import { getAvailabilityPercent, getAvailabilityDisplayInfo } from '../utils/availability';
-import { Text } from '../../../design/components/Text/web/Text';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+
 import { Heading } from '../../../design/components/Heading/web/Heading';
+import { Text } from '../../../design/components/Text/web/Text';
+import { DebugPanel } from '../../debug/web/DebugPanel';
 import { LoginModal } from '../../login/web/LoginModal';
 import { UserMenu } from '../../login/web/UserMenu';
-import { SearchSuggestions } from './SearchSuggestions';
-import type { SeriesResult, VolumeResult, StreamingSearchProgress } from '../types';
+import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
+import { useAutocomplete } from '../hooks/useAutocomplete';
+import { useStreamingSearch } from '../hooks/useStreamingSearch';
+import { clearCacheForSearch } from '../services/mangaApi';
+import type { SeriesResult, StreamingSearchProgress, VolumeResult } from '../types';
+import { getAvailabilityDisplayInfo, getAvailabilityPercent } from '../utils/availability';
 import styles from './SearchPage.module.css';
+import { SearchSuggestions } from './SearchSuggestions';
 
 export function SearchPage(): JSX.Element {
   const [searchParams] = useSearchParams();
@@ -49,28 +50,23 @@ export function SearchPage(): JSX.Element {
     removeRecentSearch,
   } = useAutocomplete();
 
-  const handleQueryChange = useCallback((newQuery: string) => {
-    if (newQuery !== '') {
-      void navigate(`/search?q=${encodeURIComponent(newQuery)}`, { replace: true });
-    } else {
-      void navigate('/');
-    }
-  }, [navigate]);
+  const handleQueryChange = useCallback(
+    (newQuery: string) => {
+      if (newQuery !== '') {
+        void navigate(`/search?q=${encodeURIComponent(newQuery)}`, { replace: true });
+      } else {
+        void navigate('/');
+      }
+    },
+    [navigate]
+  );
 
-  const {
-    query,
-    setQuery,
-    results,
-    isLoading,
-    error,
-    progress,
-    search,
-    clearResults,
-  } = useStreamingSearch({
-    initialQuery,
-    homeLibrary,
-    onQueryChange: handleQueryChange,
-  });
+  const { query, setQuery, results, isLoading, error, progress, search, clearResults } =
+    useStreamingSearch({
+      initialQuery,
+      homeLibrary,
+      onQueryChange: handleQueryChange,
+    });
 
   // Focus input on mount (only if no initial query)
   useEffect(() => {
@@ -90,60 +86,81 @@ export function SearchPage(): JSX.Element {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSelectSeries = useCallback((seriesId: string) => {
-    // Use entity ID for navigation (stable across data source updates)
-    void navigate(`/series/${encodeURIComponent(seriesId)}`);
-  }, [navigate]);
+  const handleSelectSeries = useCallback(
+    (seriesId: string) => {
+      // Use entity ID for navigation (stable across data source updates)
+      void navigate(`/series/${encodeURIComponent(seriesId)}`);
+    },
+    [navigate]
+  );
 
-  const handleSelectVolume = useCallback((volumeId: string) => {
-    void navigate(`/volumes/${encodeURIComponent(volumeId)}`);
-  }, [navigate]);
+  const handleSelectVolume = useCallback(
+    (volumeId: string) => {
+      void navigate(`/volumes/${encodeURIComponent(volumeId)}`);
+    },
+    [navigate]
+  );
 
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setQuery(value);
-    setAutocompleteQuery(value);
-    setShowSuggestions(true);
-  }, [setQuery, setAutocompleteQuery]);
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      setQuery(value);
+      setAutocompleteQuery(value);
+      setShowSuggestions(true);
+    },
+    [setQuery, setAutocompleteQuery]
+  );
 
   const handleInputFocus = useCallback(() => {
     setShowSuggestions(true);
   }, []);
 
-  const handleSubmit = useCallback((e: React.FormEvent) => {
-    e.preventDefault();
-    if (query.trim() !== '') {
-      addRecentSearch(query.trim());
-      setShowSuggestions(false);
-      clearSuggestions();
-      search(query);
-    }
-  }, [query, search, addRecentSearch, clearSuggestions]);
-
-  const handleSelectSuggestion = useCallback((title: string) => {
-    setQuery(title);
-    addRecentSearch(title);
-    setShowSuggestions(false);
-    clearSuggestions();
-    search(title);
-  }, [setQuery, addRecentSearch, clearSuggestions, search]);
-
-  const handleSelectRecent = useCallback((recentQuery: string) => {
-    setQuery(recentQuery);
-    setShowSuggestions(false);
-    clearSuggestions();
-    search(recentQuery);
-  }, [setQuery, clearSuggestions, search]);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    // Let SearchSuggestions handle arrow keys and escape
-    if (e.key === 'Enter' && !showSuggestions) {
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
       if (query.trim() !== '') {
         addRecentSearch(query.trim());
+        setShowSuggestions(false);
+        clearSuggestions();
         search(query);
       }
-    }
-  }, [query, search, showSuggestions, addRecentSearch]);
+    },
+    [query, search, addRecentSearch, clearSuggestions]
+  );
+
+  const handleSelectSuggestion = useCallback(
+    (title: string) => {
+      setQuery(title);
+      addRecentSearch(title);
+      setShowSuggestions(false);
+      clearSuggestions();
+      search(title);
+    },
+    [setQuery, addRecentSearch, clearSuggestions, search]
+  );
+
+  const handleSelectRecent = useCallback(
+    (recentQuery: string) => {
+      setQuery(recentQuery);
+      setShowSuggestions(false);
+      clearSuggestions();
+      search(recentQuery);
+    },
+    [setQuery, clearSuggestions, search]
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      // Let SearchSuggestions handle arrow keys and escape
+      if (e.key === 'Enter' && !showSuggestions) {
+        if (query.trim() !== '') {
+          addRecentSearch(query.trim());
+          search(query);
+        }
+      }
+    },
+    [query, search, showSuggestions, addRecentSearch]
+  );
 
   const handleGoHome = useCallback(() => {
     clearResults();
@@ -166,20 +183,30 @@ export function SearchPage(): JSX.Element {
         <div className={styles.userMenuContainer}>
           <UserMenu onLoginClick={() => setShowLoginModal(true)} />
         </div>
-        <button 
-          type="button" 
+        <button
+          type="button"
           className={styles.titleButton}
           onClick={handleGoHome}
           title="Back to search home"
         >
-          <Text variant="header-md/bold" className={styles.titleIcon}>📚</Text>
-          <Text variant="header-lg/bold" className={styles.titleText}>NC Cardinal Manga</Text>
+          <Text variant="header-md/bold" className={styles.titleIcon}>
+            📚
+          </Text>
+          <Text variant="header-lg/bold" className={styles.titleText}>
+            NC Cardinal Manga
+          </Text>
         </button>
         <Text variant="text-md/normal" color="text-secondary" tag="p" className={styles.subtitle}>
           Find manga series at your local NC library
         </Text>
         <div className={styles.librarySelector}>
-          <Text variant="text-sm/medium" color="text-secondary" tag="label" htmlFor="home-library" className={styles.librarySelectorLabel}>
+          <Text
+            variant="text-sm/medium"
+            color="text-secondary"
+            tag="label"
+            htmlFor="home-library"
+            className={styles.librarySelectorLabel}
+          >
             📍 My Library:
           </Text>
           <select
@@ -242,62 +269,92 @@ export function SearchPage(): JSX.Element {
           />
         </div>
         {results?.parsedQuery.volumeNumber != null && results.parsedQuery.volumeNumber > 0 && (
-          <Text variant="text-sm/normal" color="text-secondary" tag="p" className={styles.parsedHint}>
-            Searching for <Text variant="text-sm/semibold" tag="strong">{results.parsedQuery.title}</Text> volume <Text variant="text-sm/semibold" tag="strong">{results.parsedQuery.volumeNumber}</Text>
+          <Text
+            variant="text-sm/normal"
+            color="text-secondary"
+            tag="p"
+            className={styles.parsedHint}
+          >
+            Searching for{' '}
+            <Text variant="text-sm/semibold" tag="strong">
+              {results.parsedQuery.title}
+            </Text>{' '}
+            volume{' '}
+            <Text variant="text-sm/semibold" tag="strong">
+              {results.parsedQuery.volumeNumber}
+            </Text>
           </Text>
         )}
       </form>
 
       {error != null && (
         <div className={styles.error}>
-          <Text variant="text-lg/medium" className={styles.errorIcon}>⚠</Text>
-          <Text variant="text-md/normal" color="error">{error}</Text>
+          <Text variant="text-lg/medium" className={styles.errorIcon}>
+            ⚠
+          </Text>
+          <Text variant="text-md/normal" color="error">
+            {error}
+          </Text>
         </div>
       )}
 
-      {isLoading && (
-        <SearchProgressIndicator progress={progress} />
-      )}
+      {isLoading && <SearchProgressIndicator progress={progress} />}
 
       {results && !isLoading && (
         <div className={styles.results}>
           {/* Best Match Highlight */}
           {results.bestMatch && (
             <section className={styles.bestMatchSection}>
-              <Heading level={2} className={styles.sectionTitle}>Best Match</Heading>
-              {results.bestMatch.type === 'series' && results.bestMatch.series && (
-                <SeriesCard
-                  series={results.bestMatch.series}
-                  onClick={() => handleSelectSeries(results.bestMatch!.series!.id)}
-                  highlighted
-                />
-              )}
-              {results.bestMatch.type === 'volume' && results.bestMatch.volume != null && (
-                <VolumeCard
-                  volume={results.bestMatch.volume}
-                  onClick={() => {
-                    if (results.bestMatch!.volume!.id != null && results.bestMatch!.volume!.id !== '') {
-                      handleSelectVolume(results.bestMatch!.volume!.id);
-                    }
-                  }}
-                  highlighted
-                />
-              )}
+              <Heading level={2} className={styles.sectionTitle}>
+                Best Match
+              </Heading>
+              {results.bestMatch.type === 'series' &&
+                results.bestMatch.series &&
+                (() => {
+                  const seriesId = results.bestMatch.series.id;
+                  return (
+                    <SeriesCard
+                      series={results.bestMatch.series}
+                      onClick={() => handleSelectSeries(seriesId)}
+                      highlighted
+                    />
+                  );
+                })()}
+              {results.bestMatch.type === 'volume' &&
+                results.bestMatch.volume != null &&
+                (() => {
+                  const volumeId = results.bestMatch.volume.id;
+                  return (
+                    <VolumeCard
+                      volume={results.bestMatch.volume}
+                      onClick={() => {
+                        if (volumeId != null && volumeId !== '') {
+                          handleSelectVolume(volumeId);
+                        }
+                      }}
+                      highlighted
+                    />
+                  );
+                })()}
             </section>
           )}
 
           {/* Series Results (excluding best match to avoid duplication) */}
           {(() => {
-            const bestMatchSeriesId = results.bestMatch?.type === 'series' ? results.bestMatch.series?.id : undefined;
-            const filteredSeries = bestMatchSeriesId != null
-              ? results.series.filter((s) => s.id !== bestMatchSeriesId)
-              : results.series;
-            
+            const bestMatchSeriesId =
+              results.bestMatch?.type === 'series' ? results.bestMatch.series?.id : undefined;
+            const filteredSeries =
+              bestMatchSeriesId != null
+                ? results.series.filter((s) => s.id !== bestMatchSeriesId)
+                : results.series;
+
             return filteredSeries.length > 0 ? (
               <section className={styles.section}>
                 <Heading level={2} className={styles.sectionTitle}>
                   {bestMatchSeriesId != null ? 'Other Series' : 'Series'}
-                  <Text variant="text-sm/medium" color="text-muted" className={styles.count}>{filteredSeries.length}</Text>
+                  <Text variant="text-sm/medium" color="text-muted" className={styles.count}>
+                    {filteredSeries.length}
+                  </Text>
                 </Heading>
                 <div className={styles.seriesGrid}>
                   {filteredSeries.map((series) => (
@@ -317,20 +374,24 @@ export function SearchPage(): JSX.Element {
             <section className={styles.section}>
               <Heading level={2} className={styles.sectionTitle}>
                 Volumes
-                <Text variant="text-sm/medium" color="text-muted" className={styles.count}>{results.volumes.length}</Text>
+                <Text variant="text-sm/medium" color="text-muted" className={styles.count}>
+                  {results.volumes.length}
+                </Text>
               </Heading>
               <div className={styles.volumeGrid}>
-                {(showAllVolumes ? results.volumes : results.volumes.slice(0, 12)).map((volume, idx) => (
-                  <VolumeCard
-                    key={volume.id ?? `vol-${idx}`}
-                    volume={volume}
-                    onClick={() => {
-                      if (volume.id != null && volume.id !== '') {
-                        handleSelectVolume(volume.id);
-                      }
-                    }}
-                  />
-                ))}
+                {(showAllVolumes ? results.volumes : results.volumes.slice(0, 12)).map(
+                  (volume, idx) => (
+                    <VolumeCard
+                      key={volume.id ?? `vol-${idx}`}
+                      volume={volume}
+                      onClick={() => {
+                        if (volume.id != null && volume.id !== '') {
+                          handleSelectVolume(volume.id);
+                        }
+                      }}
+                    />
+                  )
+                )}
               </div>
               {results.volumes.length > 12 && (
                 <button
@@ -339,9 +400,7 @@ export function SearchPage(): JSX.Element {
                   onClick={() => setShowAllVolumes(!showAllVolumes)}
                 >
                   <Text variant="text-sm/medium">
-                    {showAllVolumes
-                      ? 'Show less'
-                      : `Show all ${results.volumes.length} volumes`}
+                    {showAllVolumes ? 'Show less' : `Show all ${results.volumes.length} volumes`}
                   </Text>
                 </button>
               )}
@@ -351,9 +410,18 @@ export function SearchPage(): JSX.Element {
           {/* No Results */}
           {results.series.length === 0 && results.volumes.length === 0 && (
             <div className={styles.noResults}>
-              <Text variant="header-xl/normal" className={styles.noResultsIcon}>🔍</Text>
-              <Text variant="text-md/normal" tag="p">No results found for "{results.query}"</Text>
-              <Text variant="text-sm/normal" color="text-muted" tag="p" className={styles.noResultsHint}>
+              <Text variant="header-xl/normal" className={styles.noResultsIcon}>
+                🔍
+              </Text>
+              <Text variant="text-md/normal" tag="p">
+                No results found for "{results.query}"
+              </Text>
+              <Text
+                variant="text-sm/normal"
+                color="text-muted"
+                tag="p"
+                className={styles.noResultsHint}
+              >
                 Try a different search term or check spelling
               </Text>
             </div>
@@ -361,19 +429,19 @@ export function SearchPage(): JSX.Element {
         </div>
       )}
 
-
       {/* Debug Panel */}
       <DebugPanel
         debug={results?._debug}
-        cacheContext={results?.query != null && results.query !== '' ? { type: 'search', identifier: results.query } : undefined}
+        cacheContext={
+          results?.query != null && results.query !== ''
+            ? { type: 'search', identifier: results.query }
+            : undefined
+        }
         onClearCache={handleClearCache}
       />
 
       {/* Login Modal */}
-      <LoginModal
-        isOpen={showLoginModal}
-        onClose={() => setShowLoginModal(false)}
-      />
+      <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
     </div>
   );
 }
@@ -423,8 +491,8 @@ function SeriesCard({ series, onClick, highlighted }: SeriesCardProps): JSX.Elem
       <div className={styles.seriesCardContent}>
         <div className={styles.seriesCover}>
           {series.coverImage != null ? (
-            <img 
-              src={series.coverImage} 
+            <img
+              src={series.coverImage}
               alt={`${series.title} cover`}
               loading="lazy"
               onLoad={(e) => {
@@ -445,15 +513,22 @@ function SeriesCard({ series, onClick, highlighted }: SeriesCardProps): JSX.Elem
               }}
             />
           ) : null}
-          <div className={styles.coverPlaceholder} style={{ display: series.coverImage != null ? 'none' : 'flex' }}>📚</div>
+          <div
+            className={styles.coverPlaceholder}
+            style={{ display: series.coverImage != null ? 'none' : 'flex' }}
+          >
+            📚
+          </div>
         </div>
         <div className={styles.seriesInfo}>
           <div className={styles.seriesHeader}>
-            <Text variant="header-sm/bold" tag="div" className={styles.seriesTitle}>{series.title}</Text>
+            <Text variant="header-sm/bold" tag="div" className={styles.seriesTitle}>
+              {series.title}
+            </Text>
             <div className={styles.seriesBadges}>
               {mediaTypeLabel != null && (
-                <Text 
-                  variant="text-xs/semibold" 
+                <Text
+                  variant="text-xs/semibold"
                   className={`${styles.mediaTypeBadge} ${series.mediaType === 'light_novel' ? styles.lightNovel : styles.manga}`}
                 >
                   {mediaTypeLabel}
@@ -465,33 +540,52 @@ function SeriesCard({ series, onClick, highlighted }: SeriesCardProps): JSX.Elem
                 </Text>
               )}
               {series.isComplete && (
-                <Text variant="text-xs/semibold" className={styles.completeBadge}>Complete</Text>
+                <Text variant="text-xs/semibold" className={styles.completeBadge}>
+                  Complete
+                </Text>
               )}
             </div>
           </div>
-          
+
           {series.author != null && (
-            <Text variant="text-sm/normal" color="text-secondary" tag="p" className={styles.seriesAuthor}>{series.author}</Text>
+            <Text
+              variant="text-sm/normal"
+              color="text-secondary"
+              tag="p"
+              className={styles.seriesAuthor}
+            >
+              {series.author}
+            </Text>
           )}
-          
+
           <div className={styles.seriesStats}>
             <div className={styles.statItem}>
-              <Text variant="text-lg/bold" className={styles.statValue}>{series.totalVolumes}</Text>
-              <Text variant="text-xs/normal" color="text-muted" className={styles.statLabel}>volumes</Text>
+              <Text variant="text-lg/bold" className={styles.statValue}>
+                {series.totalVolumes}
+              </Text>
+              <Text variant="text-xs/normal" color="text-muted" className={styles.statLabel}>
+                volumes
+              </Text>
             </div>
             <div className={styles.statItem}>
-              <Text variant="text-lg/bold" className={styles.statValue}>{series.availableVolumes}</Text>
-              <Text variant="text-xs/normal" color="text-muted" className={styles.statLabel}>in library</Text>
+              <Text variant="text-lg/bold" className={styles.statValue}>
+                {series.availableVolumes}
+              </Text>
+              <Text variant="text-xs/normal" color="text-muted" className={styles.statLabel}>
+                in library
+              </Text>
             </div>
           </div>
-          
+
           <div className={styles.availabilityBar}>
-            <div 
-              className={styles.availabilityFill}
-              style={{ width: `${availabilityPercent}%` }}
-            />
+            <div className={styles.availabilityFill} style={{ width: `${availabilityPercent}%` }} />
           </div>
-          <Text variant="text-xs/normal" color="text-secondary" tag="p" className={styles.availabilityText}>
+          <Text
+            variant="text-xs/normal"
+            color="text-secondary"
+            tag="p"
+            className={styles.availabilityText}
+          >
             {availabilityPercent}% available in NC Cardinal
           </Text>
         </div>
@@ -548,12 +642,30 @@ function VolumeCard({ volume, onClick, highlighted }: VolumeCardProps): JSX.Elem
             }}
           />
         ) : null}
-        <div className={styles.coverPlaceholder} style={{ display: volume.coverImage != null ? 'none' : 'flex' }}>📖</div>
+        <div
+          className={styles.coverPlaceholder}
+          style={{ display: volume.coverImage != null ? 'none' : 'flex' }}
+        >
+          📖
+        </div>
       </div>
-      <Text variant="text-sm/bold" tag="div" className={styles.volumeNumber}>{volume.volumeNumber ?? '?'}</Text>
+      <Text variant="text-sm/bold" tag="div" className={styles.volumeNumber}>
+        {volume.volumeNumber ?? '?'}
+      </Text>
       <div className={styles.volumeInfo}>
-        <Text variant="text-sm/semibold" tag="div" className={styles.volumeTitle}>{volume.title}</Text>
-        {volume.seriesTitle != null && <Text variant="text-xs/normal" color="text-secondary" tag="p" className={styles.volumeSeries}>{volume.seriesTitle}</Text>}
+        <Text variant="text-sm/semibold" tag="div" className={styles.volumeTitle}>
+          {volume.title}
+        </Text>
+        {volume.seriesTitle != null && (
+          <Text
+            variant="text-xs/normal"
+            color="text-secondary"
+            tag="p"
+            className={styles.volumeSeries}
+          >
+            {volume.seriesTitle}
+          </Text>
+        )}
         <div className={styles.volumeAvailability}>
           <span className={`${styles.availabilityDot} ${dotClass}`} />
           <Text variant="text-xs/normal">{statusText}</Text>
@@ -584,7 +696,7 @@ function SearchProgressIndicator({ progress }: SearchProgressIndicatorProps): JS
     const stepOrder = ['wikipedia', 'nc-cardinal', 'availability', 'covers', 'done'];
     const currentIndex = stepOrder.indexOf(progress.currentStep ?? '');
     const stepIndex = stepOrder.indexOf(stepId);
-    
+
     if (currentIndex < 0) return 'pending';
     if (stepIndex < currentIndex) return 'complete';
     if (stepIndex === currentIndex) return 'active';
@@ -594,30 +706,30 @@ function SearchProgressIndicator({ progress }: SearchProgressIndicatorProps): JS
   // Calculate overall progress percentage
   const getOverallProgress = (): number => {
     if (progress.currentStep == null) return 0;
-    
+
     const stepWeights: Record<string, number> = {
-      'wikipedia': 10,
+      wikipedia: 10,
       'nc-cardinal': 20,
-      'availability': 60,
-      'covers': 90,
-      'done': 100,
+      availability: 60,
+      covers: 90,
+      done: 100,
     };
-    
+
     let baseProgress = stepWeights[progress.currentStep] ?? 0;
-    
+
     // Add detail progress for availability and covers
     if (progress.currentStep === 'availability' && progress.availabilityProgress) {
       const { completed, total } = progress.availabilityProgress;
-      const stepProgress = total > 0 ? (completed / total) : 0;
-      baseProgress = 20 + (stepProgress * 40); // 20% to 60%
+      const stepProgress = total > 0 ? completed / total : 0;
+      baseProgress = 20 + stepProgress * 40; // 20% to 60%
     }
-    
+
     if (progress.currentStep === 'covers' && progress.coversProgress) {
       const { completed, total } = progress.coversProgress;
-      const stepProgress = total > 0 ? (completed / total) : 0;
-      baseProgress = 60 + (stepProgress * 30); // 60% to 90%
+      const stepProgress = total > 0 ? completed / total : 0;
+      baseProgress = 60 + stepProgress * 30; // 60% to 90%
     }
-    
+
     return Math.min(100, baseProgress);
   };
 
@@ -625,26 +737,20 @@ function SearchProgressIndicator({ progress }: SearchProgressIndicatorProps): JS
     <div className={styles.progressContainer}>
       {/* Main progress bar */}
       <div className={styles.progressBarContainer}>
-        <div 
-          className={styles.progressBar}
-          style={{ width: `${getOverallProgress()}%` }}
-        />
+        <div className={styles.progressBar} style={{ width: `${getOverallProgress()}%` }} />
       </div>
-      
+
       {/* Current status message */}
       <Text variant="text-md/medium" tag="p" className={styles.progressMessage}>
         {progress.message}
       </Text>
-      
+
       {/* Step indicators */}
       <div className={styles.progressSteps}>
         {steps.map((step) => {
           const status = getStepStatus(step.id);
           return (
-            <div 
-              key={step.id}
-              className={`${styles.progressStep} ${styles[status]}`}
-            >
+            <div key={step.id} className={`${styles.progressStep} ${styles[status]}`}>
               <span className={styles.progressStepIcon}>
                 {status === 'complete' ? '✓' : step.icon}
               </span>
@@ -655,19 +761,26 @@ function SearchProgressIndicator({ progress }: SearchProgressIndicatorProps): JS
           );
         })}
       </div>
-      
+
       {/* Detailed progress for availability/covers */}
       {progress.availabilityProgress && progress.currentStep === 'availability' && (
         <div className={styles.progressDetails}>
           <Text variant="text-sm/normal" color="text-secondary">
-            Checked {progress.availabilityProgress.completed} of {progress.availabilityProgress.total} volumes
+            Checked {progress.availabilityProgress.completed} of{' '}
+            {progress.availabilityProgress.total} volumes
             {progress.availabilityProgress.foundInCatalog > 0 && (
-              <> • <Text variant="text-sm/semibold" color="success">{progress.availabilityProgress.foundInCatalog} found in library</Text></>
+              <>
+                {' '}
+                •{' '}
+                <Text variant="text-sm/semibold" color="success">
+                  {progress.availabilityProgress.foundInCatalog} found in library
+                </Text>
+              </>
             )}
           </Text>
         </div>
       )}
-      
+
       {progress.coversProgress && progress.currentStep === 'covers' && (
         <div className={styles.progressDetails}>
           <Text variant="text-sm/normal" color="text-secondary">

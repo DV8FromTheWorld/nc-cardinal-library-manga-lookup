@@ -3,7 +3,7 @@
  * Used by both web and native components.
  */
 
-import type { VolumeAvailability, Holding } from '../types';
+import type { Holding, VolumeAvailability } from '../types';
 
 /**
  * Calculate availability percentage for progress bars.
@@ -82,9 +82,7 @@ export function getAvailabilityDisplayInfo(
 export function groupHoldingsByLibrary(holdings: Holding[]): Record<string, Holding[]> {
   return holdings.reduce<Record<string, Holding[]>>((acc, holding) => {
     const key = holding.libraryName;
-    if (!acc[key]) {
-      acc[key] = [];
-    }
+    acc[key] ??= [];
     acc[key].push(holding);
     return acc;
   }, {});

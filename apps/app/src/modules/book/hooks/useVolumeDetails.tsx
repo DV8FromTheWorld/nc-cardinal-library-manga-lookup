@@ -2,7 +2,8 @@
  * Hook for fetching volume details by entity ID.
  */
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+
 import { getVolumeDetails } from '../../search/services/mangaApi';
 import type { BookDetails } from '../../search/types';
 
@@ -19,7 +20,7 @@ export interface UseVolumeDetailsResult {
 
 export function useVolumeDetails(options: UseVolumeDetailsOptions): UseVolumeDetailsResult {
   const { volumeId, homeLibrary } = options;
-  
+
   const [volume, setVolume] = useState<BookDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

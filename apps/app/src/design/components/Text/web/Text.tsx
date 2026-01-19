@@ -3,8 +3,9 @@
  * Enforces consistent typography across the app.
  */
 
-import type { ReactNode, CSSProperties } from 'react';
-import type { TextVariant, TextColor, TextTag } from '../../../types';
+import type { CSSProperties, ReactNode } from 'react';
+
+import type { TextColor, TextTag, TextVariant } from '../../../types';
 import { parseVariant } from '../variant';
 import styles from './Text.module.css';
 
@@ -94,13 +95,7 @@ export function Text({
   const weightClass = getWeightClass(variant);
   const colorClass = getColorClass(color);
 
-  const combinedClassName = [
-    styles.text,
-    sizeClass,
-    weightClass,
-    colorClass,
-    className,
-  ]
+  const combinedClassName = [styles.text, sizeClass, weightClass, colorClass, className]
     .filter((s): s is string => s != null && s !== '')
     .join(' ');
 
@@ -112,7 +107,8 @@ export function Text({
   if (style != null) elementProps.style = style;
   if (id != null && id !== '') elementProps.id = id;
   if (ariaLabel != null && ariaLabel !== '') elementProps['aria-label'] = ariaLabel;
-  if (ariaDescribedBy != null && ariaDescribedBy !== '') elementProps['aria-describedby'] = ariaDescribedBy;
+  if (ariaDescribedBy != null && ariaDescribedBy !== '')
+    elementProps['aria-describedby'] = ariaDescribedBy;
   if (htmlFor != null && htmlFor !== '' && Tag === 'label') elementProps.htmlFor = htmlFor;
 
   return <Tag {...elementProps}>{children}</Tag>;

@@ -9,15 +9,16 @@
  */
 
 import {
-  View,
-  Text as RNText,
-  Image,
-  StyleSheet,
-  ScrollView,
-  Pressable,
   ActivityIndicator,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text as RNText,
   useColorScheme,
+  View,
 } from 'react-native';
+
 import { Text } from '../../../design/components/Text/native/Text';
 import type { SuggestionItem } from '../types';
 import { colors, spacing, type ThemeColors } from './theme';
@@ -118,7 +119,9 @@ export function SearchSuggestions({
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.bgPrimary, borderColor: theme.border }]}>
+    <View
+      style={[styles.container, { backgroundColor: theme.bgPrimary, borderColor: theme.border }]}
+    >
       <ScrollView
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -172,7 +175,12 @@ function RecentSearchItem({ query, onPress, onRemove, theme }: RecentSearchItemP
       onPress={onPress}
     >
       <RNText style={styles.recentIcon}>🕐</RNText>
-      <Text variant="text-sm/normal" color="text-primary" style={styles.recentText} numberOfLines={1}>
+      <Text
+        variant="text-sm/normal"
+        color="text-primary"
+        style={styles.recentText}
+        numberOfLines={1}
+      >
         {query}
       </Text>
       <Pressable
@@ -180,7 +188,9 @@ function RecentSearchItem({ query, onPress, onRemove, theme }: RecentSearchItemP
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         style={styles.removeButton}
       >
-        <Text variant="text-md/normal" color="text-muted">×</Text>
+        <Text variant="text-md/normal" color="text-muted">
+          ×
+        </Text>
       </Pressable>
     </Pressable>
   );
@@ -226,11 +236,7 @@ function SuggestionItemRow({ suggestion, onPress, theme }: SuggestionItemRowProp
     >
       <View style={[styles.coverContainer, { backgroundColor: theme.bgSecondary }]}>
         {suggestion.coverUrl != null ? (
-          <Image
-            source={{ uri: suggestion.coverUrl }}
-            style={styles.cover}
-            resizeMode="cover"
-          />
+          <Image source={{ uri: suggestion.coverUrl }} style={styles.cover} resizeMode="cover" />
         ) : (
           <View style={[styles.coverPlaceholder, { backgroundColor: theme.bgTertiary }]}>
             <RNText style={styles.coverPlaceholderText}>📚</RNText>
@@ -242,12 +248,22 @@ function SuggestionItemRow({ suggestion, onPress, theme }: SuggestionItemRowProp
           {suggestion.title}
         </Text>
         {suggestion.title !== suggestion.titleRomaji && (
-          <Text variant="text-xs/normal" color="text-muted" numberOfLines={1} style={styles.romajiText}>
+          <Text
+            variant="text-xs/normal"
+            color="text-muted"
+            numberOfLines={1}
+            style={styles.romajiText}
+          >
             {suggestion.titleRomaji}
           </Text>
         )}
         <View style={styles.metaRow}>
-          <View style={[styles.formatBadge, { backgroundColor: `${getFormatColor(suggestion.format)}15` }]}>
+          <View
+            style={[
+              styles.formatBadge,
+              { backgroundColor: `${getFormatColor(suggestion.format)}15` },
+            ]}
+          >
             <RNText style={[styles.formatBadgeText, { color: getFormatColor(suggestion.format) }]}>
               {getFormatLabel(suggestion.format)}
             </RNText>

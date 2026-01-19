@@ -6,7 +6,7 @@
  *
  * Usage:
  *   import '../store/stores'; // Register all initializers
- *   
+ *
  *   function App() {
  *     useStoreInit();
  *     return <Router />;
@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useState } from 'react';
+
 import { initializeAll } from './registry';
 
 /**

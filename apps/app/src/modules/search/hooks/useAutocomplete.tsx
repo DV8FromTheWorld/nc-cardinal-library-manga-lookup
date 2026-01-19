@@ -8,9 +8,10 @@
  * - Merges local + API results, deduplicating by AniList ID
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { getPopularManga, getSuggestions } from '../services/mangaApi';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
 import { storage } from '../../storage/storage';
+import { getPopularManga, getSuggestions } from '../services/mangaApi';
 import type { SuggestionItem } from '../types';
 
 const RECENT_SEARCHES_KEY = 'nc-cardinal-manga:recent-searches';
@@ -124,9 +125,7 @@ function mergeSuggestions(
   return result;
 }
 
-export function useAutocomplete(
-  options: UseAutocompleteOptions = {}
-): UseAutocompleteResult {
+export function useAutocomplete(options: UseAutocompleteOptions = {}): UseAutocompleteResult {
   const { maxSuggestions = 8 } = options;
 
   // State
@@ -193,32 +192,26 @@ export function useAutocomplete(
     void storage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(searches));
   }, []);
 
-  const addRecentSearch = useCallback(
-    (query: string) => {
-      const trimmed = query.trim();
-      if (trimmed === '') return;
+  const addRecentSearch = useCallback((query: string) => {
+    const trimmed = query.trim();
+    if (trimmed === '') return;
 
-      setRecentSearches((prev) => {
-        // Remove if exists, then add to front
-        const filtered = prev.filter((s) => s.toLowerCase() !== trimmed.toLowerCase());
-        const updated = [trimmed, ...filtered].slice(0, MAX_RECENT_SEARCHES);
-        void storage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
-        return updated;
-      });
-    },
-    []
-  );
+    setRecentSearches((prev) => {
+      // Remove if exists, then add to front
+      const filtered = prev.filter((s) => s.toLowerCase() !== trimmed.toLowerCase());
+      const updated = [trimmed, ...filtered].slice(0, MAX_RECENT_SEARCHES);
+      void storage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
 
-  const removeRecentSearch = useCallback(
-    (query: string) => {
-      setRecentSearches((prev) => {
-        const updated = prev.filter((s) => s !== query);
-        void storage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
-        return updated;
-      });
-    },
-    []
-  );
+  const removeRecentSearch = useCallback((query: string) => {
+    setRecentSearches((prev) => {
+      const updated = prev.filter((s) => s !== query);
+      void storage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
 
   const clearRecentSearches = useCallback(() => {
     saveRecentSearches([]);

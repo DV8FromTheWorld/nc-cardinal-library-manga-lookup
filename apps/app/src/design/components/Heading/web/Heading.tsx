@@ -3,8 +3,9 @@
  * Renders semantic h1-h6 elements with consistent typography.
  */
 
-import type { ReactNode, CSSProperties } from 'react';
-import type { TextVariant, TextColor } from '../../../types';
+import type { CSSProperties, ReactNode } from 'react';
+
+import type { TextColor, TextVariant } from '../../../types';
 import { parseVariant } from '../../Text/variant';
 import styles from './Heading.module.css';
 

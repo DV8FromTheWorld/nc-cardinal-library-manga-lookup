@@ -14,7 +14,7 @@
 
 import { createPersistentStore } from '../store/createStore';
 import * as authApi from './services/authApi';
-import type { UserSession, LoginResult } from './types';
+import type { LoginResult, UserSession } from './types';
 
 // ============================================================================
 // State
@@ -128,8 +128,7 @@ export async function initialize(): Promise<void> {
 // Selectors
 // ============================================================================
 
-export const selectIsLoggedIn = (state: AuthState): boolean =>
-  state.session !== null;
+export const selectIsLoggedIn = (state: AuthState): boolean => state.session !== null;
 
 export const selectDisplayName = (state: AuthState): string | null =>
   state.session?.displayName ?? state.session?.cardNumber ?? null;

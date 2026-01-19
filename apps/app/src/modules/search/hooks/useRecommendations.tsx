@@ -3,19 +3,15 @@
  * Used on the homepage to show recommended series instead of hardcoded suggestions.
  */
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+
 import { getPopularManga } from '../services/mangaApi';
 import type { SuggestionItem } from '../types';
 
 const MAX_RECOMMENDATIONS = 16;
 
 // Fallback suggestions if API fails
-const FALLBACK_SUGGESTIONS = [
-  'Demon Slayer',
-  'One Piece',
-  'My Hero Academia',
-  'Spy x Family',
-];
+const FALLBACK_SUGGESTIONS = ['Demon Slayer', 'One Piece', 'My Hero Academia', 'Spy x Family'];
 
 export interface UseRecommendationsResult {
   /** Recommended manga items with cover images */
@@ -46,16 +42,16 @@ export function useRecommendations(): UseRecommendationsResult {
         setError(null);
 
         const allItems = await getPopularManga();
-        
+
         if (cancelled) return;
 
         // Limit to max recommendations for homepage display
         // Filter to only MANGA format (not NOVEL or ONE_SHOT) for cleaner display
-        const mangaOnly = allItems.filter(item => item.format === 'MANGA');
+        const mangaOnly = allItems.filter((item) => item.format === 'MANGA');
         setItems(mangaOnly.slice(0, MAX_RECOMMENDATIONS));
       } catch (err) {
         if (cancelled) return;
-        
+
         const message = err instanceof Error ? err.message : 'Failed to load recommendations';
         console.error('[useRecommendations] Error:', message);
         setError(message);

@@ -3,17 +3,13 @@
  * Enforces consistent typography across the app.
  */
 
-import { Text as RNText, StyleSheet, useColorScheme } from 'react-native';
 import type { ReactNode } from 'react';
 import type { StyleProp, TextStyle } from 'react-native';
-import type { TextVariant, TextColor } from '../../../types';
+import { StyleSheet, Text as RNText, useColorScheme } from 'react-native';
+
+import { colors, fontSize, fontWeight as fontWeightValues, headerSize } from '../../../theme';
+import type { TextColor, TextVariant } from '../../../types';
 import { parseVariant } from '../variant';
-import {
-  colors,
-  fontSize,
-  headerSize,
-  fontWeight as fontWeightValues,
-} from '../../../theme';
 
 export interface TextProps {
   /** The text variant defining size and weight */
@@ -93,7 +89,7 @@ function getWeightStyle(variant: TextVariant): TextStyle {
  */
 function getColorValue(
   colorToken: TextColor,
-  themeColors: typeof colors.light,
+  themeColors: typeof colors.light
 ): string | undefined {
   switch (colorToken) {
     case 'text-primary':

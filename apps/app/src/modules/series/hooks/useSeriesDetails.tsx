@@ -2,7 +2,8 @@
  * Hook for fetching series details.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+
 import { getSeriesDetails } from '../../search/services/mangaApi';
 import type { SeriesDetails } from '../../search/types';
 
@@ -20,24 +21,27 @@ export interface UseSeriesDetailsResult {
 
 export function useSeriesDetails(options: UseSeriesDetailsOptions): UseSeriesDetailsResult {
   const { seriesId, homeLibrary } = options;
-  
+
   const [series, setSeries] = useState<SeriesDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchSeries = useCallback(async (debug = false) => {
-    setIsLoading(true);
-    setError(null);
+  const fetchSeries = useCallback(
+    async (debug = false) => {
+      setIsLoading(true);
+      setError(null);
 
-    try {
-      const data = await getSeriesDetails(seriesId, { debug, homeLibrary });
-      setSeries(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load series');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [seriesId, homeLibrary]);
+      try {
+        const data = await getSeriesDetails(seriesId, { debug, homeLibrary });
+        setSeries(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load series');
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [seriesId, homeLibrary]
+  );
 
   useEffect(() => {
     void fetchSeries(false);

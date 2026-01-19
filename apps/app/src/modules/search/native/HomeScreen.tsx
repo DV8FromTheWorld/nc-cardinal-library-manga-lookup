@@ -3,30 +3,31 @@
  * The entire screen scrolls as one unit.
  */
 
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useState } from 'react';
 import {
-  View,
+  Image,
+  Modal,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
   Text as RNText,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  Image,
   useColorScheme,
-  SafeAreaView,
-  ScrollView,
-  Modal,
+  View,
 } from 'react-native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../../routing/native/Router';
-import { useAutocomplete } from '../hooks/useAutocomplete';
-import { useRecommendations } from '../hooks/useRecommendations';
-import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
-import { SearchSuggestions } from './SearchSuggestions';
-import type { SuggestionItem } from '../types';
-import { Text } from '../../../design/components/Text/native/Text';
+
 import { Heading } from '../../../design/components/Heading/native/Heading';
+import { Text } from '../../../design/components/Text/native/Text';
 import { LoginModal } from '../../login/native/LoginModal';
 import { UserButton } from '../../login/native/UserButton';
+import type { RootStackParamList } from '../../routing/native/Router';
+import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
+import { useAutocomplete } from '../hooks/useAutocomplete';
+import { useRecommendations } from '../hooks/useRecommendations';
+import type { SuggestionItem } from '../types';
+import { SearchSuggestions } from './SearchSuggestions';
 import { colors, spacing, type ThemeColors } from './theme';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
@@ -60,11 +61,14 @@ export function HomeScreen({ navigation }: Props): JSX.Element {
     fallbackSuggestions,
   } = useRecommendations();
 
-  const handleInputChange = useCallback((value: string) => {
-    setQuery(value);
-    setAutocompleteQuery(value);
-    setShowSuggestions(true);
-  }, [setAutocompleteQuery]);
+  const handleInputChange = useCallback(
+    (value: string) => {
+      setQuery(value);
+      setAutocompleteQuery(value);
+      setShowSuggestions(true);
+    },
+    [setAutocompleteQuery]
+  );
 
   const handleInputFocus = useCallback(() => {
     setShowSuggestions(true);
@@ -84,23 +88,32 @@ export function HomeScreen({ navigation }: Props): JSX.Element {
     }
   }, [query, addRecentSearch, clearSuggestions, navigation]);
 
-  const handleSelectSuggestion = useCallback((title: string) => {
-    addRecentSearch(title);
-    clearSuggestions();
-    setShowSuggestions(false);
-    navigation.push('Search', { query: title });
-  }, [addRecentSearch, clearSuggestions, navigation]);
+  const handleSelectSuggestion = useCallback(
+    (title: string) => {
+      addRecentSearch(title);
+      clearSuggestions();
+      setShowSuggestions(false);
+      navigation.push('Search', { query: title });
+    },
+    [addRecentSearch, clearSuggestions, navigation]
+  );
 
-  const handleSelectRecent = useCallback((recentQuery: string) => {
-    clearSuggestions();
-    setShowSuggestions(false);
-    navigation.push('Search', { query: recentQuery });
-  }, [clearSuggestions, navigation]);
+  const handleSelectRecent = useCallback(
+    (recentQuery: string) => {
+      clearSuggestions();
+      setShowSuggestions(false);
+      navigation.push('Search', { query: recentQuery });
+    },
+    [clearSuggestions, navigation]
+  );
 
-  const handleSelectRecommendation = useCallback((title: string) => {
-    addRecentSearch(title);
-    navigation.push('Search', { query: title });
-  }, [addRecentSearch, navigation]);
+  const handleSelectRecommendation = useCallback(
+    (title: string) => {
+      addRecentSearch(title);
+      navigation.push('Search', { query: title });
+    },
+    [addRecentSearch, navigation]
+  );
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
@@ -121,21 +134,35 @@ export function HomeScreen({ navigation }: Props): JSX.Element {
           </View>
           <TouchableOpacity style={styles.titleButton}>
             <RNText style={styles.titleIcon}>📚</RNText>
-            <Heading level={1} variant="header-lg/bold" style={styles.titleText}>NC Cardinal Manga</Heading>
+            <Heading level={1} variant="header-lg/bold" style={styles.titleText}>
+              NC Cardinal Manga
+            </Heading>
           </TouchableOpacity>
           <Text variant="text-md/normal" color="text-secondary" style={styles.subtitle}>
             Find manga series at your local NC library
           </Text>
           {/* Library Selector */}
           <TouchableOpacity
-            style={[styles.librarySelector, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}
+            style={[
+              styles.librarySelector,
+              { backgroundColor: theme.bgSecondary, borderColor: theme.border },
+            ]}
             onPress={() => setShowLibraryPicker(true)}
           >
-            <Text variant="text-sm/normal" color="text-muted">📍 My Library:</Text>
-            <Text variant="text-sm/medium" color="text-primary" numberOfLines={1} style={styles.librarySelectorValue}>
+            <Text variant="text-sm/normal" color="text-muted">
+              📍 My Library:
+            </Text>
+            <Text
+              variant="text-sm/medium"
+              color="text-primary"
+              numberOfLines={1}
+              style={styles.librarySelectorValue}
+            >
               {libraryName ?? 'Select...'}
             </Text>
-            <Text variant="text-xs/normal" color="text-muted">▼</Text>
+            <Text variant="text-xs/normal" color="text-muted">
+              ▼
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -149,9 +176,13 @@ export function HomeScreen({ navigation }: Props): JSX.Element {
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { backgroundColor: theme.bgPrimary }]}>
               <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
-                <Heading level={2} variant="header-sm/semibold">Select Your Library</Heading>
+                <Heading level={2} variant="header-sm/semibold">
+                  Select Your Library
+                </Heading>
                 <TouchableOpacity onPress={() => setShowLibraryPicker(false)}>
-                  <Text variant="text-md/medium" color="accent">Done</Text>
+                  <Text variant="text-md/medium" color="accent">
+                    Done
+                  </Text>
                 </TouchableOpacity>
               </View>
               <ScrollView style={styles.libraryList}>
@@ -176,7 +207,9 @@ export function HomeScreen({ navigation }: Props): JSX.Element {
                       {lib.name}
                     </Text>
                     {homeLibrary === lib.code && (
-                      <Text variant="text-md/semibold" color="accent">✓</Text>
+                      <Text variant="text-md/semibold" color="accent">
+                        ✓
+                      </Text>
                     )}
                   </TouchableOpacity>
                 ))}
@@ -188,7 +221,12 @@ export function HomeScreen({ navigation }: Props): JSX.Element {
         {/* Search Input */}
         <View style={styles.searchContainer}>
           <View style={styles.searchInputContainer}>
-            <View style={[styles.searchInputWrapper, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}>
+            <View
+              style={[
+                styles.searchInputWrapper,
+                { backgroundColor: theme.bgSecondary, borderColor: theme.border },
+              ]}
+            >
               <TextInput
                 style={[styles.searchInput, { color: theme.textPrimary }]}
                 placeholder="Search for manga..."
@@ -233,12 +271,15 @@ export function HomeScreen({ navigation }: Props): JSX.Element {
           <Text variant="text-sm/normal" color="text-muted" style={styles.recommendationsSubtitle}>
             Discover trending series available at NC Cardinal
           </Text>
-          
+
           {isRecommendationsLoading ? (
             <View style={styles.recommendationsGrid}>
               {Array.from({ length: 8 }).map((_, idx) => (
                 // eslint-disable-next-line @eslint-react/no-array-index-key -- Skeleton placeholders have no identity; index is appropriate
-                <View key={idx} style={[styles.skeletonCard, { backgroundColor: theme.bgSecondary }]}>
+                <View
+                  key={idx}
+                  style={[styles.skeletonCard, { backgroundColor: theme.bgSecondary }]}
+                >
                   <View style={[styles.skeletonCover, { backgroundColor: theme.bgTertiary }]} />
                   <View style={styles.skeletonInfo}>
                     <View style={[styles.skeletonTitle, { backgroundColor: theme.bgTertiary }]} />
@@ -267,7 +308,10 @@ export function HomeScreen({ navigation }: Props): JSX.Element {
                 {fallbackSuggestions.map((suggestion) => (
                   <TouchableOpacity
                     key={suggestion}
-                    style={[styles.fallbackChip, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}
+                    style={[
+                      styles.fallbackChip,
+                      { backgroundColor: theme.bgSecondary, borderColor: theme.border },
+                    ]}
                     onPress={() => handleSelectRecommendation(suggestion)}
                   >
                     <Text variant="text-sm/normal" color="text-primary">
@@ -281,10 +325,7 @@ export function HomeScreen({ navigation }: Props): JSX.Element {
         </View>
 
         {/* Login Modal */}
-        <LoginModal
-          visible={showLoginModal}
-          onClose={() => setShowLoginModal(false)}
-        />
+        <LoginModal visible={showLoginModal} onClose={() => setShowLoginModal(false)} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -317,7 +358,10 @@ function RecommendationCard({ item, theme, onPress }: RecommendationCardProps): 
 
   return (
     <TouchableOpacity
-      style={[styles.recommendationCard, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}
+      style={[
+        styles.recommendationCard,
+        { backgroundColor: theme.bgSecondary, borderColor: theme.border },
+      ]}
       onPress={onPress}
       activeOpacity={0.7}
     >
@@ -336,17 +380,21 @@ function RecommendationCard({ item, theme, onPress }: RecommendationCardProps): 
         )}
       </View>
       <View style={styles.recommendationInfo}>
-        <Text variant="text-sm/medium" color="text-primary" numberOfLines={2} style={styles.recommendationCardTitle}>
+        <Text
+          variant="text-sm/medium"
+          color="text-primary"
+          numberOfLines={2}
+          style={styles.recommendationCardTitle}
+        >
           {item.title}
         </Text>
-        <View style={[
-          styles.recommendationBadge,
-          badge.isOngoing === true ? { backgroundColor: theme.accentAlpha } : null,
-        ]}>
-          <Text
-            variant="text-xs/normal"
-            color={badge.isOngoing ? 'accent' : 'text-muted'}
-          >
+        <View
+          style={[
+            styles.recommendationBadge,
+            badge.isOngoing === true ? { backgroundColor: theme.accentAlpha } : null,
+          ]}
+        >
+          <Text variant="text-xs/normal" color={badge.isOngoing ? 'accent' : 'text-muted'}>
             {badge.text}
           </Text>
         </View>

@@ -2,18 +2,19 @@
  * Home page component for web - shows search input and recommendations.
  */
 
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAutocomplete } from '../hooks/useAutocomplete';
-import { useRecommendations } from '../hooks/useRecommendations';
-import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
-import { Text } from '../../../design/components/Text/web/Text';
+
 import { Heading } from '../../../design/components/Heading/web/Heading';
+import { Text } from '../../../design/components/Text/web/Text';
 import { LoginModal } from '../../login/web/LoginModal';
 import { UserMenu } from '../../login/web/UserMenu';
-import { SearchSuggestions } from './SearchSuggestions';
+import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
+import { useAutocomplete } from '../hooks/useAutocomplete';
+import { useRecommendations } from '../hooks/useRecommendations';
 import type { SuggestionItem } from '../types';
 import styles from './HomePage.module.css';
+import { SearchSuggestions } from './SearchSuggestions';
 
 export function HomePage(): JSX.Element {
   const navigate = useNavigate();
@@ -57,41 +58,56 @@ export function HomePage(): JSX.Element {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setQuery(value);
-    setAutocompleteQuery(value);
-    setShowSuggestions(true);
-  }, [setAutocompleteQuery]);
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      setQuery(value);
+      setAutocompleteQuery(value);
+      setShowSuggestions(true);
+    },
+    [setAutocompleteQuery]
+  );
 
   const handleInputFocus = useCallback(() => {
     setShowSuggestions(true);
   }, []);
 
-  const handleSubmit = useCallback((e: React.FormEvent) => {
-    e.preventDefault();
-    if (query.trim() !== '') {
-      addRecentSearch(query.trim());
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      if (query.trim() !== '') {
+        addRecentSearch(query.trim());
+        clearSuggestions();
+        void navigate(`/search?q=${encodeURIComponent(query.trim())}`);
+      }
+    },
+    [query, addRecentSearch, clearSuggestions, navigate]
+  );
+
+  const handleSelectSuggestion = useCallback(
+    (title: string) => {
+      addRecentSearch(title);
       clearSuggestions();
-      void navigate(`/search?q=${encodeURIComponent(query.trim())}`);
-    }
-  }, [query, addRecentSearch, clearSuggestions, navigate]);
+      void navigate(`/search?q=${encodeURIComponent(title)}`);
+    },
+    [addRecentSearch, clearSuggestions, navigate]
+  );
 
-  const handleSelectSuggestion = useCallback((title: string) => {
-    addRecentSearch(title);
-    clearSuggestions();
-    void navigate(`/search?q=${encodeURIComponent(title)}`);
-  }, [addRecentSearch, clearSuggestions, navigate]);
+  const handleSelectRecent = useCallback(
+    (recentQuery: string) => {
+      clearSuggestions();
+      void navigate(`/search?q=${encodeURIComponent(recentQuery)}`);
+    },
+    [clearSuggestions, navigate]
+  );
 
-  const handleSelectRecent = useCallback((recentQuery: string) => {
-    clearSuggestions();
-    void navigate(`/search?q=${encodeURIComponent(recentQuery)}`);
-  }, [clearSuggestions, navigate]);
-
-  const handleSelectRecommendation = useCallback((title: string) => {
-    addRecentSearch(title);
-    void navigate(`/search?q=${encodeURIComponent(title)}`);
-  }, [addRecentSearch, navigate]);
+  const handleSelectRecommendation = useCallback(
+    (title: string) => {
+      addRecentSearch(title);
+      void navigate(`/search?q=${encodeURIComponent(title)}`);
+    },
+    [addRecentSearch, navigate]
+  );
 
   return (
     <div className={styles.container}>
@@ -100,14 +116,24 @@ export function HomePage(): JSX.Element {
           <UserMenu onLoginClick={() => setShowLoginModal(true)} />
         </div>
         <div className={styles.titleContainer}>
-          <Text variant="header-md/bold" className={styles.titleIcon}>📚</Text>
-          <Text variant="header-lg/bold" className={styles.titleText}>NC Cardinal Manga</Text>
+          <Text variant="header-md/bold" className={styles.titleIcon}>
+            📚
+          </Text>
+          <Text variant="header-lg/bold" className={styles.titleText}>
+            NC Cardinal Manga
+          </Text>
         </div>
         <Text variant="text-md/normal" color="text-secondary" tag="p" className={styles.subtitle}>
           Find manga series at your local NC library
         </Text>
         <div className={styles.librarySelector}>
-          <Text variant="text-sm/medium" color="text-secondary" tag="label" htmlFor="home-library" className={styles.librarySelectorLabel}>
+          <Text
+            variant="text-sm/medium"
+            color="text-secondary"
+            tag="label"
+            htmlFor="home-library"
+            className={styles.librarySelectorLabel}
+          >
             📍 My Library:
           </Text>
           <select
@@ -138,11 +164,7 @@ export function HomePage(): JSX.Element {
               onFocus={handleInputFocus}
               autoComplete="off"
             />
-            <button
-              type="submit"
-              className={styles.searchButton}
-              disabled={query.trim() === ''}
-            >
+            <button type="submit" className={styles.searchButton} disabled={query.trim() === ''}>
               <span className={styles.searchIcon}>→</span>
             </button>
           </div>
@@ -163,7 +185,9 @@ export function HomePage(): JSX.Element {
       {/* Recommendations Section */}
       <section className={styles.recommendationsSection}>
         <div className={styles.recommendationsHeader}>
-          <Heading level={2} className={styles.recommendationsTitle}>Popular Manga</Heading>
+          <Heading level={2} className={styles.recommendationsTitle}>
+            Popular Manga
+          </Heading>
           <Text variant="text-sm/normal" color="text-muted" tag="p">
             Discover trending series available at NC Cardinal
           </Text>
@@ -213,10 +237,7 @@ export function HomePage(): JSX.Element {
         )}
       </section>
 
-      <LoginModal
-        isOpen={showLoginModal}
-        onClose={() => setShowLoginModal(false)}
-      />
+      <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
     </div>
   );
 }

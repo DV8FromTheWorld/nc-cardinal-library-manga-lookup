@@ -3,7 +3,8 @@
  * Shows step-by-step progress during streaming search.
  */
 
-import { View, Text as RNText, StyleSheet, useColorScheme } from 'react-native';
+import { StyleSheet, Text as RNText, useColorScheme, View } from 'react-native';
+
 import { Text } from '../../../design/components/Text/native/Text';
 import type { StreamingSearchProgress } from '../types';
 import { colors, spacing, type ThemeColors } from './theme';
@@ -36,11 +37,11 @@ function getOverallProgress(progress: StreamingSearchProgress): number {
   if (progress.currentStep == null) return 0;
 
   const stepWeights: Record<string, number> = {
-    'wikipedia': 10,
+    wikipedia: 10,
     'nc-cardinal': 20,
-    'availability': 60,
-    'covers': 90,
-    'done': 100,
+    availability: 60,
+    covers: 90,
+    done: 100,
   };
 
   let baseProgress = stepWeights[progress.currentStep] ?? 0;
@@ -48,14 +49,14 @@ function getOverallProgress(progress: StreamingSearchProgress): number {
   // Add detail progress for availability and covers
   if (progress.currentStep === 'availability' && progress.availabilityProgress) {
     const { completed, total } = progress.availabilityProgress;
-    const stepProgress = total > 0 ? (completed / total) : 0;
-    baseProgress = 20 + (stepProgress * 40); // 20% to 60%
+    const stepProgress = total > 0 ? completed / total : 0;
+    baseProgress = 20 + stepProgress * 40; // 20% to 60%
   }
 
   if (progress.currentStep === 'covers' && progress.coversProgress) {
     const { completed, total } = progress.coversProgress;
-    const stepProgress = total > 0 ? (completed / total) : 0;
-    baseProgress = 60 + (stepProgress * 30); // 60% to 90%
+    const stepProgress = total > 0 ? completed / total : 0;
+    baseProgress = 60 + stepProgress * 30; // 60% to 90%
   }
 
   return Math.min(100, baseProgress);
@@ -89,14 +90,7 @@ export function SearchProgressIndicator({ progress }: SearchProgressIndicatorPro
       <View style={styles.stepsContainer}>
         {STEPS.map((step) => {
           const status = getStepStatus(step.id, progress.currentStep);
-          return (
-            <StepIndicator
-              key={step.id}
-              step={step}
-              status={status}
-              theme={theme}
-            />
-          );
+          return <StepIndicator key={step.id} step={step} status={status} theme={theme} />;
         })}
       </View>
 
@@ -104,10 +98,12 @@ export function SearchProgressIndicator({ progress }: SearchProgressIndicatorPro
       {progress.availabilityProgress && progress.currentStep === 'availability' && (
         <View style={styles.detailsContainer}>
           <Text variant="text-sm/normal" color="text-secondary">
-            Checked {progress.availabilityProgress.completed} of {progress.availabilityProgress.total} volumes
+            Checked {progress.availabilityProgress.completed} of{' '}
+            {progress.availabilityProgress.total} volumes
             {progress.availabilityProgress.foundInCatalog > 0 && (
               <Text variant="text-sm/semibold" color="success">
-                {' '}• {progress.availabilityProgress.foundInCatalog} found in library
+                {' '}
+                • {progress.availabilityProgress.foundInCatalog} found in library
               </Text>
             )}
           </Text>
@@ -126,7 +122,7 @@ export function SearchProgressIndicator({ progress }: SearchProgressIndicatorPro
 }
 
 interface StepIndicatorProps {
-  step: typeof STEPS[number];
+  step: (typeof STEPS)[number];
   status: StepStatus;
   theme: ThemeColors;
 }
@@ -158,14 +154,9 @@ function StepIndicator({ step, status, theme }: StepIndicatorProps): JSX.Element
   return (
     <View style={styles.stepContainer}>
       <View style={[styles.stepIcon, { backgroundColor: getBackgroundColor() }]}>
-        <RNText style={styles.stepIconText}>
-          {status === 'complete' ? '✓' : step.icon}
-        </RNText>
+        <RNText style={styles.stepIconText}>{status === 'complete' ? '✓' : step.icon}</RNText>
       </View>
-      <Text
-        variant="text-xs/medium"
-        style={[styles.stepLabel, { color: getTextColor() }]}
-      >
+      <Text variant="text-xs/medium" style={[styles.stepLabel, { color: getTextColor() }]}>
         {step.label}
       </Text>
     </View>

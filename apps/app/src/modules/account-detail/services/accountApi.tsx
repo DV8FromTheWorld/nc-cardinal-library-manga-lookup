@@ -5,12 +5,7 @@
 
 import { env } from '../../../config/env';
 import { useAuthStore } from '../../authentication/store';
-import type {
-  CheckoutsResponse,
-  HistoryResponse,
-  HoldsResponse,
-  HistorySettings,
-} from '../types';
+import type { CheckoutsResponse, HistoryResponse, HistorySettings, HoldsResponse } from '../types';
 
 export class AccountApiError extends Error {
   constructor(
@@ -58,10 +53,13 @@ async function fetchAccountApi<T>(
     },
   });
 
-  const data = await response.json() as T | { error: string; message?: string | undefined };
+  const data = (await response.json()) as T | { error: string; message?: string | undefined };
 
   if (!response.ok) {
-    throw new AccountApiError(response.status, data as { error: string; message?: string | undefined });
+    throw new AccountApiError(
+      response.status,
+      data as { error: string; message?: string | undefined }
+    );
   }
 
   return data as T;

@@ -3,7 +3,7 @@
  * Shared between web and native Text components.
  */
 
-import type { TextVariant, TextSize, HeaderSize, FontWeight } from '../../types';
+import type { FontWeight, HeaderSize, TextSize, TextVariant } from '../../types';
 
 /**
  * Parsed variant structure.
@@ -23,10 +23,7 @@ export function parseVariant(variant: TextVariant): ParsedVariant {
   }
 
   const [typeSize, weight] = variant.split('/') as [string, FontWeight];
-  const [type, size] = typeSize.split('-') as [
-    'text' | 'header',
-    TextSize | HeaderSize,
-  ];
+  const [type, size] = typeSize.split('-') as ['text' | 'header', TextSize | HeaderSize];
 
   return { type, size, weight };
 }

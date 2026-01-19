@@ -2,31 +2,32 @@
  * Account screen for viewing checkouts, history, and holds in React Native.
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  StyleSheet,
-  SafeAreaView,
-  useColorScheme,
-  Linking,
-} from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../../routing/native/Router';
-import { useAuthStore, logout } from '../../authentication/store';
+import { useCallback, useEffect, useState } from 'react';
 import {
-  useAccountStore,
+  ActivityIndicator,
+  Linking,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  useColorScheme,
+  View,
+} from 'react-native';
+
+import { Heading } from '../../../design/components/Heading/native/Heading';
+import { Text } from '../../../design/components/Text/native/Text';
+import { logout, useAuthStore } from '../../authentication/store';
+import { LoginModal } from '../../login/native/LoginModal';
+import type { RootStackParamList } from '../../routing/native/Router';
+import { colors, spacing } from '../../search/native/theme';
+import {
   fetchCheckouts,
   fetchHistory,
-  fetchMoreHistory,
   fetchHolds,
+  fetchMoreHistory,
+  useAccountStore,
 } from '../store';
-import { LoginModal } from '../../login/native/LoginModal';
-import { Text } from '../../../design/components/Text/native/Text';
-import { Heading } from '../../../design/components/Heading/native/Heading';
-import { colors, spacing } from '../../search/native/theme';
 import type { CheckedOutItem, HistoryItem, HoldItem } from '../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Account'>;
@@ -95,13 +96,19 @@ export function AccountScreen({ navigation }: Props): JSX.Element {
       <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Text variant="text-lg/normal" color="text-secondary">←</Text>
+            <Text variant="text-lg/normal" color="text-secondary">
+              ←
+            </Text>
           </TouchableOpacity>
-          <Heading level={1} variant="header-lg/bold">My Account</Heading>
+          <Heading level={1} variant="header-lg/bold">
+            My Account
+          </Heading>
         </View>
 
         <View style={styles.loginPrompt}>
-          <Text variant="header-xl/normal" style={styles.loginPromptIcon}>🔒</Text>
+          <Text variant="header-xl/normal" style={styles.loginPromptIcon}>
+            🔒
+          </Text>
           <Text variant="text-lg/medium" color="text-primary" style={styles.loginPromptTitle}>
             Sign in to view your account
           </Text>
@@ -112,7 +119,9 @@ export function AccountScreen({ navigation }: Props): JSX.Element {
             style={[styles.loginButton, { backgroundColor: theme.accent }]}
             onPress={() => setShowLoginModal(true)}
           >
-            <Text variant="text-md/semibold" style={styles.loginButtonText}>Sign In</Text>
+            <Text variant="text-md/semibold" style={styles.loginButtonText}>
+              Sign In
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -125,23 +134,34 @@ export function AccountScreen({ navigation }: Props): JSX.Element {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Text variant="text-lg/normal" color="text-secondary">←</Text>
+          <Text variant="text-lg/normal" color="text-secondary">
+            ←
+          </Text>
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
-          <Heading level={1} variant="header-lg/bold">My Account</Heading>
+          <Heading level={1} variant="header-lg/bold">
+            My Account
+          </Heading>
           {session?.displayName != null && (
-            <Text variant="text-sm/normal" color="text-secondary">{session.displayName}</Text>
+            <Text variant="text-sm/normal" color="text-secondary">
+              {session.displayName}
+            </Text>
           )}
         </View>
         <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-          <Text variant="text-sm/medium" color="error">Sign Out</Text>
+          <Text variant="text-sm/medium" color="error">
+            Sign Out
+          </Text>
         </TouchableOpacity>
       </View>
 
       {/* Tabs */}
       <View style={[styles.tabs, { borderBottomColor: theme.border }]}>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'checkouts' && [styles.tabActive, { borderBottomColor: theme.accent }]]}
+          style={[
+            styles.tab,
+            activeTab === 'checkouts' && [styles.tabActive, { borderBottomColor: theme.accent }],
+          ]}
           onPress={() => setActiveTab('checkouts')}
         >
           <Text
@@ -152,12 +172,17 @@ export function AccountScreen({ navigation }: Props): JSX.Element {
           </Text>
           {checkouts.length > 0 && (
             <View style={[styles.tabBadge, { backgroundColor: theme.accent }]}>
-              <Text variant="text-xs/semibold" style={styles.tabBadgeText}>{checkouts.length}</Text>
+              <Text variant="text-xs/semibold" style={styles.tabBadgeText}>
+                {checkouts.length}
+              </Text>
             </View>
           )}
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'history' && [styles.tabActive, { borderBottomColor: theme.accent }]]}
+          style={[
+            styles.tab,
+            activeTab === 'history' && [styles.tabActive, { borderBottomColor: theme.accent }],
+          ]}
           onPress={() => setActiveTab('history')}
         >
           <Text
@@ -168,7 +193,10 @@ export function AccountScreen({ navigation }: Props): JSX.Element {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'holds' && [styles.tabActive, { borderBottomColor: theme.accent }]]}
+          style={[
+            styles.tab,
+            activeTab === 'holds' && [styles.tabActive, { borderBottomColor: theme.accent }],
+          ]}
           onPress={() => setActiveTab('holds')}
         >
           <Text
@@ -179,7 +207,9 @@ export function AccountScreen({ navigation }: Props): JSX.Element {
           </Text>
           {holds.length > 0 && (
             <View style={[styles.tabBadge, { backgroundColor: theme.accent }]}>
-              <Text variant="text-xs/semibold" style={styles.tabBadgeText}>{holds.length}</Text>
+              <Text variant="text-xs/semibold" style={styles.tabBadgeText}>
+                {holds.length}
+              </Text>
             </View>
           )}
         </TouchableOpacity>
@@ -187,7 +217,9 @@ export function AccountScreen({ navigation }: Props): JSX.Element {
 
       {error != null && (
         <View style={[styles.errorBox, { backgroundColor: theme.errorBg }]}>
-          <Text variant="text-sm/normal" color="error">⚠ {error}</Text>
+          <Text variant="text-sm/normal" color="error">
+            ⚠ {error}
+          </Text>
         </View>
       )}
 
@@ -204,8 +236,12 @@ export function AccountScreen({ navigation }: Props): JSX.Element {
               </View>
             ) : checkouts.length === 0 ? (
               <View style={styles.emptyState}>
-                <Text variant="header-xl/normal" style={styles.emptyIcon}>📚</Text>
-                <Text variant="text-md/normal" color="text-secondary">No items checked out</Text>
+                <Text variant="header-xl/normal" style={styles.emptyIcon}>
+                  📚
+                </Text>
+                <Text variant="text-md/normal" color="text-secondary">
+                  No items checked out
+                </Text>
               </View>
             ) : (
               checkouts.map((item) => (
@@ -231,17 +267,34 @@ export function AccountScreen({ navigation }: Props): JSX.Element {
                 </Text>
               </View>
             ) : !historyEnabled ? (
-              <View style={[styles.historyDisabled, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}>
-                <Text variant="header-xl/normal" style={styles.historyDisabledIcon}>📊</Text>
-                <Text variant="text-md/semibold" color="text-primary" style={styles.historyDisabledTitle}>
+              <View
+                style={[
+                  styles.historyDisabled,
+                  { backgroundColor: theme.bgSecondary, borderColor: theme.border },
+                ]}
+              >
+                <Text variant="header-xl/normal" style={styles.historyDisabledIcon}>
+                  📊
+                </Text>
+                <Text
+                  variant="text-md/semibold"
+                  color="text-primary"
+                  style={styles.historyDisabledTitle}
+                >
                   History Tracking Disabled
                 </Text>
-                <Text variant="text-sm/normal" color="text-secondary" style={styles.historyDisabledText}>
+                <Text
+                  variant="text-sm/normal"
+                  color="text-secondary"
+                  style={styles.historyDisabledText}
+                >
                   To track your checkout history, enable it in your NC Cardinal account settings.
                 </Text>
                 <TouchableOpacity
                   style={[styles.enableHistoryButton, { backgroundColor: theme.accent }]}
-                  onPress={() => Linking.openURL('https://nccardinal.org/eg/opac/myopac/prefs_settings')}
+                  onPress={() =>
+                    Linking.openURL('https://nccardinal.org/eg/opac/myopac/prefs_settings')
+                  }
                 >
                   <Text variant="text-sm/semibold" style={styles.enableHistoryButtonText}>
                     Open Settings
@@ -250,8 +303,12 @@ export function AccountScreen({ navigation }: Props): JSX.Element {
               </View>
             ) : history.length === 0 ? (
               <View style={styles.emptyState}>
-                <Text variant="header-xl/normal" style={styles.emptyIcon}>📖</Text>
-                <Text variant="text-md/normal" color="text-secondary">No checkout history</Text>
+                <Text variant="header-xl/normal" style={styles.emptyIcon}>
+                  📖
+                </Text>
+                <Text variant="text-md/normal" color="text-secondary">
+                  No checkout history
+                </Text>
               </View>
             ) : (
               <>
@@ -265,7 +322,10 @@ export function AccountScreen({ navigation }: Props): JSX.Element {
                 ))}
                 {hasMoreHistory && (
                   <TouchableOpacity
-                    style={[styles.loadMoreButton, { backgroundColor: theme.bgSecondary, borderColor: theme.border }]}
+                    style={[
+                      styles.loadMoreButton,
+                      { backgroundColor: theme.bgSecondary, borderColor: theme.border },
+                    ]}
                     onPress={fetchMoreHistory}
                     disabled={isFetchingHistory}
                   >
@@ -291,8 +351,12 @@ export function AccountScreen({ navigation }: Props): JSX.Element {
               </View>
             ) : holds.length === 0 ? (
               <View style={styles.emptyState}>
-                <Text variant="header-xl/normal" style={styles.emptyIcon}>🔖</Text>
-                <Text variant="text-md/normal" color="text-secondary">No active holds</Text>
+                <Text variant="header-xl/normal" style={styles.emptyIcon}>
+                  🔖
+                </Text>
+                <Text variant="text-md/normal" color="text-secondary">
+                  No active holds
+                </Text>
               </View>
             ) : (
               holds.map((item) => (
@@ -328,7 +392,10 @@ function CheckoutCard({ item, onPress, theme }: CheckoutCardProps): JSX.Element 
     <TouchableOpacity
       style={[
         styles.itemCard,
-        { backgroundColor: theme.bgSecondary, borderColor: item.overdue ? theme.error : theme.border },
+        {
+          backgroundColor: theme.bgSecondary,
+          borderColor: item.overdue ? theme.error : theme.border,
+        },
       ]}
       onPress={onPress}
     >
@@ -345,10 +412,14 @@ function CheckoutCard({ item, onPress, theme }: CheckoutCardProps): JSX.Element 
           </Text>
         )}
         <View style={styles.itemMeta}>
-          <Text variant="text-xs/normal" color="text-muted">📅 Due: {item.dueDate}</Text>
+          <Text variant="text-xs/normal" color="text-muted">
+            📅 Due: {item.dueDate}
+          </Text>
           {item.overdue === true && (
             <View style={[styles.overdueBadge, { backgroundColor: theme.error }]}>
-              <Text variant="text-xs/semibold" style={styles.overdueBadgeText}>Overdue</Text>
+              <Text variant="text-xs/semibold" style={styles.overdueBadgeText}>
+                Overdue
+              </Text>
             </View>
           )}
         </View>
@@ -382,9 +453,13 @@ function HistoryCard({ item, onPress, theme }: HistoryCardProps): JSX.Element {
           </Text>
         )}
         <View style={styles.itemMeta}>
-          <Text variant="text-xs/normal" color="text-muted">📥 {item.checkoutDate}</Text>
+          <Text variant="text-xs/normal" color="text-muted">
+            📥 {item.checkoutDate}
+          </Text>
           {item.returnDate != null && (
-            <Text variant="text-xs/normal" color="text-muted">📤 {item.returnDate}</Text>
+            <Text variant="text-xs/normal" color="text-muted">
+              📤 {item.returnDate}
+            </Text>
           )}
         </View>
       </View>
@@ -417,12 +492,18 @@ function HoldCard({ item, onPress, theme }: HoldCardProps): JSX.Element {
           </Text>
         )}
         <View style={styles.itemMeta}>
-          <Text variant="text-xs/normal" color="text-muted">📅 {item.holdDate}</Text>
+          <Text variant="text-xs/normal" color="text-muted">
+            📅 {item.holdDate}
+          </Text>
           {item.status !== '' && (
-            <Text variant="text-xs/normal" color="text-muted">{item.status}</Text>
+            <Text variant="text-xs/normal" color="text-muted">
+              {item.status}
+            </Text>
           )}
           {item.position != null && item.position > 0 ? (
-            <Text variant="text-xs/normal" color="text-muted">#{item.position}</Text>
+            <Text variant="text-xs/normal" color="text-muted">
+              #{item.position}
+            </Text>
           ) : null}
         </View>
       </View>

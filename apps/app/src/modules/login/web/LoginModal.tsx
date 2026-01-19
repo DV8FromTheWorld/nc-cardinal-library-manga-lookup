@@ -83,8 +83,14 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps): JSX.Element | 
   if (isOpen === false) return null;
 
   return (
-    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- Modal overlay backdrop, keyboard close handled via Escape key in useEffect
-    <div className={styles.overlay} onClick={handleOverlayClick}>
+    <div
+      className={styles.overlay}
+      onClick={handleOverlayClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose();
+      }}
+      role="presentation"
+    >
       <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="login-title">
         <div className={styles.header}>
           <div>

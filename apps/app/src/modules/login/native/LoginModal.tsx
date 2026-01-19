@@ -2,21 +2,22 @@
  * Login modal component for React Native.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
-  View,
+  ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
+  StyleSheet,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
   useColorScheme,
+  View,
 } from 'react-native';
-import { login } from '../../authentication/store';
-import { Text } from '../../../design/components/Text/native/Text';
+
 import { Heading } from '../../../design/components/Heading/native/Heading';
+import { Text } from '../../../design/components/Text/native/Text';
+import { login } from '../../authentication/store';
 import { colors, spacing } from '../../search/native/theme';
 
 interface LoginModalProps {
@@ -64,31 +65,26 @@ export function LoginModal({ visible, onClose }: LoginModalProps): JSX.Element {
   }, [cardNumber, pin, onClose]);
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.overlay}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <TouchableOpacity
-          style={styles.overlayBackground}
-          activeOpacity={1}
-          onPress={onClose}
-        />
+        <TouchableOpacity style={styles.overlayBackground} activeOpacity={1} onPress={onClose} />
         <View style={[styles.modal, { backgroundColor: theme.bgPrimary }]}>
           <View style={styles.header}>
             <View>
-              <Heading level={2} variant="header-md/bold">Sign In</Heading>
+              <Heading level={2} variant="header-md/bold">
+                Sign In
+              </Heading>
               <Text variant="text-sm/normal" color="text-secondary" style={styles.subtitle}>
                 Use your NC Cardinal library card
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Text variant="header-md/normal" color="text-muted">×</Text>
+              <Text variant="header-md/normal" color="text-muted">
+                ×
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -143,7 +139,9 @@ export function LoginModal({ visible, onClose }: LoginModalProps): JSX.Element {
 
             {error != null && (
               <View style={[styles.errorBox, { backgroundColor: theme.errorBg }]}>
-                <Text variant="text-sm/normal" color="error">⚠ {error}</Text>
+                <Text variant="text-sm/normal" color="error">
+                  ⚠ {error}
+                </Text>
               </View>
             )}
 
@@ -151,7 +149,8 @@ export function LoginModal({ visible, onClose }: LoginModalProps): JSX.Element {
               style={[
                 styles.submitButton,
                 { backgroundColor: theme.accent },
-                (isLoading || cardNumber.trim() === '' || pin.trim() === '') && styles.submitButtonDisabled,
+                (isLoading || cardNumber.trim() === '' || pin.trim() === '') &&
+                  styles.submitButtonDisabled,
               ]}
               onPress={handleSubmit}
               disabled={isLoading || cardNumber.trim() === '' || pin.trim() === ''}

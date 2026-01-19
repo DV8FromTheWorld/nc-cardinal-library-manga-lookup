@@ -9,10 +9,9 @@
  *   import { useStoreInit } from '../store/useStoreInit';
  */
 
-import { registerInitializer } from './registry';
-
 // Import and register all store initializers
 import { initialize as initializeAuth } from '../authentication/store';
+import { registerInitializer } from './registry';
 
 registerInitializer(initializeAuth);
 
