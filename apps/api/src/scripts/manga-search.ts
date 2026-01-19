@@ -243,6 +243,37 @@ function checkCacheWithTTL(cacheFile: string): { valid: true; content: string } 
   }
 }
 
+// Timeout cache directory - separate from main cache so we can use different TTL
+const BOOKCOVER_TIMEOUT_CACHE_DIR = path.join(process.cwd(), '.cache', 'bookcover-timeouts');
+
+// Timeout cache TTL: 1 hour (so we don't keep retrying ISBNs that are slow)
+const TIMEOUT_CACHE_TTL_MS = 60 * 60 * 1000;
+
+/**
+ * Check if an ISBN recently timed out (within the last hour)
+ */
+function checkTimeoutCache(isbn: string): boolean {
+  const cacheFile = path.join(BOOKCOVER_TIMEOUT_CACHE_DIR, `${isbn}.txt`);
+  try {
+    const stats = fs.statSync(cacheFile);
+    const age = Date.now() - stats.mtimeMs;
+    return age < TIMEOUT_CACHE_TTL_MS;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Mark an ISBN as timed out
+ */
+function cacheTimeout(isbn: string): void {
+  if (!fs.existsSync(BOOKCOVER_TIMEOUT_CACHE_DIR)) {
+    fs.mkdirSync(BOOKCOVER_TIMEOUT_CACHE_DIR, { recursive: true });
+  }
+  const cacheFile = path.join(BOOKCOVER_TIMEOUT_CACHE_DIR, `${isbn}.txt`);
+  fs.writeFileSync(cacheFile, 'timeout');
+}
+
 /**
  * Fetch cover URL from Bookcover API (aggregates Amazon, Google, OpenLibrary, etc.)
  * Results are cached to avoid repeated API calls
@@ -250,9 +281,10 @@ function checkCacheWithTTL(cacheFile: string): { valid: true; content: string } 
  * Cache TTLs:
  * - Successful covers: 7 days (URLs can become stale)
  * - Cache misses: 24 hours (covers might become available)
+ * - Timeouts: 1 hour (API is slow for missing covers, don't keep retrying)
  *
  * NOTE: The Bookcover API can take 25+ seconds to return "not found" because it
- * searches multiple sources. We use a 5-second timeout since successful responses
+ * searches multiple sources. We use a 2-second timeout since successful responses
  * typically come back in <1 second.
  */
 export async function fetchBookcoverUrl(isbn: string): Promise<string | null> {
@@ -269,11 +301,16 @@ export async function fetchBookcoverUrl(isbn: string): Promise<string | null> {
     return cached.content !== '' ? cached.content : null;
   }
 
+  // Check if this ISBN recently timed out - skip retrying for 1 hour
+  if (checkTimeoutCache(isbn)) {
+    return null;
+  }
+
   try {
-    // Use a 5-second timeout - successful responses are usually <1 second
+    // Use a 2-second timeout - successful responses are usually <1 second
     // If it takes longer, it's likely going to return "not found" after 25+ seconds
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
 
     const response = await fetch(`https://bookcover.longitood.com/bookcover/${isbn}`, {
       signal: controller.signal,
@@ -293,30 +330,85 @@ export async function fetchBookcoverUrl(isbn: string): Promise<string | null> {
     fs.writeFileSync(cacheFile, url ?? '');
     return url;
   } catch {
-    // On timeout or error, don't cache - might succeed next time
+    // On timeout or error, cache the timeout so we don't keep retrying
+    cacheTimeout(isbn);
     return null;
   }
 }
 
 /**
- * Batch fetch cover URLs for multiple ISBNs
+ * Fetch cover URLs for multiple ISBNs with max concurrency model.
+ * Keeps N requests in flight at all times (instead of waiting for batches to complete).
  */
 async function fetchBookcoverUrls(isbns: string[]): Promise<Map<string, string>> {
   const results = new Map<string, string>();
+  let cacheHits = 0;
+  let networkFetches = 0;
+  let timeouts = 0;
+  let skippedTimeouts = 0;
+  const startTime = Date.now();
 
-  // Fetch in parallel with concurrency limit
-  const CONCURRENCY = 5;
-  for (let i = 0; i < isbns.length; i += CONCURRENCY) {
-    const batch = isbns.slice(i, i + CONCURRENCY);
-    const promises = batch.map(async (isbn) => {
-      const url = await fetchBookcoverUrl(isbn);
-      if (url != null) {
-        results.set(isbn, url);
+  const MAX_CONCURRENCY = 5;
+  let activeCount = 0;
+  let nextIndex = 0;
+
+  // Create a promise that resolves when all ISBNs are processed
+  await new Promise<void>((resolve) => {
+    const processNext = () => {
+      // Start new requests while under concurrency limit and there are more ISBNs
+      while (activeCount < MAX_CONCURRENCY && nextIndex < isbns.length) {
+        const isbn = isbns[nextIndex++];
+        if (isbn == null) continue;
+
+        activeCount++;
+        const t0 = Date.now();
+        const cacheFile = path.join(BOOKCOVER_CACHE_DIR, `${isbn}.txt`);
+        const wasCached = checkCacheWithTTL(cacheFile).valid;
+        const wasTimeoutCached = !wasCached && checkTimeoutCache(isbn);
+
+        void fetchBookcoverUrl(isbn)
+          .then((url) => {
+            const elapsed = Date.now() - t0;
+
+            if (wasCached) {
+              cacheHits++;
+            } else if (wasTimeoutCached) {
+              skippedTimeouts++;
+            } else if (elapsed >= 1900) {
+              // Timeout threshold (2s timeout - slight buffer)
+              timeouts++;
+            } else {
+              networkFetches++;
+            }
+
+            if (url != null) {
+              results.set(isbn, url);
+            }
+          })
+          .finally(() => {
+            activeCount--;
+            if (nextIndex >= isbns.length && activeCount === 0) {
+              resolve();
+            } else {
+              processNext();
+            }
+          });
       }
-    });
-    await Promise.all(promises);
-  }
 
+      // Handle edge case: no ISBNs to process
+      if (isbns.length === 0) {
+        resolve();
+      }
+    };
+
+    processNext();
+  });
+
+  console.log(
+    `[Timing] fetchBookcoverUrls: ${Date.now() - startTime}ms total | ` +
+      `${cacheHits} cache, ${networkFetches} network, ${timeouts} timeouts, ${skippedTimeouts} skipped | ` +
+      `${results.size}/${isbns.length} found`
+  );
   return results;
 }
 
@@ -412,20 +504,65 @@ export async function fetchGoogleBooksCoverUrl(isbn: string): Promise<string | n
  */
 async function fetchGoogleBooksCoverUrls(isbns: string[]): Promise<Map<string, string>> {
   const results = new Map<string, string>();
+  let cacheHits = 0;
+  let networkFetches = 0;
+  const startTime = Date.now();
 
-  // Fetch in parallel with concurrency limit
-  const CONCURRENCY = 5;
-  for (let i = 0; i < isbns.length; i += CONCURRENCY) {
-    const batch = isbns.slice(i, i + CONCURRENCY);
-    const promises = batch.map(async (isbn) => {
-      const url = await fetchGoogleBooksCoverUrl(isbn);
-      if (url != null) {
-        results.set(isbn, url);
+  const MAX_CONCURRENCY = 5;
+  let activeCount = 0;
+  let nextIndex = 0;
+
+  await new Promise<void>((resolve) => {
+    const processNext = () => {
+      while (activeCount < MAX_CONCURRENCY && nextIndex < isbns.length) {
+        const isbn = isbns[nextIndex++];
+        if (isbn == null) continue;
+
+        activeCount++;
+        const t0 = Date.now();
+        const cacheFile = path.join(GOOGLE_BOOKS_CACHE_DIR, `${isbn}.txt`);
+        const wasCached = checkCacheWithTTL(cacheFile).valid;
+
+        void fetchGoogleBooksCoverUrl(isbn)
+          .then((url) => {
+            const elapsed = Date.now() - t0;
+
+            if (wasCached) {
+              cacheHits++;
+            } else {
+              networkFetches++;
+              if (elapsed > 1000) {
+                console.log(`[Timing] Google Books fetch for ${isbn}: ${elapsed}ms (slow)`);
+              }
+            }
+
+            if (url != null) {
+              results.set(isbn, url);
+            }
+          })
+          .finally(() => {
+            activeCount--;
+            if (nextIndex >= isbns.length && activeCount === 0) {
+              resolve();
+            } else {
+              processNext();
+            }
+          });
       }
-    });
-    await Promise.all(promises);
-  }
 
+      if (isbns.length === 0) {
+        resolve();
+      }
+    };
+
+    processNext();
+  });
+
+  console.log(
+    `[Timing] fetchGoogleBooksCoverUrls: ${Date.now() - startTime}ms total | ` +
+      `${cacheHits} cache hits, ${networkFetches} network | ` +
+      `${results.size}/${isbns.length} found`
+  );
   return results;
 }
 
@@ -1622,16 +1759,21 @@ async function getSeriesDetailsFromEntity(
 ): Promise<SeriesDetails | null> {
   const { includeDebug = false, homeLibrary } = options;
   const debug = createDebugInfo();
+  const timingStart = Date.now();
 
   // Load entity
+  const t0 = Date.now();
   const entity = await getSeriesById(entityId);
+  console.log(`[Timing] getSeriesById: ${Date.now() - t0}ms`);
   if (entity == null) {
     console.log(`[MangaSearch] Entity not found: ${entityId}`);
     return null;
   }
 
   // Load volume entities for this series
+  const t1 = Date.now();
   const entityVolumes = await getVolumesBySeriesId(entityId);
+  console.log(`[Timing] getVolumesBySeriesId: ${Date.now() - t1}ms`);
   if (entityVolumes.length === 0 && (entity.volumeIds == null || entity.volumeIds.length === 0)) {
     console.log(`[MangaSearch] No volumes found for entity: ${entityId}`);
     return null;
@@ -1640,9 +1782,14 @@ async function getSeriesDetailsFromEntity(
   debug.sources.push('entity-store');
 
   // Resolve editions for all volumes
+  const t2 = Date.now();
   const editionsMap = await resolveEditionsForVolumes(entityVolumes);
+  console.log(
+    `[Timing] resolveEditionsForVolumes (${entityVolumes.length} volumes): ${Date.now() - t2}ms`
+  );
 
   // Collect English physical ISBNs for availability lookup
+  const t3 = Date.now();
   const isbns: string[] = [];
   for (const editions of editionsMap.values()) {
     for (const e of editions) {
@@ -1651,6 +1798,7 @@ async function getSeriesDetailsFromEntity(
       }
     }
   }
+  console.log(`[Timing] ISBN collection: ${Date.now() - t3}ms`);
 
   // Fetch availability and covers
   console.log(
@@ -1663,6 +1811,9 @@ async function getSeriesDetailsFromEntity(
       : Promise.resolve(new Map<string, VolumeAvailability>()),
     isbns.length > 0 ? fetchBookcoverUrls(isbns) : Promise.resolve(new Map<string, string>()),
   ]);
+  console.log(
+    `[Timing] Promise.all(NC Cardinal + Bookcovers) for ${isbns.length} ISBNs: ${Date.now() - ncStart}ms`
+  );
   debug.timing.ncCardinal = Date.now() - ncStart;
   debug.sources.push('nc-cardinal');
 
@@ -1674,13 +1825,18 @@ async function getSeriesDetailsFromEntity(
   const missingCoverIsbns = isbns.filter((isbn) => !bookcoverUrls.has(isbn));
   let googleBooksUrls = new Map<string, string>();
   if (missingCoverIsbns.length > 0) {
+    const t4 = Date.now();
     googleBooksUrls = await fetchGoogleBooksCoverUrls(missingCoverIsbns);
+    console.log(
+      `[Timing] fetchGoogleBooksCoverUrls (${missingCoverIsbns.length} ISBNs): ${Date.now() - t4}ms`
+    );
     if (googleBooksUrls.size > 0) {
       debug.sources.push('google-books-covers');
     }
   }
 
   // Build volume info from entity volumes
+  const t5 = Date.now();
   const sortedVolumes = [...entityVolumes].sort((a, b) => a.volumeNumber - b.volumeNumber);
   const volumes: VolumeInfo[] = sortedVolumes.map((vol) => {
     const editions = editionsMap.get(vol.id) ?? [];
@@ -1716,6 +1872,7 @@ async function getSeriesDetailsFromEntity(
     firstVolumeIsbn != null ? bookcoverUrls.get(firstVolumeIsbn) : undefined;
   const firstVolGoogleBooks =
     firstVolumeIsbn != null ? googleBooksUrls.get(firstVolumeIsbn) : undefined;
+  console.log(`[Timing] Building response: ${Date.now() - t5}ms`);
 
   const result: SeriesDetails = {
     id: entity.id,
@@ -1734,6 +1891,7 @@ async function getSeriesDetailsFromEntity(
     result._debug = finalizeDebugInfo(debug);
   }
 
+  console.log(`[Timing] getSeriesDetailsFromEntity TOTAL: ${Date.now() - timingStart}ms`);
   return result;
 }
 
