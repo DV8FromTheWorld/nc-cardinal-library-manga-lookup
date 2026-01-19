@@ -202,9 +202,47 @@ export interface SeriesDetails {
 // Cache directory for bookcover API results
 const BOOKCOVER_CACHE_DIR = path.join(process.cwd(), '.cache', 'bookcover');
 
+// Cache TTLs for cover images
+const COVER_CACHE_HIT_TTL_MS = 7 * 24 * 60 * 60 * 1000;  // 7 days for successful covers
+const COVER_CACHE_MISS_TTL_MS = 24 * 60 * 60 * 1000;     // 24 hours for cache misses
+
+/**
+ * Check if a cache file is still valid based on TTL
+ * Returns { valid: true, content } if cache is valid
+ * Returns { valid: false } if cache is expired or doesn't exist
+ */
+function checkCacheWithTTL(cacheFile: string): { valid: true; content: string } | { valid: false } {
+  if (!fs.existsSync(cacheFile)) {
+    return { valid: false };
+  }
+  
+  try {
+    const stat = fs.statSync(cacheFile);
+    const content = fs.readFileSync(cacheFile, 'utf-8').trim();
+    const age = Date.now() - stat.mtimeMs;
+    
+    // Use different TTLs for hits vs misses
+    const ttl = content ? COVER_CACHE_HIT_TTL_MS : COVER_CACHE_MISS_TTL_MS;
+    
+    if (age > ttl) {
+      // Cache expired - delete and return invalid
+      fs.unlinkSync(cacheFile);
+      return { valid: false };
+    }
+    
+    return { valid: true, content };
+  } catch {
+    return { valid: false };
+  }
+}
+
 /**
  * Fetch cover URL from Bookcover API (aggregates Amazon, Google, OpenLibrary, etc.)
  * Results are cached to avoid repeated API calls
+ * 
+ * Cache TTLs:
+ * - Successful covers: 7 days (URLs can become stale)
+ * - Cache misses: 24 hours (covers might become available)
  * 
  * NOTE: The Bookcover API can take 25+ seconds to return "not found" because it
  * searches multiple sources. We use a 5-second timeout since successful responses
@@ -218,10 +256,10 @@ export async function fetchBookcoverUrl(isbn: string): Promise<string | null> {
 
   const cacheFile = path.join(BOOKCOVER_CACHE_DIR, `${isbn}.txt`);
   
-  // Check cache first
-  if (fs.existsSync(cacheFile)) {
-    const cached = fs.readFileSync(cacheFile, 'utf-8').trim();
-    return cached || null;
+  // Check cache first (with TTL)
+  const cached = checkCacheWithTTL(cacheFile);
+  if (cached.valid) {
+    return cached.content || null;
   }
 
   try {
@@ -285,6 +323,10 @@ const GOOGLE_BOOKS_CACHE_DIR = path.join(process.cwd(), '.cache', 'google-books-
  * Fetch cover URL from Google Books API
  * Returns null if book not found or if cover is a placeholder (grayscale PNG)
  * 
+ * Cache TTLs:
+ * - Successful covers: 7 days (URLs can become stale)
+ * - Cache misses: 24 hours (covers might become available)
+ * 
  * Detection: Google Books returns grayscale PNG images (128x170, 1269 bytes) 
  * when no cover is available. Real covers are always JPEGs.
  */
@@ -296,10 +338,10 @@ export async function fetchGoogleBooksCoverUrl(isbn: string): Promise<string | n
 
   const cacheFile = path.join(GOOGLE_BOOKS_CACHE_DIR, `${isbn}.txt`);
   
-  // Check cache first
-  if (fs.existsSync(cacheFile)) {
-    const cached = fs.readFileSync(cacheFile, 'utf-8').trim();
-    return cached || null;
+  // Check cache first (with TTL)
+  const cached = checkCacheWithTTL(cacheFile);
+  if (cached.valid) {
+    return cached.content || null;
   }
 
   try {
