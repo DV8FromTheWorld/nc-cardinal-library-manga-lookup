@@ -1048,15 +1048,37 @@ export async function getSeries(query: string): Promise<WikiSeries | null> {
     if (!pageContent) continue;
     
     // Always fetch ALL transcluded subpages upfront (for pages like One Piece volume list)
+    // 
+    // Wikipedia uses TWO different transclusion syntaxes for volume lists:
+    //
+    // 1. Direct transclusion: {{:Page Name}}
+    //    Example: One Piece volume list uses {{:List of One Piece chapters (1–187)}}
+    //    This includes the entire page content inline.
+    //
+    // 2. Section transclusion: {{#section-h::Page Name|Section Name}}
+    //    Example: Naruto volume list uses {{#section-h::List of Naruto chapters (Part I)|Volume list}}
+    //    This includes only a specific section from the page.
+    //
+    // Both patterns must be detected to get complete volume data for all series.
     let fullWikitext = pageContent.wikitext;
-    const transclusionMatches = [...pageContent.wikitext.matchAll(/\{\{:([^}]+)\}\}/g)];
     
-    if (transclusionMatches.length > 0) {
-      console.log(`[Wikipedia] Page "${pageTitle}" has ${transclusionMatches.length} transcluded pages`);
+    const directTransclusionMatches = [...pageContent.wikitext.matchAll(/\{\{:([^}]+)\}\}/g)];
+    const sectionTransclusionMatches = [...pageContent.wikitext.matchAll(/\{\{#section-h::([^|]+)\|[^}]+\}\}/g)];
+    
+    // Combine and deduplicate page titles
+    const transcludedPages = new Set<string>();
+    for (const match of directTransclusionMatches) {
+      if (match[1]) transcludedPages.add(match[1]);
+    }
+    for (const match of sectionTransclusionMatches) {
+      if (match[1]) transcludedPages.add(match[1]);
+    }
+    
+    if (transcludedPages.size > 0) {
+      console.log(`[Wikipedia] Page "${pageTitle}" has ${transcludedPages.size} transcluded pages`);
       
-      for (const match of transclusionMatches) {
-        const subpageTitle = match[1];
-        if (subpageTitle && (subpageTitle.toLowerCase().includes('chapter') || subpageTitle.toLowerCase().includes('volume'))) {
+      for (const subpageTitle of transcludedPages) {
+        if (subpageTitle.toLowerCase().includes('chapter') || subpageTitle.toLowerCase().includes('volume')) {
           console.log(`[Wikipedia] Fetching transcluded page: ${subpageTitle}`);
           const subpage = await getPageContentByTitle(subpageTitle);
           if (subpage) {
@@ -1287,11 +1309,22 @@ export async function getAllSeriesFromPage(query: string): Promise<WikiSeries[]>
     fullWikitext += '\n' + queryPage.wikitext;
   }
 
-  // Fetch any transcluded pages
-  const transclusionMatches = [...fullWikitext.matchAll(/\{\{:([^}]+)\}\}/g)];
-  for (const match of transclusionMatches) {
-    const subpageTitle = match[1];
-    if (subpageTitle && (subpageTitle.toLowerCase().includes('chapter') || subpageTitle.toLowerCase().includes('volume'))) {
+  // Fetch any transcluded pages - supports both Wikipedia transclusion patterns:
+  // - Direct: {{:Page Name}} (One Piece style)
+  // - Section: {{#section-h::Page Name|Section}} (Naruto style)
+  const directTransclusions = [...fullWikitext.matchAll(/\{\{:([^}]+)\}\}/g)];
+  const sectionTransclusions = [...fullWikitext.matchAll(/\{\{#section-h::([^|]+)\|[^}]+\}\}/g)];
+  
+  const transcludedPages = new Set<string>();
+  for (const match of directTransclusions) {
+    if (match[1]) transcludedPages.add(match[1]);
+  }
+  for (const match of sectionTransclusions) {
+    if (match[1]) transcludedPages.add(match[1]);
+  }
+  
+  for (const subpageTitle of transcludedPages) {
+    if (subpageTitle.toLowerCase().includes('chapter') || subpageTitle.toLowerCase().includes('volume')) {
       const subpage = await getPageContentByTitle(subpageTitle);
       if (subpage) {
         fullWikitext += '\n' + subpage.wikitext;
