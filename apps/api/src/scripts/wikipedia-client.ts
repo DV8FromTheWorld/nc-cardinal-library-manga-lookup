@@ -1022,7 +1022,11 @@ export async function getSeries(query: string): Promise<WikiSeries | null> {
 
   // FIRST: Try query-based chapter list pages (highest priority)
   // These are most likely to have the main series data
-  pagesToTry.push(`List of ${query} chapters`, `List of ${query} manga volumes`);
+  pagesToTry.push(
+    `List of ${query} chapters`,
+    `List of ${query} volumes`, // Some series use this pattern (e.g., The Apothecary Diaries)
+    `List of ${query} manga volumes`
+  );
 
   // SECOND: Build pages from best search result
   if (firstResult) {
@@ -1048,6 +1052,7 @@ export async function getSeries(query: string): Promise<WikiSeries | null> {
     // Try various patterns using the CLEAN title (without "(manga)" suffix)
     const cleanTitlePages = [
       `List of ${cleanTitle} chapters`,
+      `List of ${cleanTitle} volumes`, // Some series use this pattern (e.g., The Apothecary Diaries)
       `List of ${cleanTitle} manga volumes`,
       cleanTitle,
       `${cleanTitle} (manga)`,
@@ -1064,6 +1069,7 @@ export async function getSeries(query: string): Promise<WikiSeries | null> {
     if (baseTitle != null && baseTitle !== '' && baseTitle !== cleanTitle) {
       const baseTitlePages = [
         `List of ${baseTitle} chapters`,
+        `List of ${baseTitle} volumes`,
         `List of ${baseTitle} manga volumes`,
         baseTitle,
         `${baseTitle} (manga)`,
