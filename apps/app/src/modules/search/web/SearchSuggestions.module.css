@@ -71,7 +71,9 @@
   color: var(--color-text-muted);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s ease, color 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease;
   line-height: 1;
 }
 
