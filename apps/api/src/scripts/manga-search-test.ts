@@ -76,7 +76,7 @@ async function runTest(test: TestCase): Promise<{ passed: boolean; message: stri
 
     // Check if availability data was returned
     if (test.expected.hasAvailability) {
-      const hasAvail = result.volumes.some((v) => v.availability !== undefined);
+      const hasAvail = result.volumes.some((v) => v.copyTotals !== undefined);
       if (!hasAvail) {
         checks.push('Expected availability data but none found');
         passed = false;

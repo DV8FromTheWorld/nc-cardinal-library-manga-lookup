@@ -5,6 +5,8 @@
  * Used by the SSE endpoint to stream search progress to clients.
  */
 
+import { computeCopyTotals, type CopyTotals } from '@repo/shared';
+
 import {
   createEntitiesFromNCCardinal,
   createEntitiesFromWikipedia,
@@ -19,14 +21,9 @@ import {
   parseQuery,
   type SearchResult,
   type SeriesResult,
-  type VolumeAvailability,
   type VolumeInfo,
 } from './manga-search.js';
-import {
-  type CatalogRecord,
-  getDetailedAvailabilitySummary,
-  searchCatalog,
-} from './opensearch-client.js';
+import { type CatalogRecord, searchCatalog } from './opensearch-client.js';
 import { getSeries as getWikipediaSeries, type WikiSeries } from './wikipedia-client.js';
 
 // ============================================================================
@@ -176,7 +173,7 @@ export async function searchWithProgress(
   }
 
   // Step 4: Check availability with progress (max concurrency model)
-  const availability = new Map<string, VolumeAvailability>();
+  const availability = new Map<string, CopyTotals>();
   const availabilityStart = Date.now();
 
   if (isbnsToCheck.length > 0) {
@@ -199,35 +196,13 @@ export async function searchWithProgress(
             .then((record) => {
               if (record != null) {
                 foundInCatalog++;
-                availability.set(isbn, getDetailedAvailabilitySummary(record, homeLibrary));
-              } else {
-                availability.set(isbn, {
-                  available: false,
-                  notInCatalog: true,
-                  totalCopies: 0,
-                  availableCopies: 0,
-                  checkedOutCopies: 0,
-                  inTransitCopies: 0,
-                  onOrderCopies: 0,
-                  onHoldCopies: 0,
-                  unavailableCopies: 0,
-                  libraries: [],
-                });
+                const allCopies = record.libraryHoldings.flatMap((lh) => lh.copies);
+                availability.set(isbn, computeCopyTotals(allCopies));
               }
+              // If not found, no entry is set - undefined means not in catalog
             })
             .catch(() => {
-              availability.set(isbn, {
-                available: false,
-                notInCatalog: true,
-                totalCopies: 0,
-                availableCopies: 0,
-                checkedOutCopies: 0,
-                inTransitCopies: 0,
-                onOrderCopies: 0,
-                onHoldCopies: 0,
-                unavailableCopies: 0,
-                libraries: [],
-              });
+              // On error, don't set anything - undefined means not in catalog
             })
             .finally(() => {
               activeCount--;
@@ -395,14 +370,15 @@ export async function searchWithProgress(
 
       // Build volume results (use seriesResult.volumes which have IDs)
       for (const vol of seriesResult.volumes ?? []) {
+        const volPrimaryIsbn = getPrimaryIsbn(vol.editions);
         result.volumes.push({
           id: vol.id,
           title: `${wikiSeries.title}, Vol. ${vol.volumeNumber}${vol.title != null && vol.title !== '' ? `: ${vol.title}` : ''}`,
           volumeNumber: vol.volumeNumber,
           seriesTitle: wikiSeries.title,
-          isbn: vol.primaryIsbn,
+          isbn: volPrimaryIsbn,
           coverImage: vol.coverImage,
-          availability: vol.availability,
+          copyTotals: vol.copyTotals,
           source: 'wikipedia',
         });
       }
@@ -420,8 +396,8 @@ export async function searchWithProgress(
             if (!availability.has(isbn)) {
               const record = await searchByISBNSingle(isbn);
               if (record != null) {
-                const volAvail = getDetailedAvailabilitySummary(record, homeLibrary);
-                availability.set(isbn, volAvail);
+                const allCopies = record.libraryHoldings.flatMap((lh) => lh.copies);
+                availability.set(isbn, computeCopyTotals(allCopies));
               }
             }
           }
@@ -439,14 +415,15 @@ export async function searchWithProgress(
 
           // Build volume results for related series (use relatedSeriesResult.volumes which have IDs)
           for (const vol of relatedSeriesResult.volumes ?? []) {
+            const volPrimaryIsbn = getPrimaryIsbn(vol.editions);
             result.volumes.push({
               id: vol.id,
               title: `${relatedSeriesResult.title}, Vol. ${vol.volumeNumber}${vol.title != null && vol.title !== '' ? `: ${vol.title}` : ''}`,
               volumeNumber: vol.volumeNumber,
               seriesTitle: relatedSeriesResult.title,
-              isbn: vol.primaryIsbn,
+              isbn: volPrimaryIsbn,
               coverImage: vol.coverImage,
-              availability: vol.availability,
+              copyTotals: vol.copyTotals,
               source: 'wikipedia',
             });
           }
@@ -457,7 +434,9 @@ export async function searchWithProgress(
     // Use NC Cardinal fallback
     const allIsbns = ncCardinalFallbackSeries.flatMap(
       (s) =>
-        s.volumes?.map((v) => v.primaryIsbn).filter((isbn): isbn is string => isbn != null) ?? []
+        s.volumes
+          ?.map((v) => getPrimaryIsbn(v.editions))
+          .filter((isbn): isbn is string => isbn != null) ?? []
     );
 
     if (allIsbns.length > 0) {
@@ -518,23 +497,25 @@ export async function searchWithProgress(
           ncSeries.title,
           ncSeries.volumes?.map((v) => ({
             volumeNumber: v.volumeNumber,
-            isbn: v.primaryIsbn,
+            isbn: getPrimaryIsbn(v.editions),
             title: v.title,
           })) ?? [],
           ncMediaType
         );
 
-        const firstIsbn = ncSeries.volumes?.[0]?.primaryIsbn ?? '';
+        const firstIsbn =
+          ncSeries.volumes?.[0] != null ? getPrimaryIsbn(ncSeries.volumes[0].editions) : '';
 
         // Build volumes with cover images
         const volumesWithCovers: VolumeInfo[] = (ncSeries.volumes ?? []).map((vol) => {
+          const volPrimaryIsbn = getPrimaryIsbn(vol.editions);
           const bookcoverCover =
-            vol.primaryIsbn != null ? bookcoverUrls.get(vol.primaryIsbn) : undefined;
+            volPrimaryIsbn != null ? bookcoverUrls.get(volPrimaryIsbn) : undefined;
           const googleBooksCover =
-            vol.primaryIsbn != null ? googleBooksUrls.get(vol.primaryIsbn) : undefined;
+            volPrimaryIsbn != null ? googleBooksUrls.get(volPrimaryIsbn) : undefined;
           return {
             ...vol,
-            coverImage: getCoverImageUrl(vol.primaryIsbn, bookcoverCover, googleBooksCover),
+            coverImage: getCoverImageUrl(volPrimaryIsbn, bookcoverCover, googleBooksCover),
           };
         });
 
@@ -542,22 +523,23 @@ export async function searchWithProgress(
           ...ncSeries,
           id: entity.id, // Use entity ID
           coverImage: getCoverImageUrl(
-            firstIsbn,
-            bookcoverUrls.get(firstIsbn),
-            googleBooksUrls.get(firstIsbn)
+            firstIsbn ?? '',
+            bookcoverUrls.get(firstIsbn ?? ''),
+            googleBooksUrls.get(firstIsbn ?? '')
           ),
           volumes: volumesWithCovers,
         });
 
         for (const vol of volumesWithCovers) {
+          const volPrimaryIsbn = getPrimaryIsbn(vol.editions);
           result.volumes.push({
             id: vol.id,
             title: vol.title ?? `${ncSeries.title}, Vol. ${vol.volumeNumber}`,
             volumeNumber: vol.volumeNumber,
             seriesTitle: ncSeries.title,
-            isbn: vol.primaryIsbn,
+            isbn: volPrimaryIsbn,
             coverImage: vol.coverImage,
-            availability: vol.availability,
+            copyTotals: vol.copyTotals,
             source: 'nc-cardinal',
           });
         }
@@ -579,7 +561,7 @@ export async function searchWithProgress(
           ncSeries.title,
           ncSeries.volumes?.map((v) => ({
             volumeNumber: v.volumeNumber,
-            isbn: v.primaryIsbn,
+            isbn: getPrimaryIsbn(v.editions),
             title: v.title,
           })) ?? [],
           ncMediaType
@@ -590,13 +572,14 @@ export async function searchWithProgress(
           id: entity.id, // Use entity ID
         });
         for (const vol of ncSeries.volumes ?? []) {
+          const volPrimaryIsbn = getPrimaryIsbn(vol.editions);
           result.volumes.push({
             id: vol.id,
             title: vol.title ?? `${ncSeries.title}, Vol. ${vol.volumeNumber}`,
             volumeNumber: vol.volumeNumber,
             seriesTitle: ncSeries.title,
-            isbn: vol.primaryIsbn,
-            availability: vol.availability,
+            isbn: volPrimaryIsbn,
+            copyTotals: vol.copyTotals,
             source: 'nc-cardinal',
           });
         }
@@ -657,7 +640,7 @@ function getPrimaryIsbn(editions: EditionData[]): string | undefined {
 
 async function buildSeriesResultFromWikipedia(
   wiki: WikiSeries,
-  availability: Map<string, VolumeAvailability>,
+  availability: Map<string, CopyTotals>,
   bookcoverUrls: Map<string, string>,
   googleBooksUrls: Map<string, string> = new Map()
 ): Promise<SeriesResult> {
@@ -675,11 +658,18 @@ async function buildSeriesResultFromWikipedia(
   const firstVolGoogleBooks =
     firstVolumeIsbn != null ? googleBooksUrls.get(firstVolumeIsbn) : undefined;
 
+  // Build series info for volumes
+  const seriesInfo = {
+    id: entity.id,
+    title: wiki.title,
+    author: wiki.author,
+  };
+
   const volumes: VolumeInfo[] = entityVolumes.map((vol) => {
     const editions = editionsMap.get(vol.id) ?? [];
     const primaryIsbn = getPrimaryIsbn(editions);
-    const volAvail = primaryIsbn != null ? availability.get(primaryIsbn) : undefined;
-    if (volAvail?.available === true) {
+    const volCopyTotals = primaryIsbn != null ? availability.get(primaryIsbn) : undefined;
+    if ((volCopyTotals?.available ?? 0) > 0) {
       availableVolumes++;
     }
     const bookcoverCover = primaryIsbn != null ? bookcoverUrls.get(primaryIsbn) : undefined;
@@ -688,10 +678,10 @@ async function buildSeriesResultFromWikipedia(
       id: vol.id,
       volumeNumber: vol.volumeNumber,
       title: vol.title,
+      seriesInfo,
       editions,
-      primaryIsbn,
       coverImage: getCoverImageUrl(primaryIsbn, bookcoverCover, googleBooksCover),
-      availability: volAvail,
+      copyTotals: volCopyTotals,
     };
   });
 
@@ -737,7 +727,7 @@ async function buildSingleSeriesFromRecords(
   seriesTitle: string,
   records: CatalogRecord[],
   mediaType: 'manga' | 'light_novel' | 'mixed',
-  homeLibrary?: string
+  _homeLibrary?: string
 ): Promise<SeriesResult | null> {
   let cleanTitle = seriesTitle
     .replace(/\[manga\]/gi, '')
@@ -840,11 +830,12 @@ async function buildSingleSeriesFromRecords(
 
   if (volumeRecords.size === 0) return null;
 
-  const availabilityMap = new Map<string, VolumeAvailability>();
+  const availabilityMap = new Map<string, CopyTotals>();
   for (const [, record] of volumeRecords) {
     const isbn = record.isbns.find((i) => i.startsWith('978')) ?? record.isbns[0];
     if (isbn != null) {
-      availabilityMap.set(isbn, getDetailedAvailabilitySummary(record, homeLibrary));
+      const allCopies = record.libraryHoldings.flatMap((lh) => lh.copies);
+      availabilityMap.set(isbn, computeCopyTotals(allCopies));
     }
   }
 
@@ -854,7 +845,7 @@ async function buildSingleSeriesFromRecords(
     title: string;
     editions: Array<{ isbn: string; format: 'physical'; language: 'en' }>;
     primaryIsbn: string | undefined;
-    availability: VolumeAvailability | undefined;
+    copyTotals: CopyTotals | undefined;
   }
   const volumeNums = Array.from(volumeRecords.keys()).sort((a, b) => a - b);
   const preliminaryVolumes: PreliminaryVolume[] = [];
@@ -865,9 +856,9 @@ async function buildSingleSeriesFromRecords(
     if (record == null) continue;
 
     const isbn = record.isbns.find((i) => i.startsWith('978')) ?? record.isbns[0];
-    const volAvail = isbn != null ? availabilityMap.get(isbn) : undefined;
+    const volCopyTotals = isbn != null ? availabilityMap.get(isbn) : undefined;
 
-    if (volAvail?.available === true) availableCount++;
+    if ((volCopyTotals?.available ?? 0) > 0) availableCount++;
 
     // Build editions array (NC Cardinal only knows about English physical)
     const editions: Array<{ isbn: string; format: 'physical'; language: 'en' }> =
@@ -886,7 +877,7 @@ async function buildSingleSeriesFromRecords(
       title: `${cleanTitle}, Vol. ${volNum}`,
       editions,
       primaryIsbn: isbn,
-      availability: volAvail,
+      copyTotals: volCopyTotals,
     });
   }
 
@@ -903,12 +894,22 @@ async function buildSingleSeriesFromRecords(
     entityMediaType
   );
 
+  // Build series info for volumes
+  const seriesInfo = {
+    id: entity.id,
+    title: cleanTitle,
+  };
+
   // Map entity IDs to volume info
   const volumes: VolumeInfo[] = preliminaryVolumes.map((vol) => {
     const entityVolume = entityVolumes.find((ev) => ev.volumeNumber === vol.volumeNumber);
     return {
-      ...vol,
       id: entityVolume?.id ?? `tmp-${vol.volumeNumber}`,
+      volumeNumber: vol.volumeNumber,
+      title: vol.title,
+      seriesInfo,
+      editions: vol.editions,
+      copyTotals: vol.copyTotals,
     };
   });
 

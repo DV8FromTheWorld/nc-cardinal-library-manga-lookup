@@ -181,9 +181,10 @@ export async function searchManga(
     }
 
     // Calculate availability from holdings
-    const totalCopies = record.holdings.length;
-    const availableCopies = record.holdings.filter((h) => h.available).length;
-    const locations = [...new Set(record.holdings.map((h) => h.libraryName))];
+    const allCopies = record.libraryHoldings.flatMap((lh) => lh.copies);
+    const totalCopies = allCopies.length;
+    const availableCopies = allCopies.filter((c) => c.available).length;
+    const locations = [...new Set(record.libraryHoldings.map((lh) => lh.libraryName))];
 
     return {
       title: record.title,
@@ -283,9 +284,10 @@ export async function getSeriesBooks(
     if (!titleMatchesSeries(record.title, seriesInfo.title)) continue;
 
     // Calculate availability from holdings
-    const totalCopies = record.holdings.length;
-    const availableCopies = record.holdings.filter((h) => h.available).length;
-    const locations = [...new Set(record.holdings.map((h) => h.libraryName))];
+    const allCopies = record.libraryHoldings.flatMap((lh) => lh.copies);
+    const totalCopies = allCopies.length;
+    const availableCopies = allCopies.filter((c) => c.available).length;
+    const locations = [...new Set(record.libraryHoldings.map((lh) => lh.libraryName))];
 
     const existing = volumeMap.get(volNum);
     if (!existing) {

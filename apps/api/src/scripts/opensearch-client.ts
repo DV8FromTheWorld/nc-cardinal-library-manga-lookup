@@ -13,6 +13,7 @@
  * - mods/mods3: MODS format
  */
 
+import { type CopyStatusCategory } from '@repo/shared';
 import * as cheerio from 'cheerio';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -203,7 +204,7 @@ export interface CatalogRecord {
   authors: string[];
   isbns: string[];
   subjects: string[];
-  holdings: HoldingInfo[];
+  libraryHoldings: LibraryHoldings[];
   summary?: string | undefined;
   updatedDate?: string | undefined;
   // Volume/series info (populated from MARC record)
@@ -212,16 +213,8 @@ export interface CatalogRecord {
   seriesName?: string | undefined;
 }
 
-/**
- * Categorized copy status for clearer availability display
- */
-export type CopyStatusCategory =
-  | 'available' // On shelf, ready to borrow
-  | 'checked_out' // Borrowed by someone
-  | 'in_transit' // Moving between libraries
-  | 'on_order' // Ordered but not yet received
-  | 'on_hold' // Reserved/held for someone
-  | 'unavailable'; // Lost, missing, repair, withdrawn, etc.
+// Re-export CopyStatusCategory from shared for consumers
+export { type CopyStatusCategory } from '@repo/shared';
 
 /**
  * Categorize a raw status string into a simplified category
@@ -263,15 +256,25 @@ export function categorizeStatus(status: string): CopyStatusCategory {
   return 'unavailable';
 }
 
-export interface HoldingInfo {
-  libraryCode: string;
-  libraryName: string;
+/**
+ * A single physical copy of a book in the library system.
+ */
+export interface LibraryCopy {
   location: string;
   callNumber: string;
   status: string;
   statusCategory: CopyStatusCategory;
   barcode?: string | undefined;
   available: boolean;
+}
+
+/**
+ * Holdings for a single library, containing all copies at that library.
+ */
+export interface LibraryHoldings {
+  libraryCode: string;
+  libraryName: string;
+  copies: LibraryCopy[];
 }
 
 /**
@@ -653,8 +656,8 @@ function parseAtomFullResponse(xml: string): OpenSearchResult {
     const updatedDateText = $entry.find('updated').text().trim();
     const updatedDate = updatedDateText !== '' ? updatedDateText : undefined;
 
-    // Parse holdings
-    const holdings = parseHoldings($entry, $);
+    // Parse holdings grouped by library
+    const libraryHoldings = parseLibraryHoldings($entry, $);
 
     // Try to extract volume number from call number suffixes
     let volumeNumber: string | undefined;
@@ -674,11 +677,13 @@ function parseAtomFullResponse(xml: string): OpenSearchResult {
 
     // Also check call numbers for volume info (e.g., "GN/YA/Demon Slayer #1")
     if (volumeNumber == null) {
-      for (const h of holdings) {
-        const callMatch = h.callNumber.match(/#(\d+)|(?:Vol\.?|V\.?)\s*(\d+)/i);
-        if (callMatch != null) {
-          volumeNumber = callMatch[1] ?? callMatch[2];
-          break;
+      outer: for (const library of libraryHoldings) {
+        for (const copy of library.copies) {
+          const callMatch = copy.callNumber.match(/#(\d+)|(?:Vol\.?|V\.?)\s*(\d+)/i);
+          if (callMatch != null) {
+            volumeNumber = callMatch[1] ?? callMatch[2];
+            break outer;
+          }
         }
       }
     }
@@ -689,7 +694,7 @@ function parseAtomFullResponse(xml: string): OpenSearchResult {
       authors,
       isbns,
       subjects,
-      holdings,
+      libraryHoldings,
       summary,
       updatedDate,
       volumeNumber,
@@ -706,14 +711,14 @@ function parseAtomFullResponse(xml: string): OpenSearchResult {
 }
 
 /**
- * Parse holdings/copy information from an entry
+ * Parse holdings/copy information from an entry, grouped by library.
  */
-function parseHoldings(
+function parseLibraryHoldings(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Cheerio's $entry type from .find() is complex; using any simplifies parsing
   $entry: any,
   $: cheerio.CheerioAPI
-): HoldingInfo[] {
-  const holdings: HoldingInfo[] = [];
+): LibraryHoldings[] {
+  const libraryMap = new Map<string, LibraryHoldings>();
 
   // Holdings are in <holdings><volumes><volume><copies><copy> structure
   // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access -- Cheerio's dynamic API requires unsafe calls on $entry
@@ -738,9 +743,19 @@ function parseHoldings(
       const available = statusIdent === '0' || status.toLowerCase() === 'available';
       const statusCategory = categorizeStatus(status);
 
-      holdings.push({
-        libraryCode: circLibCode,
-        libraryName: circLib,
+      // Get or create library entry
+      let library = libraryMap.get(circLibCode);
+      if (library == null) {
+        library = {
+          libraryCode: circLibCode,
+          libraryName: circLib,
+          copies: [],
+        };
+        libraryMap.set(circLibCode, library);
+      }
+
+      // Add copy to library
+      library.copies.push({
         location,
         callNumber,
         status,
@@ -751,7 +766,7 @@ function parseHoldings(
     });
   });
 
-  return holdings;
+  return Array.from(libraryMap.values());
 }
 
 /**
@@ -762,25 +777,17 @@ export function getAvailabilitySummary(record: CatalogRecord): {
   availableCopies: number;
   libraries: { name: string; available: number; total: number }[];
 } {
-  const libraryMap = new Map<string, { available: number; total: number }>();
-
-  for (const holding of record.holdings) {
-    const existing = libraryMap.get(holding.libraryName) ?? { available: 0, total: 0 };
-    existing.total++;
-    if (holding.available) {
-      existing.available++;
-    }
-    libraryMap.set(holding.libraryName, existing);
-  }
-
-  const libraries = Array.from(libraryMap.entries()).map(([name, counts]) => ({
-    name,
-    ...counts,
+  const libraries = record.libraryHoldings.map((lh) => ({
+    name: lh.libraryName,
+    total: lh.copies.length,
+    available: lh.copies.filter((c) => c.available).length,
   }));
 
+  const allCopies = record.libraryHoldings.flatMap((lh) => lh.copies);
+
   return {
-    totalCopies: record.holdings.length,
-    availableCopies: record.holdings.filter((h) => h.available).length,
+    totalCopies: allCopies.length,
+    availableCopies: allCopies.filter((c) => c.available).length,
     libraries,
   };
 }
@@ -809,32 +816,36 @@ export function getDetailedAvailabilitySummary(
   let remoteCopies = 0;
   let remoteAvailable = 0;
 
-  for (const holding of record.holdings) {
-    counts[holding.statusCategory]++;
-    if (holding.statusCategory === 'available') {
-      availableLibraries.add(holding.libraryName);
-    }
+  for (const library of record.libraryHoldings) {
+    for (const copy of library.copies) {
+      counts[copy.statusCategory]++;
+      if (copy.statusCategory === 'available') {
+        availableLibraries.add(library.libraryName);
+      }
 
-    // Track local vs remote if home library is specified
-    if (homeLibraryCode != null) {
-      const isLocal = holding.libraryCode.toUpperCase() === homeLibraryCode.toUpperCase();
-      if (isLocal) {
-        localCopies++;
-        if (holding.statusCategory === 'available') {
-          localAvailable++;
-        }
-      } else {
-        remoteCopies++;
-        if (holding.statusCategory === 'available') {
-          remoteAvailable++;
+      // Track local vs remote if home library is specified
+      if (homeLibraryCode != null) {
+        const isLocal = library.libraryCode.toUpperCase() === homeLibraryCode.toUpperCase();
+        if (isLocal) {
+          localCopies++;
+          if (copy.statusCategory === 'available') {
+            localAvailable++;
+          }
+        } else {
+          remoteCopies++;
+          if (copy.statusCategory === 'available') {
+            remoteAvailable++;
+          }
         }
       }
     }
   }
 
+  const totalCopies = record.libraryHoldings.reduce((sum, lh) => sum + lh.copies.length, 0);
+
   return {
     available: counts.available > 0,
-    totalCopies: record.holdings.length,
+    totalCopies,
     availableCopies: counts.available,
     checkedOutCopies: counts.checked_out,
     inTransitCopies: counts.in_transit,
@@ -852,10 +863,15 @@ export function getDetailedAvailabilitySummary(
 }
 
 /**
- * Filter holdings to a specific library
+ * Get holdings for a specific library
  */
-export function filterHoldingsByLibrary(record: CatalogRecord, libraryCode: string): HoldingInfo[] {
-  return record.holdings.filter((h) => h.libraryCode.toLowerCase() === libraryCode.toLowerCase());
+export function getLibraryHoldings(
+  record: CatalogRecord,
+  libraryCode: string
+): LibraryHoldings | undefined {
+  return record.libraryHoldings.find(
+    (lh) => lh.libraryCode.toLowerCase() === libraryCode.toLowerCase()
+  );
 }
 
 /**
@@ -996,10 +1012,10 @@ async function main() {
       );
 
       // Show High Point availability
-      const highPointHoldings = filterHoldingsByLibrary(record, 'HIGH_POINT_MAIN');
-      if (highPointHoldings.length > 0) {
-        const hpAvailable = highPointHoldings.filter((h) => h.available).length;
-        console.log(`     High Point: ${hpAvailable}/${highPointHoldings.length} available`);
+      const highPointLibrary = getLibraryHoldings(record, 'HIGH_POINT_MAIN');
+      if (highPointLibrary != null) {
+        const hpAvailable = highPointLibrary.copies.filter((c) => c.available).length;
+        console.log(`     High Point: ${hpAvailable}/${highPointLibrary.copies.length} available`);
       }
       console.log();
     }

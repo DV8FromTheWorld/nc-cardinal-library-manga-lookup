@@ -45,12 +45,7 @@ import {
   search,
 } from '../scripts/manga-search.js';
 import { type SearchProgressEvent, searchWithProgress } from '../scripts/manga-search-streaming.js';
-import {
-  getCatalogUrl,
-  getDetailedAvailabilitySummary,
-  NC_CARDINAL_LIBRARIES,
-  searchByISBN,
-} from '../scripts/opensearch-client.js';
+import { NC_CARDINAL_LIBRARIES, searchByISBN } from '../scripts/opensearch-client.js';
 import {
   getCheckouts,
   getHistory,
@@ -66,23 +61,14 @@ import {
 // Zod Schemas
 // ============================================================================
 
-const VolumeAvailabilitySchema = z.object({
-  available: z.boolean(),
-  notInCatalog: z.boolean().optional(),
-  totalCopies: z.number(),
-  availableCopies: z.number(),
-  checkedOutCopies: z.number(),
-  inTransitCopies: z.number(),
-  onOrderCopies: z.number(),
-  onHoldCopies: z.number(),
-  unavailableCopies: z.number(),
-  libraries: z.array(z.string()),
-  // Local vs remote breakdown
-  localCopies: z.number().optional(),
-  localAvailable: z.number().optional(),
-  remoteCopies: z.number().optional(),
-  remoteAvailable: z.number().optional(),
-  catalogUrl: z.string().optional(),
+const CopyTotalsSchema = z.object({
+  available: z.number(),
+  checkedOut: z.number(),
+  inTransit: z.number(),
+  onHold: z.number(),
+  onOrder: z.number(),
+  unavailable: z.number(),
+  total: z.number(),
 });
 
 const EditionSchema = z.object({
@@ -92,14 +78,64 @@ const EditionSchema = z.object({
   releaseDate: z.string().optional(),
 });
 
-const VolumeInfoSchema = z.object({
-  id: z.string(), // Volume entity ID (required)
+const VolumeSeriesInfoSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  author: z.string().optional(),
+});
+
+const LibraryCopySchema = z.object({
+  location: z.string(),
+  callNumber: z.string(),
+  status: z.string(),
+  statusCategory: z.enum([
+    'available',
+    'checked_out',
+    'in_transit',
+    'on_order',
+    'on_hold',
+    'unavailable',
+  ]),
+  barcode: z.string().optional(),
+  available: z.boolean(),
+});
+
+const LibraryHoldingsSchema = z.object({
+  libraryCode: z.string(),
+  libraryName: z.string(),
+  copies: z.array(LibraryCopySchema),
+});
+
+/**
+ * Canonical Volume schema - used for both list views and detail views.
+ *
+ * List views: Have copyTotals and catalogUrl (pre-computed from holdings)
+ * Detail views: Have libraryHoldings (frontend derives totals)
+ */
+const VolumeSchema = z.object({
+  // Core identity
+  id: z.string(),
   volumeNumber: z.number(),
-  title: z.string().optional(),
+  title: z.string().optional(), // Volume subtitle
+
+  // Series context
+  seriesInfo: VolumeSeriesInfoSchema,
+
+  // Edition data (source of truth for ISBNs)
   editions: z.array(EditionSchema),
-  primaryIsbn: z.string().optional(), // First English physical ISBN for library lookups
+
+  // Media
   coverImage: z.string().optional(),
-  availability: VolumeAvailabilitySchema.optional(),
+
+  // List view only: pre-computed totals
+  copyTotals: CopyTotalsSchema.optional(),
+  catalogUrl: z.string().optional(),
+
+  // Detail-only fields (undefined in list views)
+  authors: z.array(z.string()).optional(),
+  subjects: z.array(z.string()).optional(),
+  summary: z.string().optional(),
+  libraryHoldings: z.array(LibraryHoldingsSchema).optional(),
 });
 
 const SourceSummarySchema = z.object({
@@ -166,7 +202,7 @@ const SeriesResultSchema = z.object({
   author: z.string().optional(),
   coverImage: z.string().optional(),
   source: z.enum(['wikipedia', 'google-books', 'nc-cardinal']),
-  volumes: z.array(VolumeInfoSchema).optional(),
+  volumes: z.array(VolumeSchema).optional(),
   mediaType: MediaTypeSchema.optional(),
   relationship: SeriesRelationshipSchema.optional(),
 });
@@ -178,7 +214,8 @@ const VolumeResultSchema = z.object({
   seriesTitle: z.string().optional(),
   isbn: z.string().optional(),
   coverImage: z.string().optional(),
-  availability: VolumeAvailabilitySchema.optional(),
+  copyTotals: CopyTotalsSchema.optional(),
+  catalogUrl: z.string().optional(),
   source: z.enum(['wikipedia', 'google-books', 'nc-cardinal']),
 });
 
@@ -211,55 +248,11 @@ const SeriesDetailsSchema = z.object({
   coverImage: z.string().optional(),
   isComplete: z.boolean(),
   author: z.string().optional(),
-  volumes: z.array(VolumeInfoSchema),
+  volumes: z.array(VolumeSchema),
   availableCount: z.number(),
   missingVolumes: z.array(z.number()),
   relatedSeries: z.array(z.string()).optional(),
   _debug: DebugInfoSchema.optional(),
-});
-
-const CopyStatusCategorySchema = z.enum([
-  'available',
-  'checked_out',
-  'in_transit',
-  'on_order',
-  'on_hold',
-  'unavailable',
-]);
-
-const HoldingSchema = z.object({
-  libraryCode: z.string(),
-  libraryName: z.string(),
-  location: z.string(),
-  callNumber: z.string(),
-  status: z.string(),
-  statusCategory: CopyStatusCategorySchema,
-  barcode: z.string().optional(),
-  available: z.boolean(),
-});
-
-const BookAvailabilitySchema = z.object({
-  // Overall status
-  available: z.boolean(),
-  notInCatalog: z.boolean().optional(),
-
-  // Copy counts by status
-  totalCopies: z.number(),
-  availableCopies: z.number(),
-  checkedOutCopies: z.number(),
-  inTransitCopies: z.number(),
-  onOrderCopies: z.number(),
-  onHoldCopies: z.number(),
-  unavailableCopies: z.number(),
-
-  // Libraries with available copies
-  libraries: z.array(z.string()),
-
-  // Local vs remote breakdown
-  localCopies: z.number().optional(),
-  localAvailable: z.number().optional(),
-  remoteCopies: z.number().optional(),
-  remoteAvailable: z.number().optional(),
 });
 
 // Library info schema
@@ -273,27 +266,7 @@ const LibrariesResponseSchema = z.object({
   defaultLibrary: z.string(),
 });
 
-const BookDetailsSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  authors: z.array(z.string()),
-  isbns: z.array(z.string()),
-  subjects: z.array(z.string()),
-  summary: z.string().optional(),
-  coverImage: z.string().optional(),
-  holdings: z.array(HoldingSchema),
-  availability: BookAvailabilitySchema,
-  // Series info from entity store or extracted from title
-  seriesInfo: z
-    .object({
-      id: z.string().optional(), // Entity ID for navigation
-      title: z.string(),
-      volumeNumber: z.number().optional(),
-    })
-    .optional(),
-  // Link to library catalog
-  catalogUrl: z.string().optional(),
-});
+// BookDetailsSchema removed - use VolumeSchema instead for /manga/volumes/:id endpoint
 
 const ErrorSchema = z.object({
   error: z.string(),
@@ -1250,7 +1223,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
             .describe('Home library code for local/remote breakdown'),
         }),
         response: {
-          200: BookDetailsSchema,
+          200: VolumeSchema,
           404: ErrorSchema,
           500: ErrorSchema,
         },
@@ -1258,7 +1231,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const { id } = request.params;
-      const { homeLibrary } = request.query;
+      const { homeLibrary: _homeLibrary } = request.query;
 
       try {
         // Look up the volume entity
@@ -1289,40 +1262,27 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
         const englishDigital = editions.find((e) => e.language === 'en' && e.format === 'digital');
         const primaryIsbn = englishPhysical?.isbn ?? englishDigital?.isbn;
 
-        // Build the volume title
-        const volumeTitle =
-          volume.title != null
-            ? `${series.title}, Vol. ${volume.volumeNumber}: ${volume.title}`
-            : `${series.title}, Vol. ${volume.volumeNumber}`;
+        // Build seriesInfo for the response
+        const seriesInfo = {
+          id: series.id,
+          title: series.title,
+          author: series.author,
+        };
 
         // If no ISBN, return minimal info (Japan-only volume)
         if (primaryIsbn == null) {
           return {
             id: volume.id,
-            title: volumeTitle,
-            authors: series.author != null ? [series.author] : [],
-            isbns: editions.map((e) => e.isbn),
-            subjects: [],
+            volumeNumber: volume.volumeNumber,
+            title: volume.title, // Volume subtitle
+            seriesInfo,
+            editions,
             coverImage: undefined,
-            holdings: [],
-            availability: {
-              available: false,
-              notInCatalog: true,
-              totalCopies: 0,
-              availableCopies: 0,
-              checkedOutCopies: 0,
-              inTransitCopies: 0,
-              onOrderCopies: 0,
-              onHoldCopies: 0,
-              unavailableCopies: 0,
-              libraries: [],
-            },
-            seriesInfo: {
-              id: series.id,
-              title: series.title,
-              volumeNumber: volume.volumeNumber,
-            },
             catalogUrl: undefined,
+            // Detail-only fields
+            authors: series.author != null ? [series.author] : [],
+            subjects: [],
+            libraryHoldings: [],
           };
         }
 
@@ -1401,55 +1361,40 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
           }
         }
 
-        const seriesInfo = {
-          id: series.id,
-          title: series.title,
-          volumeNumber: volume.volumeNumber,
-        };
-
         if (record == null) {
           // Book not in NC Cardinal catalog - still include Google Books description
           return {
             id: volume.id,
-            title: volumeTitle,
+            volumeNumber: volume.volumeNumber,
+            title: volume.title, // Volume subtitle
+            seriesInfo,
+            editions,
+            coverImage,
+            catalogUrl: undefined,
+            // Detail-only fields
             authors: series.author != null ? [series.author] : [],
-            isbns: editions.map((e) => e.isbn),
             subjects: [],
             summary: volumeDescription,
-            coverImage,
-            holdings: [],
-            availability: {
-              available: false,
-              notInCatalog: true,
-              totalCopies: 0,
-              availableCopies: 0,
-              checkedOutCopies: 0,
-              inTransitCopies: 0,
-              onOrderCopies: 0,
-              onHoldCopies: 0,
-              unavailableCopies: 0,
-              libraries: [],
-            },
-            seriesInfo,
-            catalogUrl: undefined,
+            libraryHoldings: [],
           };
         }
 
-        // Calculate detailed availability with local/remote breakdown
-        const availability = getDetailedAvailabilitySummary(record, homeLibrary);
+        // Get catalog URL for this record
+        const catalogUrl = `https://nccardinal.org/eg/opac/record/${record.id}`;
 
         return {
           id: volume.id,
-          title: volumeTitle,
+          volumeNumber: volume.volumeNumber,
+          title: volume.title, // Volume subtitle
+          seriesInfo,
+          editions,
+          coverImage,
+          catalogUrl,
+          // Detail-only fields
           authors: record.authors,
-          isbns: [...new Set([...editions.map((e) => e.isbn), ...record.isbns])],
           subjects: record.subjects,
           summary: volumeDescription,
-          coverImage,
-          holdings: record.holdings,
-          availability,
-          seriesInfo,
-          catalogUrl: getCatalogUrl(record.id),
+          libraryHoldings: record.libraryHoldings,
         };
       } catch (error) {
         request.log.error(error, 'Volume lookup failed');
@@ -1489,7 +1434,7 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
             .describe('Home library code for local/remote breakdown'),
         }),
         response: {
-          200: BookDetailsSchema,
+          200: VolumeSchema,
           404: ErrorSchema,
           500: ErrorSchema,
         },
@@ -1497,15 +1442,34 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const { isbn } = request.params;
-      const { homeLibrary } = request.query;
+      const { homeLibrary: _homeLibrary } = request.query;
       const cleanISBN = isbn.replace(/[-\s]/g, '');
 
       try {
-        // Fetch NC Cardinal record, Bookcover API, and volume entity in parallel
-        const [record, bookcoverUrl, volumeEntity] = await Promise.all([
+        // Fetch volume entity first - required for new Volume shape
+        const volumeEntity = await getVolumeEntity(cleanISBN).catch(() => null);
+
+        if (volumeEntity == null) {
+          // No entity data - recommend using volume ID endpoint
+          // Try to search NC Cardinal to see if book exists at all
+          const record = await searchByISBN(cleanISBN);
+          if (record != null) {
+            return reply.status(404).send({
+              error: 'entity_not_found',
+              message: `ISBN ${cleanISBN} found in catalog but not in entity store. Use /manga/search to find the volume ID.`,
+            });
+          }
+          return reply.status(404).send({
+            error: 'book_not_found',
+            message: `No book found for ISBN ${cleanISBN}`,
+          });
+        }
+
+        // We have entity data - fetch the rest in parallel
+        const [record, bookcoverUrl, editionsData] = await Promise.all([
           searchByISBN(cleanISBN),
           fetchBookcoverUrl(cleanISBN).catch(() => null),
-          getVolumeEntity(cleanISBN).catch(() => null),
+          getVolumeEditionData(volumeEntity.volume.id),
         ]);
 
         // Cover image priority: Bookcover API > Google Books > OpenLibrary
@@ -1513,81 +1477,50 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
         if (bookcoverUrl != null) {
           coverImage = bookcoverUrl;
         } else {
-          // Try Google Books as fallback (with placeholder detection)
           const googleBooksUrl = await fetchGoogleBooksCoverUrl(cleanISBN).catch(() => null);
           coverImage = googleBooksUrl ?? `https://covers.openlibrary.org/b/isbn/${cleanISBN}-M.jpg`;
         }
 
-        // Build series info from entity (if available) or extract from title
-        let seriesInfo: { id?: string; title: string; volumeNumber?: number } | undefined;
+        // Build seriesInfo for the response
+        const seriesInfo = {
+          id: volumeEntity.series.id,
+          title: volumeEntity.series.title,
+          author: volumeEntity.series.author,
+        };
 
-        // Build volume title from entity
-        let volumeTitle: string | undefined;
-
-        if (volumeEntity != null) {
-          // We have entity data - use it for series info
-          seriesInfo = {
-            id: volumeEntity.series.id,
-            title: volumeEntity.series.title,
-            volumeNumber: volumeEntity.volume.volumeNumber,
-          };
-          // Build full title: "Series, Vol. N" or "Series, Vol. N: Subtitle"
-          volumeTitle =
-            volumeEntity.volume.title != null
-              ? `${volumeEntity.series.title}, Vol. ${volumeEntity.volume.volumeNumber}: ${volumeEntity.volume.title}`
-              : `${volumeEntity.series.title}, Vol. ${volumeEntity.volume.volumeNumber}`;
-        }
-
-        if (!record) {
-          // Book not in NC Cardinal catalog - return minimal info with entity data if available
+        if (record == null) {
+          // Book not in NC Cardinal catalog
           return {
-            id: `isbn-${cleanISBN}`,
-            title: volumeTitle ?? `Book (ISBN: ${cleanISBN})`,
-            authors: [],
-            isbns: [cleanISBN],
-            subjects: [],
-            coverImage,
-            holdings: [],
-            availability: {
-              available: false,
-              notInCatalog: true,
-              totalCopies: 0,
-              availableCopies: 0,
-              checkedOutCopies: 0,
-              inTransitCopies: 0,
-              onOrderCopies: 0,
-              onHoldCopies: 0,
-              unavailableCopies: 0,
-              libraries: [],
-            },
+            id: volumeEntity.volume.id,
+            volumeNumber: volumeEntity.volume.volumeNumber,
+            title: volumeEntity.volume.title,
             seriesInfo,
+            editions: editionsData,
+            coverImage,
             catalogUrl: undefined,
+            // Detail-only fields
+            authors: volumeEntity.series.author != null ? [volumeEntity.series.author] : [],
+            subjects: [],
+            libraryHoldings: [],
           };
         }
 
-        // Calculate detailed availability summary with local/remote breakdown
-        const availability = getDetailedAvailabilitySummary(record, homeLibrary);
-
-        // If we don't have entity data, try to extract series info from title
-        if (!seriesInfo) {
-          const extracted = extractSeriesInfo(record.title);
-          if (extracted) {
-            seriesInfo = extracted;
-          }
-        }
+        // Get catalog URL for this record
+        const catalogUrl = `https://nccardinal.org/eg/opac/record/${record.id}`;
 
         return {
-          id: record.id,
-          title: volumeTitle ?? record.title,
+          id: volumeEntity.volume.id,
+          volumeNumber: volumeEntity.volume.volumeNumber,
+          title: volumeEntity.volume.title,
+          seriesInfo,
+          editions: editionsData,
+          coverImage,
+          catalogUrl,
+          // Detail-only fields
           authors: record.authors,
-          isbns: record.isbns,
           subjects: record.subjects,
           summary: record.summary,
-          coverImage,
-          holdings: record.holdings,
-          availability,
-          seriesInfo,
-          catalogUrl: getCatalogUrl(record.id),
+          libraryHoldings: record.libraryHoldings,
         };
       } catch (error) {
         request.log.error(error, 'Book lookup failed');
@@ -1604,60 +1537,13 @@ export const mangaRoutes: FastifyPluginAsync = async (fastify) => {
 // Helper Functions
 // ============================================================================
 
-import type { HoldingInfo } from '../scripts/opensearch-client.js';
-
-/**
- * Calculate detailed availability counts from holdings
- */
-function _calculateAvailability(holdings: HoldingInfo[]): {
-  available: boolean;
-  totalCopies: number;
-  availableCopies: number;
-  checkedOutCopies: number;
-  inTransitCopies: number;
-  onOrderCopies: number;
-  onHoldCopies: number;
-  unavailableCopies: number;
-  libraries: string[];
-} {
-  const counts = {
-    available: 0,
-    checked_out: 0,
-    in_transit: 0,
-    on_order: 0,
-    on_hold: 0,
-    unavailable: 0,
-  };
-
-  const availableLibraries = new Set<string>();
-
-  for (const holding of holdings) {
-    counts[holding.statusCategory]++;
-    if (holding.statusCategory === 'available') {
-      availableLibraries.add(holding.libraryName);
-    }
-  }
-
-  return {
-    available: counts.available > 0,
-    totalCopies: holdings.length,
-    availableCopies: counts.available,
-    checkedOutCopies: counts.checked_out,
-    inTransitCopies: counts.in_transit,
-    onOrderCopies: counts.on_order,
-    onHoldCopies: counts.on_hold,
-    unavailableCopies: counts.unavailable,
-    libraries: [...availableLibraries],
-  };
-}
-
 /**
  * Extract series info from a book title
  * Examples:
  *   "Demon slayer: kimetsu no yaiba. 12" -> { title: "Demon slayer: kimetsu no yaiba", volumeNumber: 12 }
  *   "One Piece, Vol. 100" -> { title: "One Piece", volumeNumber: 100 }
  */
-function extractSeriesInfo(title: string): { title: string; volumeNumber?: number } | undefined {
+function _extractSeriesInfo(title: string): { title: string; volumeNumber?: number } | undefined {
   // Common patterns for manga volume titles
   const patterns = [
     // "Title, Vol. 12" or "Title Vol 12"
