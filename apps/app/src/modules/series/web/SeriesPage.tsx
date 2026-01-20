@@ -2,6 +2,7 @@
  * Series detail page component for web.
  */
 
+import { deriveEditionStatus } from '@repo/shared';
 import { useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -9,10 +10,9 @@ import { Heading } from '../../../design/components/Heading/web/Heading';
 import { Text } from '../../../design/components/Text/web/Text';
 import { DebugPanel } from '../../debug/web/DebugPanel';
 import { clearCacheForSeries } from '../../search/services/mangaApi';
-import type { VolumeInfo } from '../../search/types';
-import { VolumeStatus } from '../../search/types';
+import type { Volume } from '../../search/types';
 import { getAvailabilityPercent } from '../../search/utils/availability';
-import { deriveVolumeStatus, getVolumeStatusDisplay } from '../../search/utils/volumeStatus';
+import { getPrimaryIsbn, getVolumeListDisplayInfo } from '../../search/utils/volumeStatus';
 import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
 import { useSeriesDetails } from '../hooks/useSeriesDetails';
 import styles from './SeriesPage.module.css';
@@ -49,14 +49,10 @@ export function SeriesPage(): JSX.Element {
 
     const total = series.volumes.length;
     const withEnglish = series.volumes.filter(
-      (v) => deriveVolumeStatus(v.editions) !== VolumeStatus.JapanOnly
+      (v) => deriveEditionStatus(v.editions) !== 'japan_only'
     ).length;
-    const inLibrary = series.volumes.filter(
-      (v) => v.availability != null && v.availability.notInCatalog !== true
-    ).length;
-    const available = series.volumes.filter(
-      (v) => (v.availability?.availableCopies ?? 0) > 0
-    ).length;
+    const inLibrary = series.volumes.filter((v) => v.copyTotals != null).length;
+    const available = series.volumes.filter((v) => (v.copyTotals?.available ?? 0) > 0).length;
 
     return { total, withEnglish, inLibrary, available };
   }, [series]);
@@ -179,7 +175,7 @@ export function SeriesPage(): JSX.Element {
                 fill="currentColor"
                 aria-hidden="true"
               >
-                <path d="M8.273 7.247v8.423l-2.103-.003v-5.216l-2.03 2.404-1.989-2.458-.02 5.285H.001L0 7.247h2.203l1.865 2.545 2.015-2.546 2.19.001zm8.628 2.069l.025 6.335h-2.229l-.039-3.886c-.009.424-.036.823-.069 1.21-.027.31-.062.617-.096.925-.053.398-.108.78-.191 1.114l-.105.367-.16-.266c-.163-.263-.332-.531-.508-.79-.402-.597-.825-1.161-1.315-1.654l-.076-.08v3.14h-2.199l.011-6.375 2.27.002c.065.095.137.177.204.27.29.378.568.77.823 1.18.216.347.416.705.59 1.076l.1-.201c.211-.443.456-.86.725-1.251.256-.373.535-.72.84-1.028.068-.066.139-.13.21-.193h2.289v-.895zm5.299 5.033c-.06.143-.136.283-.232.417-.096.135-.21.263-.343.378-.133.117-.284.22-.448.305a2.46 2.46 0 0 1-1.075.259c-.378 0-.718-.069-1.025-.208a2.208 2.208 0 0 1-.762-.576 2.57 2.57 0 0 1-.476-.86 3.463 3.463 0 0 1-.168-1.08c0-.378.057-.739.168-1.076.112-.34.273-.64.48-.896.21-.26.462-.467.762-.617.302-.152.644-.228 1.02-.228.392 0 .738.074 1.04.22.303.148.556.346.758.595.203.25.356.538.46.865.102.327.154.672.154 1.037a3.5 3.5 0 0 1-.168 1.08 2.572 2.572 0 0 1-.145.385zm-1.635-2.464c-.18-.235-.42-.352-.72-.352-.298 0-.537.117-.72.352-.183.235-.274.562-.274.98 0 .42.091.745.274.98.183.235.422.352.72.352.3 0 .54-.117.72-.352.183-.235.274-.56.274-.98 0-.418-.091-.745-.274-.98z" />
+                <path d="M8.45 15.91H6.067v-5.506h-.028l-1.833 2.454-1.796-2.454H2.39v5.507H0V6.808h2.263l1.943 2.671 1.98-2.671H8.45zm8.499 0h-2.384v-2.883H11.96c.008 1.011.373 1.989.914 2.884l-1.942 1.284c-.52-.793-1.415-2.458-1.415-4.527 0-1.015.211-2.942 1.638-4.37a4.809 4.809 0 0 1 2.737-1.37c.96-.15 1.936-.12 2.905-.12l.555 2.051H15.48c-.776 0-1.389.113-1.839.337-.637.32-1.009.622-1.447 1.78h2.372v-1.84h2.384zm3.922-2.05H24l-.555 2.05h-4.962V6.809h2.388z" />
               </svg>
               <Text variant="text-sm/medium">MyAnimeList</Text>
             </a>
@@ -323,19 +319,20 @@ export function SeriesPage(): JSX.Element {
 }
 
 interface VolumeRowProps {
-  volume: VolumeInfo;
+  volume: Volume;
   seriesTitle: string;
   onClick: () => void;
 }
 
 function VolumeRow({ volume, seriesTitle, onClick }: VolumeRowProps): JSX.Element {
-  const { icon, label, sublabel } = getVolumeStatusDisplay(volume);
-  const isAvailable = volume.availability?.available ?? false;
+  const { icon, label, sublabel } = getVolumeListDisplayInfo(volume);
+  const isAvailable = (volume.copyTotals?.available ?? 0) > 0;
+  const primaryIsbn = getPrimaryIsbn(volume.editions);
 
   return (
     <button
       type="button"
-      className={`${styles.volumeRow} ${isAvailable === true ? styles.available : styles.unavailable}`}
+      className={`${styles.volumeRow} ${isAvailable ? styles.available : styles.unavailable}`}
       onClick={onClick}
     >
       <div className={styles.volumeCover}>
@@ -382,9 +379,9 @@ function VolumeRow({ volume, seriesTitle, onClick }: VolumeRowProps): JSX.Elemen
             {volume.title}
           </Text>
         )}
-        {volume.primaryIsbn != null && (
+        {primaryIsbn != null && (
           <Text variant="code" color="text-muted" className={styles.volumeIsbn}>
-            ISBN: {volume.primaryIsbn}
+            ISBN: {primaryIsbn}
           </Text>
         )}
       </div>

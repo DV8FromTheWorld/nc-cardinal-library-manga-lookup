@@ -480,7 +480,10 @@ interface VolumeCardProps {
 }
 
 function VolumeCard({ volume, onPress, theme, highlighted }: VolumeCardProps): JSX.Element {
-  const { statusType, statusText } = getAvailabilityDisplayInfo(volume.availability);
+  const { statusType, statusText } = getAvailabilityDisplayInfo(
+    volume.copyTotals,
+    volume.catalogUrl
+  );
   const [imageError, setImageError] = useState(false);
 
   const dotColor =

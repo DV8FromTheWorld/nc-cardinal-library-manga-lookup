@@ -1,52 +1,104 @@
 /**
  * Volume status utilities.
- * Derives volume status from editions array - computed client-side, not from API.
+ * Re-exports from shared library and adds additional helpers.
  */
 
-import type { Edition, VolumeInfo } from '../types';
-import { VolumeStatus } from '../types';
+import {
+  computeCopyTotals,
+  deriveEditionStatus,
+  formatCopyTotalsDisplay,
+  getFullVolumeDisplayInfo,
+  getStackRankedStatus,
+  getVolumeDisplayInfo,
+  getVolumeDisplayStatus,
+  mergeCopyTotals,
+  type VolumeDisplayInfo,
+} from '@repo/shared';
+
+import type { CopyTotals, Edition, LibraryHoldings, Volume } from '../types';
+
+// Re-export shared functions
+export {
+  computeCopyTotals,
+  deriveEditionStatus,
+  formatCopyTotalsDisplay,
+  getFullVolumeDisplayInfo,
+  getStackRankedStatus,
+  getVolumeDisplayInfo,
+  getVolumeDisplayStatus,
+  mergeCopyTotals,
+};
+export type { VolumeDisplayInfo };
+
+// ============================================================================
+// ISBN and Title Utilities
+// ============================================================================
 
 /**
- * Derive volume status from editions array.
- * This is computed client-side, not sent from API.
+ * Get the primary ISBN from editions array.
+ * Primary = first English physical edition, falling back to English digital.
  */
-export function deriveVolumeStatus(editions: Edition[]): VolumeStatus {
-  const englishEditions = editions.filter(e => e.language === 'en');
-  
-  // No English edition at all
-  if (englishEditions.length === 0) {
-    return VolumeStatus.JapanOnly;
-  }
-  
-  const physicalEnglish = englishEditions.find(e => e.format === 'physical');
-  const digitalEnglish = englishEditions.find(e => e.format === 'digital');
-  
-  // Check if physical release date is in the future
-  const now = new Date();
-  if (physicalEnglish?.releaseDate != null) {
-    const releaseDate = new Date(physicalEnglish.releaseDate);
-    if (releaseDate > now) {
-      return VolumeStatus.Upcoming;
-    }
-  }
-  
-  // Has digital but no physical (or physical not released yet)
-  if (!physicalEnglish && digitalEnglish) {
-    return VolumeStatus.DigitalOnly;
-  }
-  
-  return VolumeStatus.Released;
+export function getPrimaryIsbn(editions: Edition[]): string | undefined {
+  const englishPhysical = editions.find((e) => e.language === 'en' && e.format === 'physical');
+  const englishDigital = editions.find((e) => e.language === 'en' && e.format === 'digital');
+  return englishPhysical?.isbn ?? englishDigital?.isbn;
 }
 
 /**
- * Get the English release date for display purposes.
+ * Get all ISBNs from editions array.
  */
-export function getEnglishReleaseDate(editions: Edition[]): string | undefined {
-  const englishPhysical = editions.find(e => e.language === 'en' && e.format === 'physical');
-  const englishDigital = editions.find(e => e.language === 'en' && e.format === 'digital');
-  
-  // Prefer physical release date
-  return englishPhysical?.releaseDate ?? englishDigital?.releaseDate;
+export function getAllIsbns(editions: Edition[]): string[] {
+  return editions.map((e) => e.isbn);
+}
+
+/**
+ * Get the display title for a volume.
+ * Format: "Series Title, Vol. N" or "Series Title, Vol. N: Subtitle"
+ */
+export function getDisplayTitle(volume: Volume): string {
+  const base = `${volume.seriesInfo.title}, Vol. ${volume.volumeNumber}`;
+  return volume.title != null ? `${base}: ${volume.title}` : base;
+}
+
+// ============================================================================
+// Volume Display Utilities (using shared functions)
+// ============================================================================
+
+/**
+ * Get display info for a volume for list views.
+ * Uses copyTotals and catalogUrl from the API response.
+ */
+export function getVolumeListDisplayInfo(volume: Volume): VolumeDisplayInfo {
+  return getFullVolumeDisplayInfo(volume.editions, volume.copyTotals, volume.catalogUrl);
+}
+
+/**
+ * Get display info for a volume for detail views.
+ * Derives copyTotals from libraryHoldings.
+ */
+export function getVolumeDetailDisplayInfo(volume: Volume): VolumeDisplayInfo {
+  const copyTotals = getVolumeCopyTotals(volume);
+  return getFullVolumeDisplayInfo(volume.editions, copyTotals, volume.catalogUrl);
+}
+
+/**
+ * Compute CopyTotals from a volume's libraryHoldings.
+ * For use in detail views where copyTotals isn't pre-computed.
+ */
+export function getVolumeCopyTotals(volume: Volume): CopyTotals | undefined {
+  if (volume.libraryHoldings == null || volume.libraryHoldings.length === 0) {
+    return volume.copyTotals; // Fall back to pre-computed if available
+  }
+
+  const totals = volume.libraryHoldings.map((lh) => computeCopyTotals(lh.copies));
+  return mergeCopyTotals(totals);
+}
+
+/**
+ * Get CopyTotals for a single library from its holdings.
+ */
+export function getLibraryCopyTotals(library: LibraryHoldings): CopyTotals {
+  return computeCopyTotals(library.copies);
 }
 
 /**
@@ -65,64 +117,13 @@ export function formatReleaseDate(dateStr: string): string {
   }
 }
 
-export interface VolumeDisplayInfo {
-  icon: string;
-  label: string;
-  sublabel?: string | undefined;
-}
-
 /**
- * Get display info for a volume by deriving status from editions + availability.
+ * Get the English release date for display purposes.
  */
-export function getVolumeStatusDisplay(volume: VolumeInfo): VolumeDisplayInfo {
-  const status = deriveVolumeStatus(volume.editions);
-  
-  // Layer 1: Does English edition exist?
-  if (status === VolumeStatus.JapanOnly) {
-    return { icon: '🇯🇵', label: 'Japan only' };
-  }
-  
-  // Layer 2: Is it released yet?
-  if (status === VolumeStatus.Upcoming) {
-    const releaseDate = getEnglishReleaseDate(volume.editions);
-    return { 
-      icon: '⏳', 
-      label: releaseDate != null ? `Releases ${formatReleaseDate(releaseDate)}` : 'Coming soon'
-    };
-  }
-  
-  if (status === VolumeStatus.DigitalOnly) {
-    return { icon: '📱', label: 'Digital only' };
-  }
-  
-  // Layer 3: Is it in the library?
-  if (!volume.availability || volume.availability.notInCatalog) {
-    return { icon: '⚪', label: 'Not in library' };
-  }
-  
-  // Layer 3.5: Has physical copies?
-  // A book can be in the catalog (has a record) but have 0 physical copies
-  // This typically means it's digital-only (e.g., available via hoopla)
-  if (volume.availability.totalCopies === 0) {
-    return { icon: '📱', label: 'Digital only' };
-  }
-  
-  // Layer 4: Is it available?
-  if (volume.availability.availableCopies > 0) {
-    return { 
-      icon: '✅', 
-      label: `${volume.availability.availableCopies} available`,
-      sublabel: volume.availability.libraries?.[0]
-    };
-  }
-  
-  if (volume.availability.onOrderCopies != null && volume.availability.onOrderCopies > 0) {
-    return { icon: '📦', label: 'On order' };
-  }
-  
-  return { 
-    icon: '🟡', 
-    label: 'Checked out',
-    sublabel: volume.availability.checkedOutCopies != null && volume.availability.checkedOutCopies > 0 ? `${volume.availability.checkedOutCopies} copies` : undefined
-  };
+export function getEnglishReleaseDate(editions: Edition[]): string | undefined {
+  const englishPhysical = editions.find((e) => e.language === 'en' && e.format === 'physical');
+  const englishDigital = editions.find((e) => e.language === 'en' && e.format === 'digital');
+
+  // Prefer physical release date
+  return englishPhysical?.releaseDate ?? englishDigital?.releaseDate;
 }

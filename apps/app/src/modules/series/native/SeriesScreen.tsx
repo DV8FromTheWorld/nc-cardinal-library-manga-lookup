@@ -22,8 +22,9 @@ import { DebugPanel } from '../../debug/native/DebugPanel';
 import type { RootStackParamList } from '../../routing/native/Router';
 import { colors, spacing, type ThemeColors } from '../../search/native/theme';
 import { clearCacheForSeries } from '../../search/services/mangaApi';
-import type { VolumeInfo } from '../../search/types';
+import type { Volume } from '../../search/types';
 import { getAvailabilityPercent } from '../../search/utils/availability';
+import { getPrimaryIsbn } from '../../search/utils/volumeStatus';
 import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
 import { useSeriesDetails } from '../hooks/useSeriesDetails';
 
@@ -62,11 +63,11 @@ export function SeriesScreen({ navigation, route }: Props): JSX.Element {
 
   // All hooks must be called before any early returns!
   // Memoize key extractor (doesn't depend on series)
-  const keyExtractor = useCallback((item: VolumeInfo) => item.id ?? String(item.volumeNumber), []);
+  const keyExtractor = useCallback((item: Volume) => item.id ?? String(item.volumeNumber), []);
 
   // Memoize the render function - safe to use series?.title etc
   const renderVolumeItem = useCallback(
-    ({ item: volume }: { item: VolumeInfo }) => (
+    ({ item: volume }: { item: Volume }) => (
       <VolumeRow
         key={volume.id}
         volume={volume}
@@ -300,7 +301,7 @@ function SeriesCoverImage({ uri, theme: _theme }: SeriesCoverImageProps): JSX.El
 }
 
 interface VolumeRowProps {
-  volume: VolumeInfo;
+  volume: Volume;
   seriesTitle: string;
   onPress: () => void;
   theme: ThemeColors;
@@ -312,8 +313,11 @@ function VolumeRow({
   onPress,
   theme,
 }: VolumeRowProps): JSX.Element {
-  const isAvailable = volume.availability?.available ?? false;
+  const availableCopies = volume.copyTotals?.available ?? 0;
+  const totalCopies = volume.copyTotals?.total ?? 0;
+  const isAvailable = availableCopies > 0;
   const [imageError, setImageError] = useState(false);
+  const primaryIsbn = getPrimaryIsbn(volume.editions);
 
   return (
     <TouchableOpacity
@@ -353,9 +357,9 @@ function VolumeRow({
             {volume.title}
           </Text>
         )}
-        {volume.primaryIsbn != null && (
+        {primaryIsbn != null && (
           <Text variant="text-xs/normal" color="text-muted" style={styles.volumeIsbn}>
-            ISBN: {volume.primaryIsbn}
+            ISBN: {primaryIsbn}
           </Text>
         )}
       </View>
@@ -365,12 +369,12 @@ function VolumeRow({
         <View
           style={[
             styles.statusDot,
-            { backgroundColor: isAvailable === true ? theme.success : theme.textMuted },
+            { backgroundColor: isAvailable ? theme.success : theme.textMuted },
           ]}
         />
         <Text variant="text-xs/normal" color="text-muted">
-          {isAvailable === true
-            ? `${volume.availability?.totalCopies} ${volume.availability?.totalCopies === 1 ? 'copy' : 'copies'}`
+          {isAvailable
+            ? `${totalCopies} ${totalCopies === 1 ? 'copy' : 'copies'}`
             : 'Not available'}
         </Text>
       </View>

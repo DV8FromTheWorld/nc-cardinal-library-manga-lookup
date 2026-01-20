@@ -1,9 +1,14 @@
 /**
  * Shared availability utilities for display logic.
  * Used by both web and native components.
+ *
+ * Most availability logic is now in @repo/shared.
+ * This file contains frontend-specific display helpers.
  */
 
-import type { Holding, VolumeAvailability } from '../types';
+import { computeCopyTotals, formatCopyTotalsDisplay, getStackRankedStatus } from '@repo/shared';
+
+import type { CopyTotals, LibraryHoldings } from '../types';
 
 /**
  * Calculate availability percentage for progress bars.
@@ -26,71 +31,93 @@ export interface AvailabilityDisplayInfo {
 }
 
 /**
- * Get display information for volume availability.
+ * Get display information for volume availability from CopyTotals.
  * Returns status type (for styling) and status text.
  */
 export function getAvailabilityDisplayInfo(
-  availability: VolumeAvailability | undefined
+  copyTotals: CopyTotals | undefined,
+  catalogUrl: string | undefined
 ): AvailabilityDisplayInfo {
   // Not in catalog
-  if (availability?.notInCatalog) {
+  if (copyTotals == null) {
     return { statusType: 'not-in-catalog', statusText: 'Not in catalog' };
   }
 
-  const isAvailable = availability?.available ?? false;
-  const hasLocalCopies = (availability?.localCopies ?? 0) > 0;
-  const localAvailable = availability?.localAvailable ?? 0;
-  const remoteAvailable = availability?.remoteAvailable ?? 0;
+  // Digital-only (in catalog but no physical copies)
+  if (copyTotals.total === 0 && catalogUrl != null) {
+    return { statusType: 'available', statusText: 'Digital only' };
+  }
 
-  // Available
-  if (isAvailable) {
-    // Has local copies
-    if (hasLocalCopies) {
-      const statusType: AvailabilityStatusType = localAvailable > 0 ? 'local' : 'available';
-      let statusText: string;
+  // No copies at all
+  if (copyTotals.total === 0) {
+    return { statusType: 'not-in-catalog', statusText: 'Not in catalog' };
+  }
 
-      if (localAvailable > 0) {
-        statusText = `${localAvailable} local`;
-        if (remoteAvailable > 0) {
-          statusText += ` · ${remoteAvailable} remote`;
-        }
-      } else {
-        statusText = 'Local checked out';
-        if (remoteAvailable > 0) {
-          statusText += ` · ${remoteAvailable} remote`;
-        }
-      }
+  // Get stack-ranked status
+  const status = getStackRankedStatus(copyTotals);
 
-      return { statusType, statusText };
-    }
-
-    // Only remote copies
+  if (status === 'available') {
     return {
       statusType: 'available',
-      statusText: `${remoteAvailable} remote`,
+      statusText: `${copyTotals.available} available`,
     };
   }
 
-  // All checked out
-  return { statusType: 'unavailable', statusText: 'All checked out' };
+  if (status === 'checked_out') {
+    return {
+      statusType: 'unavailable',
+      statusText: `All checked out (${copyTotals.checkedOut} copies)`,
+    };
+  }
+
+  if (status === 'on_order') {
+    return {
+      statusType: 'unavailable',
+      statusText: `On order (${copyTotals.onOrder} copies)`,
+    };
+  }
+
+  if (status === 'in_transit') {
+    return {
+      statusType: 'unavailable',
+      statusText: `In transit (${copyTotals.inTransit} copies)`,
+    };
+  }
+
+  if (status === 'on_hold') {
+    return {
+      statusType: 'unavailable',
+      statusText: `On hold (${copyTotals.onHold} copies)`,
+    };
+  }
+
+  // Unavailable fallback
+  return { statusType: 'unavailable', statusText: 'Unavailable' };
 }
 
 /**
- * Group holdings by library name.
- * Returns a record mapping library name to array of holdings.
+ * Get display text for a library's availability from its CopyTotals.
  */
-export function groupHoldingsByLibrary(holdings: Holding[]): Record<string, Holding[]> {
-  return holdings.reduce<Record<string, Holding[]>>((acc, holding) => {
-    const key = holding.libraryName;
-    acc[key] ??= [];
-    acc[key].push(holding);
-    return acc;
-  }, {});
+export function getLibraryAvailabilityText(libraryTotals: CopyTotals): string {
+  return formatCopyTotalsDisplay(libraryTotals);
 }
 
 /**
- * Get count of available copies from a group of holdings.
+ * Get CopyTotals for a single library from its holdings.
  */
-export function getAvailableCount(holdings: Holding[]): number {
-  return holdings.filter((h) => h.available).length;
+export function getLibraryCopyTotals(library: LibraryHoldings): CopyTotals {
+  return computeCopyTotals(library.copies);
+}
+
+/**
+ * Get status type for a library (for styling).
+ */
+export function getLibraryStatusType(libraryTotals: CopyTotals): AvailabilityStatusType {
+  if (libraryTotals.total === 0) {
+    return 'not-in-catalog';
+  }
+  if (libraryTotals.available > 0) {
+    return 'available';
+  }
+  return 'unavailable';
 }

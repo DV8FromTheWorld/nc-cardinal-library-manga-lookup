@@ -5,12 +5,12 @@
 import { env } from '../../../config/env';
 import type {
   ApiError,
-  BookDetails,
   LibrariesResponse,
   SearchResult,
   SeriesDetails,
   SuggestionItem,
   SuggestionsResponse,
+  Volume,
 } from '../types';
 
 export class MangaApiError extends Error {
@@ -101,13 +101,13 @@ export async function getSeriesDetails(
 export async function getVolumeDetails(
   volumeId: string,
   options: { homeLibrary?: string | undefined } = {}
-): Promise<BookDetails> {
+): Promise<Volume> {
   const encoded = encodeURIComponent(volumeId);
   const params = new URLSearchParams();
   if (options.homeLibrary != null && options.homeLibrary !== '')
     params.set('homeLibrary', options.homeLibrary);
   const queryString = params.toString();
-  return fetchApi<BookDetails>(
+  return fetchApi<Volume>(
     `/manga/volumes/${encoded}${queryString !== '' ? `?${queryString}` : ''}`
   );
 }
@@ -118,14 +118,12 @@ export async function getVolumeDetails(
 export async function getBookDetails(
   isbn: string,
   options: { homeLibrary?: string | undefined } = {}
-): Promise<BookDetails> {
+): Promise<Volume> {
   const params = new URLSearchParams();
   if (options.homeLibrary != null && options.homeLibrary !== '')
     params.set('homeLibrary', options.homeLibrary);
   const queryString = params.toString();
-  return fetchApi<BookDetails>(
-    `/manga/books/${isbn}${queryString !== '' ? `?${queryString}` : ''}`
-  );
+  return fetchApi<Volume>(`/manga/books/${isbn}${queryString !== '' ? `?${queryString}` : ''}`);
 }
 
 // ============================================================================

@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 
 import { getVolumeDetails } from '../../search/services/mangaApi';
-import type { BookDetails } from '../../search/types';
+import type { Volume } from '../../search/types';
 
 export interface UseVolumeDetailsOptions {
   volumeId: string;
@@ -13,7 +13,7 @@ export interface UseVolumeDetailsOptions {
 }
 
 export interface UseVolumeDetailsResult {
-  volume: BookDetails | null;
+  volume: Volume | null;
   isLoading: boolean;
   error: string | null;
 }
@@ -21,7 +21,7 @@ export interface UseVolumeDetailsResult {
 export function useVolumeDetails(options: UseVolumeDetailsOptions): UseVolumeDetailsResult {
   const { volumeId, homeLibrary } = options;
 
-  const [volume, setVolume] = useState<BookDetails | null>(null);
+  const [volume, setVolume] = useState<Volume | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

@@ -601,7 +601,10 @@ interface VolumeCardProps {
 }
 
 function VolumeCard({ volume, onClick, highlighted }: VolumeCardProps): JSX.Element {
-  const { statusType, statusText } = getAvailabilityDisplayInfo(volume.availability);
+  const { statusType, statusText } = getAvailabilityDisplayInfo(
+    volume.copyTotals,
+    volume.catalogUrl
+  );
 
   // Map status type to CSS class
   const dotClass =

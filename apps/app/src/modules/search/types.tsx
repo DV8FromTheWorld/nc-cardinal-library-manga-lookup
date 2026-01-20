@@ -3,6 +3,26 @@
  * Matches the API response schemas.
  */
 
+// Re-export shared types
+export type {
+  CopyStatusCategory,
+  CopyTotals,
+  VolumeDisplayInfo,
+  VolumeDisplayStatus,
+} from '@repo/shared';
+
+// Re-export shared functions for convenience
+export {
+  computeCopyTotals,
+  deriveEditionStatus,
+  formatCopyTotalsDisplay,
+  getFullVolumeDisplayInfo,
+  getStackRankedStatus,
+  getVolumeDisplayInfo,
+  getVolumeDisplayStatus,
+  mergeCopyTotals,
+} from '@repo/shared';
+
 export type EditionFormat = 'digital' | 'physical';
 export type EditionLanguage = 'ja' | 'en';
 
@@ -17,65 +37,97 @@ export interface Edition {
 }
 
 /**
- * VolumeStatus is derived on the frontend from editions array.
- * NOT sent from API - computed client-side.
+ * A single physical copy at a library.
  */
-export enum VolumeStatus {
-  JapanOnly = 'japan_only',      // No English edition exists
-  Upcoming = 'upcoming',          // English edition exists, release date in future
-  DigitalOnly = 'digital_only',   // Only digital English available  
-  Released = 'released',          // Physical English released
-}
-
-export interface VolumeAvailability {
+export interface LibraryCopy {
+  location: string;
+  callNumber: string;
+  status: string;
+  statusCategory: CopyStatusCategory;
+  barcode?: string | undefined;
   available: boolean;
-  notInCatalog?: boolean | undefined;
-  totalCopies: number;
-  availableCopies: number;
-  checkedOutCopies?: number | undefined;
-  inTransitCopies?: number | undefined;
-  onOrderCopies?: number | undefined;
-  onHoldCopies?: number | undefined;
-  unavailableCopies?: number | undefined;
-  libraries: string[];
-  localCopies?: number | undefined;
-  localAvailable?: number | undefined;
-  remoteCopies?: number | undefined;
-  remoteAvailable?: number | undefined;
-  catalogUrl?: string | undefined;
 }
 
-export interface VolumeInfo {
-  id: string;  // Volume entity ID (required)
+/**
+ * Holdings for a single library, containing all copies at that library.
+ */
+export interface LibraryHoldings {
+  libraryCode: string;
+  libraryName: string;
+  copies: LibraryCopy[];
+}
+
+// Import CopyStatusCategory for use in interface definition
+import type { CopyStatusCategory, CopyTotals } from '@repo/shared';
+
+/**
+ * Series context for a volume - reference to parent series.
+ */
+export interface VolumeSeriesInfo {
+  id: string;
+  title: string;
+  author?: string | undefined;
+}
+
+/**
+ * Canonical Volume type - used for both list views and detail views.
+ *
+ * List views: Have copyTotals and catalogUrl (pre-computed)
+ * Detail views: Have libraryHoldings (frontend derives totals)
+ */
+export interface Volume {
+  // Core identity
+  id: string;
   volumeNumber: number;
-  title?: string | undefined;
-  editions: Edition[];  // All known editions
-  primaryIsbn?: string | undefined;  // First English physical ISBN for library lookups
+  title?: string | undefined; // Volume subtitle (e.g., "Rengoku")
+
+  // Series context
+  seriesInfo: VolumeSeriesInfo;
+
+  // Edition data (source of truth for ISBNs)
+  editions: Edition[];
+
+  // Media
   coverImage?: string | undefined;
-  availability?: VolumeAvailability | undefined;
+
+  // List view only: pre-computed totals
+  copyTotals?: CopyTotals | undefined;
+  catalogUrl?: string | undefined;
+
+  // Detail-only fields (undefined in list views)
+  authors?: string[] | undefined;
+  subjects?: string[] | undefined;
+  summary?: string | undefined;
+  libraryHoldings?: LibraryHoldings[] | undefined;
 }
 
 export interface SourceSummary {
-  wikipedia?: {
-    found: boolean;
-    volumeCount?: number | undefined;
-    seriesTitle?: string | undefined;
-    error?: string | undefined;
-  } | undefined;
-  googleBooks?: {
-    found: boolean;
-    totalItems?: number | undefined;
-    volumesReturned?: number | undefined;
-    volumesWithSeriesId?: number | undefined;
-    seriesCount?: number | undefined;
-    error?: string | undefined;
-  } | undefined;
-  ncCardinal?: {
-    found: boolean;
-    recordCount?: number | undefined;
-    volumesExtracted?: number | undefined;
-    error?: string | undefined;
-  } | undefined;
+  wikipedia?:
+    | {
+        found: boolean;
+        volumeCount?: number | undefined;
+        seriesTitle?: string | undefined;
+        error?: string | undefined;
+      }
+    | undefined;
+  googleBooks?:
+    | {
+        found: boolean;
+        totalItems?: number | undefined;
+        volumesReturned?: number | undefined;
+        volumesWithSeriesId?: number | undefined;
+        seriesCount?: number | undefined;
+        error?: string | undefined;
+      }
+    | undefined;
+  ncCardinal?:
+    | {
+        found: boolean;
+        recordCount?: number | undefined;
+        volumesExtracted?: number | undefined;
+        error?: string | undefined;
+      }
+    | undefined;
 }
 
 export interface DebugInfo {
@@ -95,7 +147,13 @@ export interface DebugInfo {
 }
 
 export type MediaType = 'manga' | 'light_novel' | 'unknown';
-export type SeriesRelationship = 'adaptation' | 'spinoff' | 'sequel' | 'side_story' | 'anthology' | 'prequel';
+export type SeriesRelationship =
+  | 'adaptation'
+  | 'spinoff'
+  | 'sequel'
+  | 'side_story'
+  | 'anthology'
+  | 'prequel';
 
 export interface SeriesResult {
   /** Entity ID (e.g., "s_V1StGXR8Z") - stable across data source updates */
@@ -107,7 +165,7 @@ export interface SeriesResult {
   author?: string | undefined;
   coverImage?: string | undefined;
   source: 'wikipedia' | 'google-books' | 'nc-cardinal';
-  volumes?: VolumeInfo[] | undefined;
+  volumes?: Volume[] | undefined;
   /** Media type: manga, light_novel, or unknown */
   mediaType?: MediaType | undefined;
   /** Relationship to parent series (for spin-offs, sequels, etc.) */
@@ -115,13 +173,14 @@ export interface SeriesResult {
 }
 
 export interface VolumeResult {
-  id: string;  // Volume entity ID (required)
+  id: string; // Volume entity ID (required)
   title: string;
   volumeNumber?: number | undefined;
   seriesTitle?: string | undefined;
   isbn?: string | undefined;
   coverImage?: string | undefined;
-  availability?: VolumeAvailability | undefined;
+  copyTotals?: CopyTotals | undefined;
+  catalogUrl?: string | undefined;
   source: 'wikipedia' | 'google-books' | 'nc-cardinal';
 }
 
@@ -156,51 +215,14 @@ export interface SeriesDetails {
   isComplete: boolean;
   author?: string | undefined;
   coverImage?: string | undefined;
-  volumes: VolumeInfo[];
+  volumes: Volume[];
   availableCount: number;
   missingVolumes: number[];
   relatedSeries?: string[] | undefined;
   _debug?: DebugInfo | undefined;
 }
 
-export interface Holding {
-  libraryCode: string;
-  libraryName: string;
-  location: string;
-  callNumber: string;
-  status: string;
-  barcode?: string | undefined;
-  available: boolean;
-}
-
-export interface BookDetails {
-  id: string;
-  title: string;
-  authors: string[];
-  isbns: string[];
-  subjects: string[];
-  summary?: string | undefined;
-  coverImage?: string | undefined;
-  holdings: Holding[];
-  availability: {
-    available: boolean;
-    notInCatalog?: boolean | undefined;
-    totalCopies: number;
-    availableCopies: number;
-    checkedOutCopies?: number | undefined;
-    libraries: string[];
-    localCopies?: number | undefined;
-    localAvailable?: number | undefined;
-    remoteCopies?: number | undefined;
-    remoteAvailable?: number | undefined;
-  };
-  seriesInfo?: {
-    id?: string | undefined; // Entity ID for navigation
-    title: string;
-    volumeNumber?: number | undefined;
-  } | undefined;
-  catalogUrl?: string | undefined;
-}
+// Holding and BookDetails removed - use LibraryCopy, LibraryHoldings, and Volume instead
 
 export interface Library {
   code: string;
@@ -271,7 +293,7 @@ export type SuggestionFormat = 'MANGA' | 'NOVEL' | 'ONE_SHOT';
  */
 export interface SuggestionItem {
   anilistId: number;
-  title: string;           // English or Romaji
+  title: string; // English or Romaji
   titleRomaji: string;
   format: SuggestionFormat;
   volumes: number | null;

@@ -22,13 +22,20 @@ import { DebugPanel } from '../../debug/native/DebugPanel';
 import type { RootStackParamList } from '../../routing/native/Router';
 import { colors, spacing } from '../../search/native/theme';
 import { clearCacheForBook } from '../../search/services/mangaApi';
-import { getAvailableCount, groupHoldingsByLibrary } from '../../search/utils/availability';
 import {
-  cleanDisplayTitle,
   formatAuthorName,
   getAmazonUrl,
   getBestIsbnForAmazon,
 } from '../../search/utils/formatters';
+import {
+  formatCopyTotalsDisplay,
+  getAllIsbns,
+  getDisplayTitle,
+  getLibraryCopyTotals,
+  getPrimaryIsbn,
+  getVolumeCopyTotals,
+  getVolumeDetailDisplayInfo,
+} from '../../search/utils/volumeStatus';
 import { useHomeLibrary } from '../../settings/hooks/useHomeLibrary';
 import { useVolumeDetails } from '../hooks/useVolumeDetails';
 
@@ -40,7 +47,7 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
   const theme = isDark ? colors.dark : colors.light;
 
   const { id } = route.params;
-  const { homeLibrary, libraryName: homeLibraryName } = useHomeLibrary();
+  const { homeLibrary, libraryName: _homeLibraryName } = useHomeLibrary();
   const [expandedLibraries, setExpandedLibraries] = useState(false);
   const [imageError, setImageError] = useState(false);
 
@@ -63,10 +70,10 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
     }
   };
 
-  // Get the primary ISBN from the volume for cache clearing
-  // Use first ISBN for cache, but prefer English ISBN for Amazon
-  const primaryIsbn = volume?.isbns?.[0];
-  const amazonIsbn = volume?.isbns ? getBestIsbnForAmazon(volume.isbns) : undefined;
+  // Get ISBNs from editions for cache clearing and external links
+  const isbns = volume != null ? getAllIsbns(volume.editions) : [];
+  const primaryIsbn = volume != null ? getPrimaryIsbn(volume.editions) : undefined;
+  const amazonIsbn = isbns.length > 0 ? getBestIsbnForAmazon(isbns) : undefined;
 
   const handleClearCache = useCallback(async () => {
     if (primaryIsbn != null) {
@@ -108,17 +115,27 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
     );
   }
 
-  // Group holdings by library
-  const holdingsByLibrary = groupHoldingsByLibrary(volume.holdings);
-  const libraryNames = Object.keys(holdingsByLibrary).sort();
-  const displayLibraries = expandedLibraries ? libraryNames : libraryNames.slice(0, 5);
+  // Get library holdings (may be undefined for list views, populated for detail views)
+  const libraryHoldings = volume.libraryHoldings ?? [];
+  const displayLibraries = expandedLibraries ? libraryHoldings : libraryHoldings.slice(0, 5);
 
-  // Clean up title and author names for display
-  const displayTitle = cleanDisplayTitle(volume.title);
-  const displayAuthors = volume.authors.map(formatAuthorName);
+  // Compute totals from libraryHoldings
+  const copyTotals = getVolumeCopyTotals(volume);
+  const totalCopies = copyTotals?.total ?? 0;
 
-  // Get series ID for navigation (if available from entity store)
-  const seriesId = volume.seriesInfo?.id;
+  // Get display title and author names
+  const displayTitle = getDisplayTitle(volume);
+  const displayAuthors = (volume.authors ?? []).map(formatAuthorName);
+
+  // Get series ID for navigation
+  const seriesId = volume.seriesInfo.id;
+
+  // Get centralized availability status display
+  const availabilityStatus = getVolumeDetailDisplayInfo(volume);
+
+  // Check if digital-only (in catalog but no physical copies)
+  const isDigitalOnly = totalCopies === 0 && volume.catalogUrl != null;
+  const isAvailable = copyTotals != null && copyTotals.available > 0;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bgPrimary }]}>
@@ -159,20 +176,18 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
               </Text>
             )}
 
-            {volume.seriesInfo != null && seriesId != null && (
-              <TouchableOpacity
-                style={[styles.seriesLink, { backgroundColor: theme.bgSecondary }]}
-                onPress={() => handleSelectSeries(seriesId)}
+            <TouchableOpacity
+              style={[styles.seriesLink, { backgroundColor: theme.bgSecondary }]}
+              onPress={() => handleSelectSeries(seriesId)}
+            >
+              <Text
+                variant="text-sm/medium"
+                color="interactive-primary"
+                style={styles.seriesLinkText}
               >
-                <Text
-                  variant="text-sm/medium"
-                  color="interactive-primary"
-                  style={styles.seriesLinkText}
-                >
-                  📚 Part of: {volume.seriesInfo.title}
-                </Text>
-              </TouchableOpacity>
-            )}
+                📚 Part of: {volume.seriesInfo.title}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -199,78 +214,76 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
               { backgroundColor: theme.bgSecondary, borderColor: theme.border },
             ]}
           >
-            {/* Status */}
-            <View style={styles.availabilitySummary}>
-              <View
-                style={[
-                  styles.availabilityStatus,
-                  {
-                    backgroundColor: volume.availability.available
-                      ? theme.successBg
-                      : theme.errorBg,
-                  },
-                ]}
-              >
+            {/* Digital-only status */}
+            {isDigitalOnly && volume.catalogUrl != null ? (
+              <View style={styles.availabilitySummary}>
+                <View style={[styles.availabilityStatus, { backgroundColor: theme.accent + '20' }]}>
+                  <Text
+                    variant="text-sm/semibold"
+                    color="interactive-primary"
+                    style={styles.statusLabel}
+                  >
+                    {availabilityStatus.icon} {availabilityStatus.label}
+                  </Text>
+                </View>
+                <Text
+                  variant="text-sm/normal"
+                  color="text-secondary"
+                  style={styles.digitalDescription}
+                >
+                  This title is available digitally through the library's e-book services. No
+                  physical copies are available.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.digitalAccessButton, { backgroundColor: theme.accent }]}
+                  onPress={handleOpenCatalog}
+                >
+                  <Text variant="text-sm/semibold" style={styles.digitalAccessButtonText}>
+                    📖 Access Digital Copy
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.availabilitySummary}>
                 <View
                   style={[
-                    styles.statusIndicator,
+                    styles.availabilityStatus,
                     {
-                      backgroundColor: volume.availability.available ? theme.success : theme.error,
+                      backgroundColor: isAvailable ? theme.successBg : theme.errorBg,
                     },
                   ]}
-                />
-                <Text
-                  variant="text-sm/semibold"
-                  color={volume.availability.available ? 'success' : 'error'}
-                  style={styles.statusLabel}
                 >
-                  {volume.availability.available ? 'Available Now' : 'Not Currently Available'}
-                </Text>
-              </View>
+                  <View
+                    style={[
+                      styles.statusIndicator,
+                      {
+                        backgroundColor: isAvailable ? theme.success : theme.error,
+                      },
+                    ]}
+                  />
+                  <Text
+                    variant="text-sm/semibold"
+                    color={isAvailable ? 'success' : 'error'}
+                    style={styles.statusLabel}
+                  >
+                    {availabilityStatus.icon} {availabilityStatus.label}
+                  </Text>
+                </View>
 
-              <View style={styles.copyCount}>
-                <Text variant="header-lg/bold">{volume.availability.availableCopies}</Text>
-                <Text variant="text-sm/normal" color="text-secondary">
-                  {' '}
-                  of {volume.availability.totalCopies} copies available
-                </Text>
-              </View>
-
-              {/* Local vs Remote */}
-              {volume.availability.localCopies !== undefined && (
-                <View style={styles.localRemote}>
-                  <View style={styles.localStatus}>
-                    <View
-                      style={[
-                        styles.localDot,
-                        {
-                          backgroundColor:
-                            (volume.availability.localAvailable ?? 0) > 0
-                              ? theme.success
-                              : theme.textMuted,
-                        },
-                      ]}
-                    />
-                    <Text variant="text-sm/normal" color="text-secondary" style={styles.localText}>
-                      {homeLibraryName ?? 'Your Library'}:{' '}
-                      {(volume.availability.localAvailable ?? 0) > 0
-                        ? `${volume.availability.localAvailable} available`
-                        : volume.availability.localCopies > 0
-                          ? 'All checked out'
-                          : 'None'}
+                {copyTotals != null && totalCopies > 0 && (
+                  <View style={styles.copyCount}>
+                    <Text variant="header-lg/bold">{copyTotals.available}</Text>
+                    <Text variant="text-sm/normal" color="text-secondary">
+                      {' '}
+                      of {totalCopies} copies available
                     </Text>
                   </View>
-                  {(volume.availability.remoteCopies ?? 0) > 0 && (
-                    <Text variant="text-sm/normal" color="text-muted" style={styles.remoteText}>
-                      Other libraries: {volume.availability.remoteAvailable ?? 0} available
-                    </Text>
-                  )}
-                </View>
-              )}
-            </View>
+                )}
+              </View>
+            )}
 
             {/* Catalog Link */}
-            {volume.catalogUrl != null && (
+            {volume.catalogUrl != null && totalCopies > 0 && (
               <TouchableOpacity
                 style={[styles.catalogLink, { borderTopColor: theme.border }]}
                 onPress={handleOpenCatalog}
@@ -297,95 +310,100 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
                   </Text>
                 </TouchableOpacity>
               )}
-              {volume.seriesInfo != null && (
-                <TouchableOpacity
-                  style={[styles.externalLink, { backgroundColor: theme.bgTertiary }]}
-                  onPress={() =>
-                    Linking.openURL(
-                      `https://myanimelist.net/manga.php?q=${encodeURIComponent(volume.seriesInfo?.title ?? '')}`
-                    )
-                  }
-                >
-                  <Text variant="text-sm/medium" style={styles.externalLinkText}>
-                    📊 MyAnimeList
-                  </Text>
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity
+                style={[styles.externalLink, { backgroundColor: theme.bgTertiary }]}
+                onPress={() =>
+                  Linking.openURL(
+                    `https://myanimelist.net/manga.php?q=${encodeURIComponent(volume.seriesInfo.title)}`
+                  )
+                }
+              >
+                <Text variant="text-sm/medium" style={styles.externalLinkText}>
+                  📊 MyAnimeList
+                </Text>
+              </TouchableOpacity>
             </View>
 
             {/* Library List */}
-            <View style={[styles.libraryList, { borderTopColor: theme.border }]}>
-              <Text variant="text-sm/medium" color="text-secondary" style={styles.libraryListTitle}>
-                Available at {volume.availability.libraries.length}{' '}
-                {volume.availability.libraries.length === 1 ? 'library' : 'libraries'}
-              </Text>
-
-              {displayLibraries.map((libraryName) => {
-                const holdings = holdingsByLibrary[libraryName];
-                const firstHolding = holdings?.[0];
-                if (!holdings || !firstHolding) return null;
-
-                const availableCount = getAvailableCount(holdings);
-
-                return (
-                  <View
-                    key={libraryName}
-                    style={[styles.libraryItem, { borderBottomColor: theme.border }]}
-                  >
-                    <View style={styles.libraryInfo}>
-                      <Text variant="text-sm/medium" style={styles.libraryName}>
-                        {libraryName}
-                      </Text>
-                      <Text
-                        variant="text-xs/normal"
-                        color="text-muted"
-                        style={styles.libraryLocation}
-                      >
-                        {firstHolding.location} • {firstHolding.callNumber}
-                      </Text>
-                    </View>
-                    <View
-                      style={[
-                        styles.copyBadge,
-                        {
-                          backgroundColor: availableCount > 0 ? theme.successBg : theme.bgTertiary,
-                        },
-                      ]}
-                    >
-                      <Text
-                        variant="text-xs/medium"
-                        color={availableCount > 0 ? 'success' : 'text-muted'}
-                        style={styles.copyBadgeText}
-                      >
-                        {availableCount > 0 ? `${availableCount} available` : 'Checked out'}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })}
-
-              {libraryNames.length > 5 && (
-                <TouchableOpacity
-                  style={styles.expandButton}
-                  onPress={() => setExpandedLibraries(!expandedLibraries)}
+            {totalCopies > 0 && libraryHoldings.length > 0 && (
+              <View style={[styles.libraryList, { borderTopColor: theme.border }]}>
+                <Text
+                  variant="text-sm/medium"
+                  color="text-secondary"
+                  style={styles.libraryListTitle}
                 >
-                  <Text
-                    variant="text-sm/medium"
-                    color="interactive-primary"
-                    style={styles.expandButtonText}
+                  Available at {libraryHoldings.length}{' '}
+                  {libraryHoldings.length === 1 ? 'library' : 'libraries'}
+                </Text>
+
+                {displayLibraries.map((library) => {
+                  const firstCopy = library.copies[0];
+                  if (!firstCopy) return null;
+
+                  const libraryTotals = getLibraryCopyTotals(library);
+                  const availabilityText = formatCopyTotalsDisplay(libraryTotals);
+
+                  return (
+                    <View
+                      key={library.libraryCode}
+                      style={[styles.libraryItem, { borderBottomColor: theme.border }]}
+                    >
+                      <View style={styles.libraryInfo}>
+                        <Text variant="text-sm/medium" style={styles.libraryName}>
+                          {library.libraryName}
+                        </Text>
+                        <Text
+                          variant="text-xs/normal"
+                          color="text-muted"
+                          style={styles.libraryLocation}
+                        >
+                          {firstCopy.location} • {firstCopy.callNumber}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.copyBadge,
+                          {
+                            backgroundColor:
+                              libraryTotals.available > 0 ? theme.successBg : theme.bgTertiary,
+                          },
+                        ]}
+                      >
+                        <Text
+                          variant="text-xs/medium"
+                          color={libraryTotals.available > 0 ? 'success' : 'text-muted'}
+                          style={styles.copyBadgeText}
+                        >
+                          {availabilityText}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+
+                {libraryHoldings.length > 5 && (
+                  <TouchableOpacity
+                    style={styles.expandButton}
+                    onPress={() => setExpandedLibraries(!expandedLibraries)}
                   >
-                    {expandedLibraries
-                      ? 'Show fewer libraries'
-                      : `Show ${libraryNames.length - 5} more libraries`}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
+                    <Text
+                      variant="text-sm/medium"
+                      color="interactive-primary"
+                      style={styles.expandButtonText}
+                    >
+                      {expandedLibraries
+                        ? 'Show fewer libraries'
+                        : `Show ${libraryHoldings.length - 5} more libraries`}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
           </View>
         </View>
 
         {/* Subjects */}
-        {volume.subjects.length > 0 && (
+        {volume.subjects != null && volume.subjects.length > 0 && (
           <View style={styles.section}>
             <Text variant="header-sm/semibold" style={styles.sectionTitle}>
               Subjects
@@ -420,7 +438,7 @@ export function VolumeScreen({ navigation, route }: Props): JSX.Element {
               { backgroundColor: theme.bgSecondary, borderColor: theme.border },
             ]}
           >
-            {volume.isbns.map((isbn) => (
+            {isbns.map((isbn) => (
               <View key={isbn} style={styles.identifier}>
                 <Text variant="text-sm/normal" color="text-muted" style={styles.identifierLabel}>
                   ISBN
@@ -577,34 +595,23 @@ const styles = StyleSheet.create({
   },
   copyCount: {
     marginBottom: spacing.sm,
-  },
-  copyNumber: {
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  copyLabel: {
-    fontSize: 14,
-    fontWeight: '400',
-  },
-  localRemote: {
-    gap: spacing.xs,
-  },
-  localStatus: {
     flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  digitalDescription: {
+    fontSize: 14,
+    marginBottom: spacing.md,
+  },
+  digitalAccessButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
     alignItems: 'center',
-    gap: spacing.xs,
   },
-  localDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  localText: {
-    fontSize: 13,
-  },
-  remoteText: {
-    fontSize: 13,
-    marginLeft: spacing.md + spacing.xs,
+  digitalAccessButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   catalogLink: {
     padding: spacing.md,
