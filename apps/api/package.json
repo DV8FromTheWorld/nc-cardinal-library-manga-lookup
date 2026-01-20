@@ -21,7 +21,9 @@
     "script:wikipedia": "tsx src/scripts/wikipedia-client.ts",
     "script:google-books": "tsx src/scripts/google-books-client.ts",
     "script:manga": "tsx src/scripts/manga-search.ts",
-    "script:test-manga": "tsx src/scripts/manga-search-test.ts"
+    "script:test-manga": "tsx src/scripts/manga-search-test.ts",
+    "script:librarything-browser": "tsx src/scripts/librarything-browser.ts",
+    "script:investigate-librarything": "tsx src/scripts/investigate-series-works.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
@@ -34,6 +36,7 @@
   },
   "devDependencies": {
     "@types/node": "^22",
+    "playwright": "^1.57.0",
     "tsx": "^4",
     "typescript": "^5",
     "vitest": "^3"
