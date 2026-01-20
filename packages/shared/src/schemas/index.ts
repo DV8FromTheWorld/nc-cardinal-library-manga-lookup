@@ -1,2 +1,2 @@
 // Export all schemas from this directory
-export * from './user';
+export * from './user.js';
