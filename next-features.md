@@ -26,14 +26,14 @@
 - [ ] When the API is down we should better communicate that to the user rather than things just breaking
 - [x] We need to fix book titles. They often are wrong. Every volume in Bleach except the first one is wrong. One piece is the same way. It shows the right names on the search page / series page, but the book detail page is wrong.
 - [ ] Use an actual icon system instead of using emojis
-- [ ] Fix the MAL icon. We should download and use the official one.
+- [x] Fix the MAL icon. We should download and use the official one.
 - [ ] Make the user account and debug functionality be a slide-out menu to access them?
-
 
 ## Technical Debt / Improvements
 
 - [ ] Wikipedia rate limiting is aggressive - Consider longer cache TTL or server-side caching
 - [ ] Consider optimizing search to only fetch shown results (lazy load additional volumes)
+- [ ] **Omnibus/Multiple Edition Availability**: Currently we only look up the "primary ISBN" (first English physical edition) for availability. A volume may have multiple physical editions (single release, omnibus, 2-in-1, collector's edition). For example, Vol 1 single might be checked out, but Vol 1-3 omnibus might be available. We miss this alternative availability because we only check one ISBN. Future improvement: Look up all English physical ISBNs, aggregate availability, and show "also available in omnibus" when applicable.
 
 ## Implementation Notes
 

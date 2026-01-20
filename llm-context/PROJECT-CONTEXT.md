@@ -7,6 +7,7 @@ This document provides comprehensive context for LLMs working on this project. I
 **Purpose**: A web/native application to search manga series and check availability across NC Cardinal library system (North Carolina's consortium of public libraries).
 
 **Key Goals**:
+
 1. Search for manga by title (handles typos, romanized Japanese names, alternate titles)
 2. Display series information with all volumes
 3. Show library availability for each volume
@@ -82,6 +83,7 @@ modules/{feature}/
 ```
 
 **Key conventions:**
+
 - All TypeScript files use `.tsx` extension (even without JSX)
 - No barrel files (`index.ts`) - use direct imports
 - Platform-agnostic logic at module root
@@ -102,6 +104,7 @@ export const ROUTES = {
 ```
 
 Platform-specific routers:
+
 - **Web**: `react-router-dom` in `modules/routing/web/Router.tsx`
 - **Native**: `@react-navigation` in `modules/routing/native/Router.tsx`
 
@@ -122,7 +125,8 @@ The bundler (Rspack/Metro) resolves the correct file based on platform.
 
 ### 1. Wikipedia API (Primary - Series Metadata & ISBNs)
 
-**Why Wikipedia**: 
+**Why Wikipedia**:
+
 - Free, no rate limits, no authentication
 - Excellent fuzzy search via OpenSearch API
 - Handles typos, romanized names (e.g., "Kimetsu no Yaiba" → "Demon Slayer")
@@ -130,6 +134,7 @@ The bundler (Rspack/Metro) resolves the correct file based on platform.
 - Contains ISBNs for both Japanese and English editions
 
 **Key Endpoints**:
+
 ```
 # OpenSearch (fuzzy title search)
 https://en.wikipedia.org/w/api.php?action=opensearch&search={query}&limit=10&format=json
@@ -139,6 +144,7 @@ https://en.wikipedia.org/w/api.php?action=query&titles={title}&prop=revisions&rv
 ```
 
 **Important Implementation Details**:
+
 - Always include `redirects=1` parameter - Wikipedia uses special characters (e.g., "Spy × Family" with multiplication sign)
 - Volume data is in `{{Graphic novel list}}` wikitext templates
 - Some pages use **transclusion** (e.g., One Piece splits volumes across 6 subpages via `{{:List of One Piece chapters (1-186)}}`)
@@ -146,6 +152,7 @@ https://en.wikipedia.org/w/api.php?action=query&titles={title}&prop=revisions&rv
 - ISBN-10 format must be converted to ISBN-13 (add "978" prefix, recalculate check digit)
 
 **Challenges Solved**:
+
 - Section detection for mixed media (manga vs light novels on same page)
 - Spin-off filtering (exclude "Short Story Collection", "Side Story", etc.)
 - Volume deduplication when same volume number appears in different parts
@@ -166,15 +173,18 @@ https://en.wikipedia.org/w/api.php?action=query&titles={title}&prop=revisions&rv
 ```
 
 **Formats**:
+
 - `atom-full`: Atom feed with full holdings data (recommended)
 - `marcxml`: MARC21 XML records
 - `mods`: MODS format
 
 **Organization Codes**:
+
 - `CARDINAL`: All NC Cardinal libraries
 - Individual library codes: `KINSTON`, `BRYAN`, etc.
 
 **Two-Tier Caching Strategy**:
+
 ```
 .cache/nc-cardinal/
 ├── isbn-map/       # ISBN → RecordID (permanent, never changes)
@@ -184,42 +194,85 @@ https://en.wikipedia.org/w/api.php?action=query&titles={title}&prop=revisions&rv
 ```
 
 This allows:
+
 1. First lookup: Full OpenSearch (slow ~5s) → cache both ISBN→RecordID and full record
 2. Subsequent lookups: ISBN→RecordID cache hit → SuperCat direct fetch (fast ~1s)
 3. Availability refresh: Just SuperCat fetch using cached RecordID
 
-**Holdings Status Categories**:
+**Holdings Data Model**:
+
+Library holdings are now grouped by library using `LibraryHoldings`:
+
 ```typescript
-type CopyStatusCategory = 
-  | 'available'      // On shelf
-  | 'checked_out'    // Borrowed
-  | 'in_transit'     // Moving between libraries
-  | 'on_order'       // Ordered but not received
-  | 'on_hold'        // Reserved for someone
-  | 'unavailable';   // Lost, missing, repair, withdrawn
+// From packages/shared/src/availability.tsx
+type CopyStatusCategory =
+  | 'available' // On shelf
+  | 'checked_out' // Borrowed
+  | 'in_transit' // Moving between libraries
+  | 'on_order' // Ordered but not received
+  | 'on_hold' // Reserved for someone
+  | 'unavailable'; // Lost, missing, repair, withdrawn
+
+// Individual copy at a library
+interface LibraryCopy {
+  location: string;
+  callNumber: string;
+  status: string; // Raw status from MARC
+  statusCategory: CopyStatusCategory;
+}
+
+// All copies at a single library
+interface LibraryHoldings {
+  libraryCode: string;
+  libraryName: string;
+  copies: LibraryCopy[];
+}
+
+// Aggregated counts for availability display
+interface CopyTotals {
+  available: number;
+  checkedOut: number;
+  inTransit: number;
+  onHold: number;
+  onOrder: number;
+  unavailable: number;
+}
 ```
+
+**Key Functions** (from `@repo/shared`):
+
+- `computeCopyTotals(copies: CopyWithStatus[])` - Count copies by status
+- `mergeCopyTotals(totals: CopyTotals[])` - Combine multiple libraries' totals
+- `getStackRankedStatus(totals: CopyTotals)` - Get best status (available > checked_out > ...)
+- `formatCopyTotalsDisplay(totals: CopyTotals)` - Format as "3 available, 1 checked out"
+- `getFullVolumeDisplayInfo(editions, copyTotals?, catalogUrl?)` - Get display status for UI
 
 ### 3. Cover Image Sources (Priority Order)
 
 **1. Bookcover API** (Preferred)
+
 ```
 https://bookcover.longitood.com/bookcover/{isbn}
 ```
+
 - Returns clean 404 when no image (allows proper placeholder handling)
 - Aggregates from Amazon, Goodreads, etc.
 - Cached in `.cache/bookcover/`
 - **Performance note**: Uses 5-second timeout. The API responds quickly (~0.5s) when covers are found, but takes 25+ seconds to return "not found" because it searches multiple sources. Timeout prevents blocking.
 
 **2. Google Books API** (Fallback)
+
 - `thumbnail` field in search results
 - May return placeholder images when no cover exists
 - **Placeholder detection**: Uses HEAD request to check `content-type` header - real covers are JPEG, placeholders are PNG. HEAD avoids downloading full image just for detection.
 - Cached in `.cache/google-books-covers/`
 
 **3. OpenLibrary Covers API** (Last Resort)
+
 ```
 https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg
 ```
+
 - May return placeholder GIFs instead of 404
 - UI handles via `onLoad` (check if image is 1x1 pixel) and `onError` handlers
 
@@ -228,11 +281,13 @@ https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg
 **When used**: Fallback when Wikipedia doesn't have volume data
 
 **Key features**:
+
 - `seriesInfo` field groups volumes by series and differentiates spin-offs
 - Good for newer releases and future volumes
 - No authentication needed for basic search
 
 **Limitations**:
+
 - `series/get` endpoint requires OAuth (geographically restricted)
 - Some series missing or incomplete
 
@@ -253,6 +308,7 @@ The Wikipedia client parses `{{Graphic novel list}}` templates:
 ```
 
 **Parsing approach**:
+
 1. Split wikitext by lines
 2. Detect section headers (`===Light novels===`, `===Manga===`)
 3. Track current media type and part number
@@ -276,6 +332,7 @@ function detectMediaType(header: string): MediaType {
 ```
 
 When both types exist, the API:
+
 1. Tags each volume with its media type
 2. Prefers manga over light novels in default search
 3. `getAllSeriesFromPage()` returns both as separate series
@@ -304,14 +361,14 @@ function isSpinoffTitle(title: string | undefined): boolean {
 function convertISBN10to13(isbn10: string): string {
   const base = isbn10.slice(0, 9);
   const isbn13Base = '978' + base;
-  
+
   let sum = 0;
   for (let i = 0; i < 12; i++) {
     const digit = parseInt(isbn13Base[i], 10);
-    sum += (i % 2 === 0) ? digit : digit * 3;
+    sum += i % 2 === 0 ? digit : digit * 3;
   }
   const checkDigit = (10 - (sum % 10)) % 10;
-  
+
   return isbn13Base + checkDigit;
 }
 ```
@@ -344,9 +401,7 @@ const limit = pLimit(10); // 10 concurrent requests
 const batches = chunk(isbns, 10);
 
 for (const batch of batches) {
-  await Promise.all(batch.map(isbn => 
-    limit(() => searchByISBN(isbn))
-  ));
+  await Promise.all(batch.map((isbn) => limit(() => searchByISBN(isbn))));
   await delay(100); // Small delay between batches
 }
 ```
@@ -382,7 +437,7 @@ if (!record) {
     title: `Book (ISBN: ${cleanISBN})`,
     availability: {
       available: false,
-      notInCatalog: true,  // Key flag for UI
+      notInCatalog: true, // Key flag for UI
       totalCopies: 0,
       // ... other counts
     },
@@ -424,40 +479,34 @@ Returns series and volumes matching the query.
 
 Returns detailed series info with all volumes.
 
-### GET /manga/books/:isbn
+### GET /manga/books/:isbn or GET /manga/volumes/:id
 
-Returns book details with holdings from all libraries.
+Returns volume details with holdings grouped by library.
 
 ```typescript
 {
   id: string,
   title: string,
   authors: string[],
-  isbns: string[],
+  editions: Edition[],        // English/Japanese release info
   coverImage?: string,
-  holdings: [{
+  catalogUrl?: string,        // Link to NC Cardinal catalog
+  libraryHoldings: [{         // Holdings grouped by library
     libraryCode: string,
     libraryName: string,
-    location: string,
-    callNumber: string,
-    status: string,           // Raw: "Checked out", "Lost", etc.
-    statusCategory: string,   // Categorized: "checked_out", "unavailable"
-    available: boolean
-  }],
-  availability: {
-    available: boolean,
-    notInCatalog?: boolean,
-    totalCopies: number,
-    availableCopies: number,
-    checkedOutCopies: number,
-    inTransitCopies: number,
-    onOrderCopies: number,
-    onHoldCopies: number,
-    unavailableCopies: number,
-    libraries: string[]
-  }
+    copies: [{
+      location: string,
+      callNumber: string,
+      status: string,           // Raw: "Checked out", "Lost", etc.
+      statusCategory: CopyStatusCategory  // Categorized: "checked_out", "unavailable"
+    }]
+  }]
 }
 ```
+
+**Note**: For list views (search results, series volumes), the API sends pre-computed `copyTotals` instead of full `libraryHoldings`. The frontend derives `copyTotals` from `libraryHoldings` for detail views.
+
+````
 
 ## Common Issues & Solutions
 
@@ -508,27 +557,40 @@ Returns book details with holdings from all libraries.
 
 ### 10. "Checked out" shown for digital-only books
 
-**Cause**: Books exist in NC Cardinal catalog with `totalCopies: 0` (no physical holdings) but have a `catalogUrl`. Frontend incorrectly displays "Checked out" instead of distinguishing digital-only items.
+**Cause**: Books exist in NC Cardinal catalog with no physical copies but have a `catalogUrl`. Frontend incorrectly displays "Checked out" instead of distinguishing digital-only items.
 
-**Detection logic**:
-- `notInCatalog: true` → Book not found in catalog at all
-- `totalCopies === 0` AND `catalogUrl` exists → Digital-only (e-book via hoopla, etc.)
-- `totalCopies > 0` AND `availableCopies === 0` → Checked out
+**Detection logic** (now uses shared `EditionStatus` and `VolumeDisplayStatus`):
+- `japan_only` → No English edition exists
+- `not_released` → English edition announced but not yet released
+- `not_in_catalog` → English edition exists but not in NC Cardinal
+- `library_digital_only` → In catalog but only as e-book (no physical copies)
+- `available`, `checked_out`, `in_transit`, `on_hold`, `on_order`, `unavailable` → Physical copy status
 
-**Frontend solution** (`getVolumeStatusDisplay` and `VolumePage`):
+**Frontend solution** (using `@repo/shared` utilities):
 ```typescript
-// Series page (volumeStatus.tsx)
-if (volume.availability.totalCopies === 0 && volume.availability.catalogUrl) {
-  return { icon: '📱', label: 'Digital only' };
-}
+import {
+  getFullVolumeDisplayInfo,
+  computeCopyTotals,
+  mergeCopyTotals
+} from '@repo/shared';
 
-// Volume detail page (VolumePage.tsx)
-if (volume.availability.totalCopies === 0 && volume.catalogUrl) {
-  // Show "Digital Only" card with link to access e-book
-}
-```
+// For list views (series page, search results) - uses pre-computed copyTotals
+const displayInfo = getFullVolumeDisplayInfo(
+  volume.editions,
+  volume.copyTotals,
+  volume.catalogUrl
+);
+// Returns: { status: 'library_digital_only', label: 'Digital only', icon: '📱' }
+
+// For detail views - derive copyTotals from libraryHoldings
+const copyTotals = volume.libraryHoldings
+  ? mergeCopyTotals(volume.libraryHoldings.map(lh => computeCopyTotals(lh.copies)))
+  : undefined;
+const displayInfo = getFullVolumeDisplayInfo(volume.editions, copyTotals, volume.catalogUrl);
+````
 
 **UI treatment**:
+
 - Series page: Shows 📱 icon with "Digital only" label
 - Volume page: Shows prominent "Digital Only" status with "Access Digital Copy" button linking to catalog
 
@@ -585,19 +647,21 @@ const BookDetailsSchema = z.object({
 
 ## File Quick Reference
 
-| File | Purpose |
-|------|---------|
-| `apps/api/src/index.ts` | Fastify entry, CORS setup |
-| `apps/api/src/routes/manga.ts` | All manga API routes |
-| `apps/api/src/scripts/wikipedia-client.ts` | Wikipedia API + wikitext parsing |
-| `apps/api/src/scripts/opensearch-client.ts` | NC Cardinal API + caching |
-| `apps/api/src/scripts/google-books-client.ts` | Google Books fallback |
-| `apps/api/src/scripts/manga-search.ts` | Search orchestrator |
-| `apps/app/src/entrypoints/web/App.tsx` | Web entry point |
-| `apps/app/src/modules/routing/web/Router.tsx` | Web router (react-router-dom) |
-| `apps/app/src/modules/search/web/SearchPage.tsx` | Search UI |
-| `apps/app/src/modules/series/web/SeriesPage.tsx` | Series detail UI |
-| `apps/app/src/modules/book/web/BookPage.tsx` | Book detail UI |
+| File                                                 | Purpose                               |
+| ---------------------------------------------------- | ------------------------------------- |
+| `apps/api/src/index.ts`                              | Fastify entry, CORS setup             |
+| `apps/api/src/routes/manga.ts`                       | All manga API routes                  |
+| `apps/api/src/scripts/wikipedia-client.ts`           | Wikipedia API + wikitext parsing      |
+| `apps/api/src/scripts/opensearch-client.ts`          | NC Cardinal API + caching             |
+| `apps/api/src/scripts/google-books-client.ts`        | Google Books fallback                 |
+| `apps/api/src/scripts/manga-search.ts`               | Search orchestrator                   |
+| `packages/shared/src/availability.tsx`               | Shared availability types & utilities |
+| `apps/app/src/entrypoints/web/App.tsx`               | Web entry point                       |
+| `apps/app/src/modules/routing/web/Router.tsx`        | Web router (react-router-dom)         |
+| `apps/app/src/modules/search/web/SearchPage.tsx`     | Search UI                             |
+| `apps/app/src/modules/search/utils/volumeStatus.tsx` | Volume display helpers                |
+| `apps/app/src/modules/series/web/SeriesPage.tsx`     | Series detail UI                      |
+| `apps/app/src/modules/book/web/VolumePage.tsx`       | Volume detail UI                      |
 
 ## Running the Project
 
@@ -628,11 +692,13 @@ rm -rf apps/api/.cache/*
 **CRITICAL**: This is a web + React Native app. Any changes to shared frontend code MUST be tested on BOTH platforms.
 
 ### When to test both platforms
+
 - Any change to `apps/app/src/modules/*/` (shared code)
 - Any change to `apps/app/src/design/` (UI components)
 - Any change to routing, navigation, or screens
 
 ### When single-platform testing is OK
+
 - API-only changes (`apps/api/`)
 - Web-specific changes (`modules/*/web/`)
 - Native-specific changes (`modules/*/native/`)
@@ -640,12 +706,14 @@ rm -rf apps/api/.cache/*
 ### How to test
 
 **Web testing:**
+
 ```bash
 pnpm api    # Terminal 1: Start API
 pnpm app    # Terminal 2: Start web app → http://localhost:3000
 ```
 
 **React Native testing:**
+
 ```bash
 pnpm api    # Terminal 1: Start API (if not already running)
 pnpm native # Terminal 2: Start Metro/Expo JS server (keep running)

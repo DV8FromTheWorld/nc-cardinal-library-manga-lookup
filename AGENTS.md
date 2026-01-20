@@ -12,7 +12,7 @@ NC Cardinal Manga is a web/native app for searching manga series and checking av
 - **API**: Fastify + Zod (port 3001) at `apps/api/`
 - **App**: React + Rspack (port 3000) at `apps/app/` - shared code for web and native
 - **Native**: React Native entry point at `apps/native/` - uses code from `apps/app/`
-- **Shared**: Common types at `packages/shared/`
+- **Shared**: Common types and availability utilities at `packages/shared/`
 
 ## Frontend Architecture (apps/app/)
 
@@ -51,6 +51,7 @@ apps/app/src/
 ### Module Pattern
 
 Each module follows this structure:
+
 - **Root level**: Shared logic (hooks, types, services)
 - **web/ folder**: Web-specific React components
 - **native/ folder**: React Native components
@@ -63,16 +64,17 @@ Each module follows this structure:
 
 ## Key Files
 
-| When working on... | Look at these files |
-|-------------------|---------------------|
-| API routes | `apps/api/src/routes/manga.ts` |
-| Wikipedia parsing | `apps/api/src/scripts/wikipedia-client.ts` |
-| Library availability | `apps/api/src/scripts/opensearch-client.ts` |
-| Search orchestration | `apps/api/src/scripts/manga-search.ts` |
-| Frontend search | `apps/app/src/modules/search/` |
-| Frontend routing | `apps/app/src/modules/routing/` |
-| Full context | `llm-context/PROJECT-CONTEXT.md` |
-| iOS Simulator automation | `llm-context/IOS-SIMULATOR-AUTOMATION.md` |
+| When working on...       | Look at these files                         |
+| ------------------------ | ------------------------------------------- |
+| API routes               | `apps/api/src/routes/manga.ts`              |
+| Wikipedia parsing        | `apps/api/src/scripts/wikipedia-client.ts`  |
+| Library availability     | `apps/api/src/scripts/opensearch-client.ts` |
+| Availability utilities   | `packages/shared/src/availability.tsx`      |
+| Search orchestration     | `apps/api/src/scripts/manga-search.ts`      |
+| Frontend search          | `apps/app/src/modules/search/`              |
+| Frontend routing         | `apps/app/src/modules/routing/`             |
+| Full context             | `llm-context/PROJECT-CONTEXT.md`            |
+| iOS Simulator automation | `llm-context/IOS-SIMULATOR-AUTOMATION.md`   |
 
 ## TypeScript Conventions
 
@@ -101,12 +103,14 @@ Each module follows this structure:
 ## Common Tasks
 
 ### Adding a new data source
+
 1. Create client in `apps/api/src/scripts/{source}-client.ts`
 2. Add caching using the pattern in existing clients
 3. Integrate into `manga-search.ts` orchestrator
 4. Export types from the client file
 
 ### Adding a new frontend feature
+
 1. Create module folder in `apps/app/src/modules/{feature}/`
 2. Add shared logic (hooks, types, services) at module root
 3. Add platform-specific UI in `web/` and `native/` subfolders
@@ -114,6 +118,7 @@ Each module follows this structure:
 5. Wire up in platform-specific routers
 
 ### Fixing volume parsing issues
+
 1. Check Wikipedia wikitext structure (may have changed)
 2. Look at `parseVolumeList()` in `wikipedia-client.ts`
 3. Test with: `pnpm tsx -e "import { getMangaSeries } from './src/scripts/wikipedia-client.ts'; getMangaSeries('SeriesName').then(console.log)"`
@@ -144,11 +149,13 @@ rm -rf apps/api/.cache/*
 **CRITICAL**: This is a web + React Native app. Any frontend changes MUST be tested on BOTH platforms.
 
 ### When to test both platforms
+
 - Any change to `apps/app/src/modules/*/` (shared code)
 - Any change to `apps/app/src/design/` (UI components)
 - Any change to routing, navigation, or screens
 
 ### When single-platform testing is OK
+
 - API-only changes (`apps/api/`)
 - Web-specific changes (`modules/*/web/`)
 - Native-specific changes (`modules/*/native/`)
@@ -195,6 +202,7 @@ For iOS Simulator automation (clicking, screenshots), see `llm-context/IOS-SIMUL
 For automated interaction with the iOS Simulator (clicking buttons, taking screenshots), see `llm-context/IOS-SIMULATOR-AUTOMATION.md`.
 
 Quick reference:
+
 ```bash
 # Check running simulator
 xcrun simctl list devices | grep booted
@@ -220,14 +228,16 @@ cliclick c:615,700
 5. **CORS**: API needs `@fastify/cors` configured for localhost:3000
 6. **Duplicate React**: Monorepo can have multiple React instances - use `resolve.alias` in bundler
 7. **Digital-only books**: Some books exist in NC Cardinal but only as e-books (no physical copies):
-   - Detection: `totalCopies === 0` AND `catalogUrl` exists
+   - Detection: Use `deriveEditionStatus(volume.editions)` returning `'library_digital_only'`
+   - Alternatively check `copyTotals` with all zeros AND `catalogUrl` exists
    - UI: Show "📱 Digital only" on series page, "Digital Only" card with access button on volume page
-   - Don't confuse with "checked out" (which requires `totalCopies > 0`)
-   - See `volumeStatus.tsx` and `VolumePage.tsx` for implementation
+   - Don't confuse with "checked out" (which has `copyTotals.checkedOut > 0`)
+   - See `volumeStatus.tsx`, `VolumePage.tsx`, and `packages/shared/src/availability.tsx` for implementation
 
 ## Git Commits
 
 When making changes:
+
 - **Suggest commits** at logical checkpoints (after completing a feature, fix, or refactor)
 - **Propose the commit message** with a clear, conventional format (e.g., `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`)
 - **Ask for confirmation** before actually creating the commit
