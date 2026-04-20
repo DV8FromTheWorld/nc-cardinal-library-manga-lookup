@@ -8,12 +8,17 @@
 import { and, eq, lt, or, sql } from 'drizzle-orm';
 
 import { db } from '../../db/index.js';
+import type { CacheNamespace } from './constants.js';
 import { cacheEntries } from './db/schema.js';
 
 /**
  * Get a cached value. Returns null if not found or expired.
  */
-export function getCache(namespace: string, key: string, version: number = 1): string | null {
+export function getCache(
+  namespace: CacheNamespace,
+  key: string,
+  version: number = 1
+): string | null {
   const row = db
     .select({ value: cacheEntries.value, expiresAt: cacheEntries.expiresAt })
     .from(cacheEntries)
@@ -39,7 +44,11 @@ export function getCache(namespace: string, key: string, version: number = 1): s
 /**
  * Get a cached value and parse it as JSON.
  */
-export function getCacheJson<T>(namespace: string, key: string, version: number = 1): T | null {
+export function getCacheJson<T>(
+  namespace: CacheNamespace,
+  key: string,
+  version: number = 1
+): T | null {
   const raw = getCache(namespace, key, version);
   if (raw == null) return null;
   return JSON.parse(raw) as T;
@@ -51,7 +60,7 @@ export function getCacheJson<T>(namespace: string, key: string, version: number 
  * @param ttlMs - Time to live in milliseconds. Omit for permanent cache.
  */
 export function setCache(
-  namespace: string,
+  namespace: CacheNamespace,
   key: string,
   value: string,
   version: number = 1,
@@ -82,7 +91,7 @@ export function setCache(
  * Set a cached value as JSON.
  */
 export function setCacheJson<T>(
-  namespace: string,
+  namespace: CacheNamespace,
   key: string,
   value: T,
   version: number = 1,
@@ -94,7 +103,7 @@ export function setCacheJson<T>(
 /**
  * Delete a specific cache entry.
  */
-export function deleteCache(namespace: string, key: string, version: number = 1): boolean {
+export function deleteCache(namespace: CacheNamespace, key: string, version: number = 1): boolean {
   const result = db
     .delete(cacheEntries)
     .where(
@@ -112,7 +121,7 @@ export function deleteCache(namespace: string, key: string, version: number = 1)
 /**
  * Delete all entries in a namespace.
  */
-export function clearNamespace(namespace: string): number {
+export function clearNamespace(namespace: CacheNamespace): number {
   const result = db.delete(cacheEntries).where(eq(cacheEntries.namespace, namespace)).run();
 
   return result.changes;
@@ -121,7 +130,7 @@ export function clearNamespace(namespace: string): number {
 /**
  * Delete entries matching a key prefix within a namespace.
  */
-export function clearByKeyPrefix(namespace: string, keyPrefix: string): number {
+export function clearByKeyPrefix(namespace: CacheNamespace, keyPrefix: string): number {
   const result = db
     .delete(cacheEntries)
     .where(
@@ -188,7 +197,7 @@ export function getStats(): {
  * Used by admin endpoints to clear ISBN-related caches, series caches, etc.
  */
 export function clearByKey(
-  namespaces: string[],
+  namespaces: CacheNamespace[],
   key: string
 ): { deletedCount: number; deletedFiles: string[] } {
   const deleted: string[] = [];
