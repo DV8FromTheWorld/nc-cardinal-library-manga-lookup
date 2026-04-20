@@ -13,6 +13,10 @@
  */
 
 import * as cheerio from 'cheerio';
+import { eq } from 'drizzle-orm';
+
+import { db } from '../db/index.js';
+import { sessions } from '../modules/auth/db/schema.js';
 
 const BASE_URL = process.env.NC_CARDINAL_BASE_URL ?? 'https://nccardinal.org';
 
@@ -75,10 +79,8 @@ export interface LoginResult {
 }
 
 // ============================================================================
-// Session Store (in-memory for now, could be upgraded to Redis)
+// Session Store (backed by sessions DB table)
 // ============================================================================
-
-const sessionStore = new Map<string, PatronSession>();
 
 /**
  * Generate a session ID for our API to track patron sessions
@@ -88,24 +90,57 @@ function generateSessionId(): string {
 }
 
 /**
- * Store a session
+ * Store a session (creates or updates in the DB)
  */
 function storeSession(sessionId: string, session: PatronSession): void {
-  sessionStore.set(sessionId, session);
+  const expiresAt = session.expiresAt != null ? new Date(session.expiresAt) : null;
+
+  db.insert(sessions)
+    .values({
+      id: sessionId,
+      sessionToken: session.sessionToken,
+      loggedIn: session.loggedIn,
+      userId: session.userId ?? null,
+      barcode: session.barcode ?? null,
+      displayName: session.displayName ?? null,
+      expiresAt,
+    })
+    .onConflictDoUpdate({
+      target: sessions.id,
+      set: {
+        sessionToken: session.sessionToken,
+        loggedIn: session.loggedIn,
+        userId: session.userId ?? null,
+        barcode: session.barcode ?? null,
+        displayName: session.displayName ?? null,
+        expiresAt,
+      },
+    })
+    .run();
 }
 
 /**
- * Get a session
+ * Get a session from the DB
  */
 export function getSession(sessionId: string): PatronSession | null {
-  return sessionStore.get(sessionId) ?? null;
+  const row = db.select().from(sessions).where(eq(sessions.id, sessionId)).get();
+  if (row == null) return null;
+
+  return {
+    sessionToken: row.sessionToken,
+    loggedIn: row.loggedIn,
+    userId: row.userId ?? undefined,
+    barcode: row.barcode ?? undefined,
+    displayName: row.displayName ?? undefined,
+    expiresAt: row.expiresAt != null ? row.expiresAt.getTime() : undefined,
+  };
 }
 
 /**
- * Delete a session
+ * Delete a session from the DB
  */
 function deleteSession(sessionId: string): void {
-  sessionStore.delete(sessionId);
+  db.delete(sessions).where(eq(sessions.id, sessionId)).run();
 }
 
 // ============================================================================
