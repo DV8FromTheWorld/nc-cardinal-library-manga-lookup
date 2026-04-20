@@ -17,8 +17,6 @@
  */
 
 import { type CopyTotals } from '@repo/shared';
-import * as fs from 'fs';
-import * as path from 'path';
 
 import {
   createEntitiesFromNCCardinal,
@@ -32,6 +30,8 @@ import {
   type MediaType,
   type Volume as EntityVolume,
 } from '../entities/index.js';
+import { CACHE_NS } from '../modules/cache/constants.js';
+import { getCache, setCache } from '../modules/cache/service.js';
 // DISABLED: Google Books as a data source - relying on Wikipedia only
 // import {
 //   searchMangaVolumes as searchGoogleBooks,
@@ -220,72 +220,45 @@ export interface SeriesDetails {
  * Get cover image URL from various sources
  * Priority: Google Books > Open Library > AniList
  */
-// Cache directory for bookcover API results
-const BOOKCOVER_CACHE_DIR = path.join(process.cwd(), '.cache', 'bookcover');
-
 // Cache TTLs for cover images
 const COVER_CACHE_HIT_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days for successful covers
 const COVER_CACHE_MISS_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours for cache misses
-
-/**
- * Check if a cache file is still valid based on TTL
- * Returns { valid: true, content } if cache is valid
- * Returns { valid: false } if cache is expired or doesn't exist
- */
-function checkCacheWithTTL(cacheFile: string): { valid: true; content: string } | { valid: false } {
-  if (!fs.existsSync(cacheFile)) {
-    return { valid: false };
-  }
-
-  try {
-    const stat = fs.statSync(cacheFile);
-    const content = fs.readFileSync(cacheFile, 'utf-8').trim();
-    const age = Date.now() - stat.mtimeMs;
-
-    // Use different TTLs for hits vs misses
-    const ttl = content !== '' ? COVER_CACHE_HIT_TTL_MS : COVER_CACHE_MISS_TTL_MS;
-
-    if (age > ttl) {
-      // Cache expired - delete and return invalid
-      fs.unlinkSync(cacheFile);
-      return { valid: false };
-    }
-
-    return { valid: true, content };
-  } catch {
-    return { valid: false };
-  }
-}
-
-// Timeout cache directory - separate from main cache so we can use different TTL
-const BOOKCOVER_TIMEOUT_CACHE_DIR = path.join(process.cwd(), '.cache', 'bookcover-timeouts');
-
 // Timeout cache TTL: 1 hour (so we don't keep retrying ISBNs that are slow)
 const TIMEOUT_CACHE_TTL_MS = 60 * 60 * 1000;
+
+/**
+ * Check if a bookcover cache entry exists and hasn't expired.
+ * Empty string = miss (no cover found), non-empty = URL.
+ * Different TTLs for hits vs misses are set at write time in writeCoverCache.
+ */
+function checkCacheWithTTL(isbn: string): { valid: true; content: string } | { valid: false } {
+  const content = getCache(CACHE_NS.BOOKCOVER, isbn);
+  if (content == null) return { valid: false };
+  return { valid: true, content };
+}
 
 /**
  * Check if an ISBN recently timed out (within the last hour)
  */
 function checkTimeoutCache(isbn: string): boolean {
-  const cacheFile = path.join(BOOKCOVER_TIMEOUT_CACHE_DIR, `${isbn}.txt`);
-  try {
-    const stats = fs.statSync(cacheFile);
-    const age = Date.now() - stats.mtimeMs;
-    return age < TIMEOUT_CACHE_TTL_MS;
-  } catch {
-    return false;
-  }
+  return getCache(CACHE_NS.BOOKCOVER_TIMEOUTS, isbn) != null;
 }
 
 /**
  * Mark an ISBN as timed out
  */
 function cacheTimeout(isbn: string): void {
-  if (!fs.existsSync(BOOKCOVER_TIMEOUT_CACHE_DIR)) {
-    fs.mkdirSync(BOOKCOVER_TIMEOUT_CACHE_DIR, { recursive: true });
-  }
-  const cacheFile = path.join(BOOKCOVER_TIMEOUT_CACHE_DIR, `${isbn}.txt`);
-  fs.writeFileSync(cacheFile, 'timeout');
+  setCache(CACHE_NS.BOOKCOVER_TIMEOUTS, isbn, 'timeout', 1, TIMEOUT_CACHE_TTL_MS);
+}
+
+/**
+ * Cache a cover result. Empty string for misses, URL for hits.
+ * Uses different TTLs: 7 days for hits, 24 hours for misses.
+ */
+function writeCoverCache(isbn: string, url: string | null): void {
+  const value = url ?? '';
+  const ttl = value !== '' ? COVER_CACHE_HIT_TTL_MS : COVER_CACHE_MISS_TTL_MS;
+  setCache(CACHE_NS.BOOKCOVER, isbn, value, 1, ttl);
 }
 
 /**
@@ -302,15 +275,8 @@ function cacheTimeout(isbn: string): void {
  * typically come back in <1 second.
  */
 export async function fetchBookcoverUrl(isbn: string): Promise<string | null> {
-  // Ensure cache directory exists
-  if (!fs.existsSync(BOOKCOVER_CACHE_DIR)) {
-    fs.mkdirSync(BOOKCOVER_CACHE_DIR, { recursive: true });
-  }
-
-  const cacheFile = path.join(BOOKCOVER_CACHE_DIR, `${isbn}.txt`);
-
   // Check cache first (with TTL)
-  const cached = checkCacheWithTTL(cacheFile);
+  const cached = checkCacheWithTTL(isbn);
   if (cached.valid) {
     return cached.content !== '' ? cached.content : null;
   }
@@ -333,7 +299,7 @@ export async function fetchBookcoverUrl(isbn: string): Promise<string | null> {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      fs.writeFileSync(cacheFile, ''); // Cache the miss
+      writeCoverCache(isbn, null); // Cache the miss
       return null;
     }
 
@@ -341,7 +307,7 @@ export async function fetchBookcoverUrl(isbn: string): Promise<string | null> {
     const url = data.url ?? null;
 
     // Cache the result (empty string for misses)
-    fs.writeFileSync(cacheFile, url ?? '');
+    writeCoverCache(isbn, url);
     return url;
   } catch {
     // On timeout or error, cache the timeout so we don't keep retrying
@@ -376,8 +342,7 @@ async function fetchBookcoverUrls(isbns: string[]): Promise<Map<string, string>>
 
         activeCount++;
         const t0 = Date.now();
-        const cacheFile = path.join(BOOKCOVER_CACHE_DIR, `${isbn}.txt`);
-        const wasCached = checkCacheWithTTL(cacheFile).valid;
+        const wasCached = checkCacheWithTTL(isbn).valid;
         const wasTimeoutCached = !wasCached && checkTimeoutCache(isbn);
 
         void fetchBookcoverUrl(isbn)
@@ -430,7 +395,17 @@ async function fetchBookcoverUrls(isbns: string[]): Promise<Map<string, string>>
 // Google Books Cover Fetching (with placeholder detection)
 // ============================================================================
 
-const GOOGLE_BOOKS_CACHE_DIR = path.join(process.cwd(), '.cache', 'google-books-covers');
+function checkGoogleCoverCache(isbn: string): { valid: true; content: string } | { valid: false } {
+  const content = getCache(CACHE_NS.GOOGLE_BOOKS_COVERS, isbn);
+  if (content == null) return { valid: false };
+  return { valid: true, content };
+}
+
+function writeGoogleCoverCache(isbn: string, url: string | null): void {
+  const value = url ?? '';
+  const ttl = value !== '' ? COVER_CACHE_HIT_TTL_MS : COVER_CACHE_MISS_TTL_MS;
+  setCache(CACHE_NS.GOOGLE_BOOKS_COVERS, isbn, value, 1, ttl);
+}
 
 /**
  * Fetch cover URL from Google Books API
@@ -444,15 +419,8 @@ const GOOGLE_BOOKS_CACHE_DIR = path.join(process.cwd(), '.cache', 'google-books-
  * when no cover is available. Real covers are always JPEGs.
  */
 export async function fetchGoogleBooksCoverUrl(isbn: string): Promise<string | null> {
-  // Ensure cache directory exists
-  if (!fs.existsSync(GOOGLE_BOOKS_CACHE_DIR)) {
-    fs.mkdirSync(GOOGLE_BOOKS_CACHE_DIR, { recursive: true });
-  }
-
-  const cacheFile = path.join(GOOGLE_BOOKS_CACHE_DIR, `${isbn}.txt`);
-
   // Check cache first (with TTL)
-  const cached = checkCacheWithTTL(cacheFile);
+  const cached = checkGoogleCoverCache(isbn);
   if (cached.valid) {
     return cached.content !== '' ? cached.content : null;
   }
@@ -463,7 +431,7 @@ export async function fetchGoogleBooksCoverUrl(isbn: string): Promise<string | n
       `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`
     );
     if (!searchResponse.ok) {
-      fs.writeFileSync(cacheFile, '');
+      writeGoogleCoverCache(isbn, null);
       return null;
     }
 
@@ -476,7 +444,7 @@ export async function fetchGoogleBooksCoverUrl(isbn: string): Promise<string | n
 
     const book = searchData.items?.[0];
     if (book?.volumeInfo?.imageLinks?.thumbnail == null) {
-      fs.writeFileSync(cacheFile, '');
+      writeGoogleCoverCache(isbn, null);
       return null;
     }
 
@@ -488,7 +456,7 @@ export async function fetchGoogleBooksCoverUrl(isbn: string): Promise<string | n
     const imageResponse = await fetch(imageUrl, { method: 'HEAD' });
 
     if (!imageResponse.ok) {
-      fs.writeFileSync(cacheFile, '');
+      writeGoogleCoverCache(isbn, null);
       return null;
     }
 
@@ -498,13 +466,13 @@ export async function fetchGoogleBooksCoverUrl(isbn: string): Promise<string | n
     // Real covers are always JPEGs
     if (contentType.includes('png')) {
       console.log(`[GoogleBooks] Placeholder detected for ISBN ${isbn} (PNG image)`);
-      fs.writeFileSync(cacheFile, '');
+      writeGoogleCoverCache(isbn, null);
       return null;
     }
 
     // It's a real cover! Return the larger zoom=2 version (HTTPS to avoid mixed content blocking)
     const coverUrl = `https://books.google.com/books/content?id=${book.id}&printsec=frontcover&img=1&zoom=2&source=gbs_api`;
-    fs.writeFileSync(cacheFile, coverUrl);
+    writeGoogleCoverCache(isbn, coverUrl);
     return coverUrl;
   } catch (error) {
     console.error(`[GoogleBooks] Error fetching cover for ISBN ${isbn}:`, error);
@@ -534,8 +502,7 @@ async function fetchGoogleBooksCoverUrls(isbns: string[]): Promise<Map<string, s
 
         activeCount++;
         const t0 = Date.now();
-        const cacheFile = path.join(GOOGLE_BOOKS_CACHE_DIR, `${isbn}.txt`);
-        const wasCached = checkCacheWithTTL(cacheFile).valid;
+        const wasCached = checkGoogleCoverCache(isbn).valid;
 
         void fetchGoogleBooksCoverUrl(isbn)
           .then((url) => {
@@ -1290,7 +1257,7 @@ export async function search(
   if (missingCoverIsbns.length > 0) {
     googleBooksUrls = await fetchGoogleBooksCoverUrls(missingCoverIsbns);
     if (googleBooksUrls.size > 0) {
-      debug.sources.push('google-books-covers');
+      debug.sources.push(CACHE_NS.GOOGLE_BOOKS_COVERS);
       console.log(
         `[MangaSearch] Google Books provided ${googleBooksUrls.size} covers for ISBNs missing from Bookcover`
       );
@@ -1730,7 +1697,7 @@ export async function getSeriesDetails(
   if (missingCoverIsbns.length > 0) {
     googleBooksUrls = await fetchGoogleBooksCoverUrls(missingCoverIsbns);
     if (googleBooksUrls.size > 0) {
-      debug.sources.push('google-books-covers');
+      debug.sources.push(CACHE_NS.GOOGLE_BOOKS_COVERS);
       console.log(
         `[MangaSearch] Google Books provided ${googleBooksUrls.size} covers for ISBNs missing from Bookcover`
       );
@@ -1892,7 +1859,7 @@ async function getSeriesDetailsFromEntity(
       `[Timing] fetchGoogleBooksCoverUrls (${missingCoverIsbns.length} ISBNs): ${Date.now() - t4}ms`
     );
     if (googleBooksUrls.size > 0) {
-      debug.sources.push('google-books-covers');
+      debug.sources.push(CACHE_NS.GOOGLE_BOOKS_COVERS);
     }
   }
 

@@ -12,9 +12,8 @@
  * 3. Checking availability in NC Cardinal
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-
+import { CACHE_NS } from '../modules/cache/constants.js';
+import { getCacheJson, setCacheJson } from '../modules/cache/service.js';
 // Import clients
 import * as anilist from './anilist-client.js';
 import type * as LibraryThingClient from './librarything-client.js';
@@ -87,37 +86,21 @@ export interface VolumeInfo {
 // Cache
 // ============================================================================
 
-const CACHE_DIR = path.join(process.cwd(), '.cache', 'search-service');
-
-function ensureCacheDir(): void {
-  if (!fs.existsSync(CACHE_DIR)) {
-    fs.mkdirSync(CACHE_DIR, { recursive: true });
-  }
-}
-
 function getCacheKey(type: string, query: string): string {
   const sanitized = query.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-  return `${type}_${sanitized}.json`;
+  return `${type}_${sanitized}`;
 }
 
 function loadFromCache<T>(cacheKey: string): T | null {
-  const cachePath = path.join(CACHE_DIR, cacheKey);
-  if (fs.existsSync(cachePath)) {
-    try {
-      const data = fs.readFileSync(cachePath, 'utf-8');
-      console.log(`  📁 Cache hit: ${cacheKey}`);
-      return JSON.parse(data) as T;
-    } catch {
-      return null;
-    }
+  const result = getCacheJson<T>(CACHE_NS.SEARCH_SERVICE, cacheKey);
+  if (result != null) {
+    console.log(`  📁 Cache hit: ${cacheKey}`);
   }
-  return null;
+  return result;
 }
 
 function saveToCache<T>(cacheKey: string, data: T): void {
-  ensureCacheDir();
-  const cachePath = path.join(CACHE_DIR, cacheKey);
-  fs.writeFileSync(cachePath, JSON.stringify(data, null, 2));
+  setCacheJson(CACHE_NS.SEARCH_SERVICE, cacheKey, data);
   console.log(`  💾 Cached: ${cacheKey}`);
 }
 

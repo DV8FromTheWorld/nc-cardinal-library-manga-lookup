@@ -19,6 +19,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { type Browser, chromium, type Page } from 'playwright';
 
+import { CACHE_NS } from '../modules/cache/constants.js';
+import { clearNamespace, getCacheJson, setCacheJson } from '../modules/cache/service.js';
+
 // ============================================================================
 // Configuration
 // ============================================================================
@@ -26,8 +29,6 @@ import { type Browser, chromium, type Page } from 'playwright';
 const BASE_URL = 'https://www.librarything.com';
 const NEWSEARCH_URL = `${BASE_URL}/newsearch.php`;
 
-// Cache settings
-const CACHE_DIR = path.join(process.cwd(), '.cache', 'librarything-browser');
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // Request settings
@@ -59,58 +60,25 @@ export interface LibraryThingSearchResponse {
   scrapedAt: string;
 }
 
-interface CachedResponse {
-  data: LibraryThingSearchResponse;
-  timestamp: number;
-}
-
 // ============================================================================
 // Cache Functions
 // ============================================================================
 
-function ensureCacheDir(): void {
-  if (!fs.existsSync(CACHE_DIR)) {
-    fs.mkdirSync(CACHE_DIR, { recursive: true });
-  }
-}
-
 function getCacheKey(query: string): string {
   const sanitized = query.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-  return `search_${sanitized}.json`;
+  return `search_${sanitized}`;
 }
 
 function loadFromCache(cacheKey: string): LibraryThingSearchResponse | null {
-  const cachePath = path.join(CACHE_DIR, cacheKey);
-
-  if (!fs.existsSync(cachePath)) {
-    return null;
-  }
-
-  try {
-    const data = fs.readFileSync(cachePath, 'utf-8');
-    const cached = JSON.parse(data) as CachedResponse;
-
-    // Check if cache is still valid
-    if (Date.now() - cached.timestamp > CACHE_TTL_MS) {
-      console.log(`  ⏰ Cache expired: ${cacheKey}`);
-      return null;
-    }
-
+  const result = getCacheJson<LibraryThingSearchResponse>(CACHE_NS.LIBRARYTHING_BROWSER, cacheKey);
+  if (result != null) {
     console.log(`  📁 Loaded from cache: ${cacheKey}`);
-    return cached.data;
-  } catch {
-    return null;
   }
+  return result;
 }
 
 function saveToCache(cacheKey: string, data: LibraryThingSearchResponse): void {
-  ensureCacheDir();
-  const cachePath = path.join(CACHE_DIR, cacheKey);
-  const cached: CachedResponse = {
-    data,
-    timestamp: Date.now(),
-  };
-  fs.writeFileSync(cachePath, JSON.stringify(cached, null, 2));
+  setCacheJson(CACHE_NS.LIBRARYTHING_BROWSER, cacheKey, data, 1, CACHE_TTL_MS);
   console.log(`  💾 Saved to cache: ${cacheKey}`);
 }
 
@@ -440,7 +408,7 @@ export async function searchLibraryThing(
     await page.waitForTimeout(1000);
 
     // Debug: Save screenshot and HTML for inspection
-    const debugDir = path.join(CACHE_DIR, 'debug');
+    const debugDir = path.join(process.cwd(), '.cache', 'librarything-browser', 'debug');
     if (!fs.existsSync(debugDir)) {
       fs.mkdirSync(debugDir, { recursive: true });
     }
@@ -556,10 +524,8 @@ export function extractVolumeNumber(title: string): string | null {
  * Clear the cache
  */
 export function clearCache(): void {
-  if (fs.existsSync(CACHE_DIR)) {
-    fs.rmSync(CACHE_DIR, { recursive: true });
-    console.log('🗑️ Cache cleared');
-  }
+  clearNamespace(CACHE_NS.LIBRARYTHING_BROWSER);
+  console.log('🗑️ Cache cleared');
 }
 
 // ============================================================================

@@ -13,49 +13,27 @@
  * is not possible. Use AniList for series metadata instead.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import { CACHE_NS } from '../modules/cache/constants.js';
+import { clearNamespace, getCacheJson, getStats, setCacheJson } from '../modules/cache/service.js';
 
 const TALPA_API_URL = 'https://www.librarything.com/api/talpa.php';
 const API_TOKEN = process.env.LIBRARYTHING_API_KEY ?? '';
 
-// Cache directory for storing API responses
-const CACHE_DIR = path.join(process.cwd(), '.cache', 'talpa');
-
-// Ensure cache directory exists
-function ensureCacheDir() {
-  if (!fs.existsSync(CACHE_DIR)) {
-    fs.mkdirSync(CACHE_DIR, { recursive: true });
-  }
-}
-
-// Generate cache key from query params
 function getCacheKey(query: string, page: number, limit: number): string {
   const sanitized = query.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-  return `${sanitized}_p${page}_l${limit}.json`;
+  return `${sanitized}_p${page}_l${limit}`;
 }
 
-// Load from cache if exists
 function loadFromCache(cacheKey: string): TalpaSearchResult | null {
-  const cachePath = path.join(CACHE_DIR, cacheKey);
-  if (fs.existsSync(cachePath)) {
-    try {
-      const data = fs.readFileSync(cachePath, 'utf-8');
-      const cached = JSON.parse(data) as TalpaSearchResult;
-      console.log(`  📁 Loaded from cache: ${cacheKey}`);
-      return cached;
-    } catch {
-      return null;
-    }
+  const result = getCacheJson<TalpaSearchResult>(CACHE_NS.TALPA, cacheKey);
+  if (result != null) {
+    console.log(`  📁 Loaded from cache: ${cacheKey}`);
   }
-  return null;
+  return result;
 }
 
-// Save to cache
 function saveToCache(cacheKey: string, data: TalpaSearchResult): void {
-  ensureCacheDir();
-  const cachePath = path.join(CACHE_DIR, cacheKey);
-  fs.writeFileSync(cachePath, JSON.stringify(data, null, 2));
+  setCacheJson(CACHE_NS.TALPA, cacheKey, data);
   console.log(`  💾 Saved to cache: ${cacheKey}`);
 }
 
@@ -170,20 +148,15 @@ export async function searchTalpa(
  * Clear the local cache
  */
 export function clearCache(): void {
-  if (fs.existsSync(CACHE_DIR)) {
-    fs.rmSync(CACHE_DIR, { recursive: true });
-    console.log('Cache cleared');
-  }
+  clearNamespace(CACHE_NS.TALPA);
+  console.log('Cache cleared');
 }
 
-/**
- * List cached queries
- */
 export function listCache(): string[] {
-  if (!fs.existsSync(CACHE_DIR)) {
-    return [];
-  }
-  return fs.readdirSync(CACHE_DIR).filter((f) => f.endsWith('.json'));
+  const stats = getStats();
+  const talpa = stats.caches.find((c) => c.type === CACHE_NS.TALPA);
+  if (talpa == null) return [];
+  return [`${talpa.entryCount} cached entries`];
 }
 
 /**

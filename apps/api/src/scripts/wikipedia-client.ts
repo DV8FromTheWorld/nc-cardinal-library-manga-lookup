@@ -7,21 +7,15 @@
  * - Parses {{Graphic novel list}} templates for structured volume data
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import { CACHE_NS } from '../modules/cache/constants.js';
+import { getCacheJson, setCacheJson } from '../modules/cache/service.js';
 
 const WIKIPEDIA_API = 'https://en.wikipedia.org/w/api.php';
-const CACHE_DIR = path.join(process.cwd(), '.cache', 'wikipedia');
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // Parser version - increment when making changes to parsing logic
 // This invalidates parsed series cache while preserving raw wikitext cache
 const PARSER_VERSION = 4;
-
-// Ensure cache directory exists
-if (!fs.existsSync(CACHE_DIR)) {
-  fs.mkdirSync(CACHE_DIR, { recursive: true });
-}
 
 // Rate limiting configuration
 const RATE_LIMIT_DELAY_MS = 500; // Minimum delay between requests
@@ -147,43 +141,29 @@ function getCacheKey(type: string, query: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .slice(0, 100);
-  return `${type}_${sanitized}.json`;
+  return `${type}_${sanitized}`;
 }
 
 /**
  * Get a versioned cache key for parsed results.
  * When PARSER_VERSION changes, old parsed caches become stale
  * while raw wikitext caches (page_title_*) remain valid.
+ * The version is passed to the cache service as the `version` column.
  */
 function getVersionedCacheKey(type: string, query: string): string {
   const sanitized = query
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .slice(0, 100);
-  return `${type}_v${PARSER_VERSION}_${sanitized}.json`;
+  return `${type}_${sanitized}`;
 }
 
-function readCache<T>(cacheKey: string): T | null {
-  const cachePath = path.join(CACHE_DIR, cacheKey);
-  try {
-    if (!fs.existsSync(cachePath)) return null;
-
-    const stat = fs.statSync(cachePath);
-    if (Date.now() - stat.mtimeMs > CACHE_TTL_MS) {
-      fs.unlinkSync(cachePath);
-      return null;
-    }
-
-    const data = fs.readFileSync(cachePath, 'utf-8');
-    return JSON.parse(data) as T;
-  } catch {
-    return null;
-  }
+function readCache<T>(cacheKey: string, version: number = 1): T | null {
+  return getCacheJson<T>(CACHE_NS.WIKIPEDIA, cacheKey, version);
 }
 
-function writeCache<T>(cacheKey: string, data: T): void {
-  const cachePath = path.join(CACHE_DIR, cacheKey);
-  fs.writeFileSync(cachePath, JSON.stringify(data, null, 2));
+function writeCache<T>(cacheKey: string, data: T, version: number = 1): void {
+  setCacheJson(CACHE_NS.WIKIPEDIA, cacheKey, data, version, CACHE_TTL_MS);
 }
 
 // ============================================================================
@@ -894,7 +874,7 @@ function extractAuthor(wikitext: string): string | undefined {
 export async function getSeries(query: string): Promise<WikiSeries | null> {
   // Use versioned cache key so parsing changes invalidate old cached results
   const cacheKey = getVersionedCacheKey('series', query);
-  const cached = readCache<WikiSeries>(cacheKey);
+  const cached = readCache<WikiSeries>(cacheKey, PARSER_VERSION);
   if (cached) {
     console.log(`[Wikipedia] Cache hit for series: "${query}" (parser v${PARSER_VERSION})`);
     return cached;
@@ -1326,7 +1306,7 @@ export async function getSeries(query: string): Promise<WikiSeries | null> {
       relatedSeries: relatedSeries.length > 0 ? relatedSeries : undefined,
     };
 
-    writeCache(cacheKey, series);
+    writeCache(cacheKey, series, PARSER_VERSION);
     return series;
   }
 
@@ -1345,7 +1325,7 @@ export async function getSeries(query: string): Promise<WikiSeries | null> {
     relatedSeries: relatedSeries.length > 0 ? relatedSeries : undefined,
   };
 
-  writeCache(cacheKey, series);
+  writeCache(cacheKey, series, PARSER_VERSION);
   return series;
 }
 
@@ -1356,7 +1336,7 @@ export async function getSeries(query: string): Promise<WikiSeries | null> {
 export async function getAllSeriesFromPage(query: string): Promise<WikiSeries[]> {
   // Use versioned cache key so parsing changes invalidate old cached results
   const cacheKey = getVersionedCacheKey('all_series', query);
-  const cached = readCache<WikiSeries[]>(cacheKey);
+  const cached = readCache<WikiSeries[]>(cacheKey, PARSER_VERSION);
   if (cached) {
     return cached;
   }
@@ -1467,7 +1447,7 @@ export async function getAllSeriesFromPage(query: string): Promise<WikiSeries[]>
     return [mainSeries];
   }
 
-  writeCache(cacheKey, allSeries);
+  writeCache(cacheKey, allSeries, PARSER_VERSION);
   return allSeries;
 }
 

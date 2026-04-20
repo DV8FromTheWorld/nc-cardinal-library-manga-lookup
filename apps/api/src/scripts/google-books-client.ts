@@ -11,17 +11,11 @@
  * This client uses the public endpoint for volume lookups.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import { CACHE_NS } from '../modules/cache/constants.js';
+import { getCacheJson, setCacheJson } from '../modules/cache/service.js';
 
 const GOOGLE_BOOKS_API = 'https://www.googleapis.com/books/v1/volumes';
-const CACHE_DIR = path.join(process.cwd(), '.cache', 'google-books');
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-
-// Ensure cache directory exists
-if (!fs.existsSync(CACHE_DIR)) {
-  fs.mkdirSync(CACHE_DIR, { recursive: true });
-}
 
 // ============================================================================
 // Types
@@ -95,30 +89,15 @@ function getCacheKey(query: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .slice(0, 100);
-  return `search_${sanitized}.json`;
+  return `search_${sanitized}`;
 }
 
 function readCache<T>(cacheKey: string): T | null {
-  const cachePath = path.join(CACHE_DIR, cacheKey);
-  try {
-    if (!fs.existsSync(cachePath)) return null;
-
-    const stat = fs.statSync(cachePath);
-    if (Date.now() - stat.mtimeMs > CACHE_TTL_MS) {
-      fs.unlinkSync(cachePath);
-      return null;
-    }
-
-    const data = fs.readFileSync(cachePath, 'utf-8');
-    return JSON.parse(data) as T;
-  } catch {
-    return null;
-  }
+  return getCacheJson<T>(CACHE_NS.GOOGLE_BOOKS, cacheKey);
 }
 
 function writeCache<T>(cacheKey: string, data: T): void {
-  const cachePath = path.join(CACHE_DIR, cacheKey);
-  fs.writeFileSync(cachePath, JSON.stringify(data, null, 2));
+  setCacheJson(CACHE_NS.GOOGLE_BOOKS, cacheKey, data, 1, CACHE_TTL_MS);
 }
 
 // ============================================================================

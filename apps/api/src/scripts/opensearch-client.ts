@@ -15,8 +15,9 @@
 
 import { type CopyStatusCategory } from '@repo/shared';
 import * as cheerio from 'cheerio';
-import * as fs from 'fs';
-import * as path from 'path';
+
+import { CACHE_NS } from '../modules/cache/constants.js';
+import { getCache, getCacheJson, setCache, setCacheJson } from '../modules/cache/service.js';
 
 const BASE_URL = process.env.NC_CARDINAL_BASE_URL ?? 'https://highpoint.nccardinal.org';
 
@@ -26,66 +27,30 @@ const BASE_URL = process.env.NC_CARDINAL_BASE_URL ?? 'https://highpoint.nccardin
 // 2. RecordID -> Full CatalogRecord (short-lived, availability changes)
 // ============================================================================
 
-const CACHE_DIR = path.join(process.cwd(), '.cache', 'nc-cardinal');
-const ISBN_MAP_DIR = path.join(CACHE_DIR, 'isbn-map'); // ISBN -> RecordID (permanent)
-const RECORD_CACHE_DIR = path.join(CACHE_DIR, 'records'); // RecordID -> Full record (1 hour)
-const SEARCH_CACHE_DIR = path.join(CACHE_DIR, 'searches'); // Search query -> Results (1 hour)
-
 const RECORD_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour (availability changes frequently)
 const SEARCH_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-
-// Ensure cache directories exist
-for (const dir of [ISBN_MAP_DIR, RECORD_CACHE_DIR, SEARCH_CACHE_DIR]) {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-}
 
 // --- ISBN -> RecordID mapping (permanent cache) ---
 
 function readISBNToRecordId(isbn: string): string | null {
   const clean = isbn.replace(/[-\s]/g, '');
-  const cachePath = path.join(ISBN_MAP_DIR, `${clean}.txt`);
-
-  try {
-    if (!fs.existsSync(cachePath)) return null;
-    return fs.readFileSync(cachePath, 'utf-8').trim();
-  } catch {
-    return null;
-  }
+  return getCache(CACHE_NS.NC_CARDINAL_ISBN_MAP, clean);
 }
 
 function writeISBNToRecordId(isbn: string, recordId: string): void {
   const clean = isbn.replace(/[-\s]/g, '');
-  const cachePath = path.join(ISBN_MAP_DIR, `${clean}.txt`);
-  fs.writeFileSync(cachePath, recordId);
+  setCache(CACHE_NS.NC_CARDINAL_ISBN_MAP, clean, recordId);
 }
 
 // --- RecordID -> Full CatalogRecord (TTL cache) ---
 
 function readRecordCache(recordId: string): CatalogRecord | null | 'miss' {
-  const cachePath = path.join(RECORD_CACHE_DIR, `${recordId}.json`);
-
-  try {
-    if (!fs.existsSync(cachePath)) return 'miss';
-
-    const stat = fs.statSync(cachePath);
-    if (Date.now() - stat.mtimeMs > RECORD_CACHE_TTL_MS) {
-      // Expired - delete and return miss
-      fs.unlinkSync(cachePath);
-      return 'miss';
-    }
-
-    const data = fs.readFileSync(cachePath, 'utf-8');
-    return JSON.parse(data) as CatalogRecord;
-  } catch {
-    return 'miss';
-  }
+  const result = getCacheJson<CatalogRecord>(CACHE_NS.NC_CARDINAL_RECORDS, recordId);
+  return result ?? 'miss';
 }
 
 function writeRecordCache(record: CatalogRecord): void {
-  const cachePath = path.join(RECORD_CACHE_DIR, `${record.id}.json`);
-  fs.writeFileSync(cachePath, JSON.stringify(record, null, 2));
+  setCacheJson(CACHE_NS.NC_CARDINAL_RECORDS, record.id, record, 1, RECORD_CACHE_TTL_MS);
 }
 
 // --- Search query -> Results (TTL cache) ---
@@ -95,32 +60,15 @@ function getSearchCacheKey(query: string, searchClass: string, count: number): s
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .slice(0, 80);
-  return `${searchClass}_${sanitized}_${count}.json`;
+  return `${searchClass}_${sanitized}_${count}`;
 }
 
 function readSearchCache(cacheKey: string): OpenSearchResult | null {
-  const cachePath = path.join(SEARCH_CACHE_DIR, cacheKey);
-
-  try {
-    if (!fs.existsSync(cachePath)) return null;
-
-    const stat = fs.statSync(cachePath);
-    if (Date.now() - stat.mtimeMs > SEARCH_CACHE_TTL_MS) {
-      // Expired - delete and return null
-      fs.unlinkSync(cachePath);
-      return null;
-    }
-
-    const data = fs.readFileSync(cachePath, 'utf-8');
-    return JSON.parse(data) as OpenSearchResult;
-  } catch {
-    return null;
-  }
+  return getCacheJson<OpenSearchResult>(CACHE_NS.NC_CARDINAL_SEARCHES, cacheKey);
 }
 
 function writeSearchCache(cacheKey: string, result: OpenSearchResult): void {
-  const cachePath = path.join(SEARCH_CACHE_DIR, cacheKey);
-  fs.writeFileSync(cachePath, JSON.stringify(result, null, 2));
+  setCacheJson(CACHE_NS.NC_CARDINAL_SEARCHES, cacheKey, result, 1, SEARCH_CACHE_TTL_MS);
 }
 
 // --- Direct fetch by record ID using SuperCat (faster than search) ---

@@ -13,13 +13,10 @@
  * - No authentication required for public data
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import { CACHE_NS } from '../modules/cache/constants.js';
+import { getCacheJson, setCacheJson } from '../modules/cache/service.js';
 
 const ANILIST_API_URL = 'https://graphql.anilist.co';
-
-// Cache directory
-const CACHE_DIR = path.join(process.cwd(), '.cache', 'anilist');
 
 // ============================================================================
 // Types
@@ -119,34 +116,20 @@ export interface SuggestionItem {
 // Cache Functions
 // ============================================================================
 
-function ensureCacheDir(): void {
-  if (!fs.existsSync(CACHE_DIR)) {
-    fs.mkdirSync(CACHE_DIR, { recursive: true });
-  }
-}
-
 function getCacheKey(type: string, id: string): string {
-  return `${type}_${id.toLowerCase().replace(/[^a-z0-9]+/g, '_')}.json`;
+  return `${type}_${id.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
 }
 
 function loadFromCache<T>(cacheKey: string): T | null {
-  const cachePath = path.join(CACHE_DIR, cacheKey);
-  if (fs.existsSync(cachePath)) {
-    try {
-      const data = fs.readFileSync(cachePath, 'utf-8');
-      console.log(`  📁 Loaded from cache: ${cacheKey}`);
-      return JSON.parse(data) as T;
-    } catch {
-      return null;
-    }
+  const result = getCacheJson<T>(CACHE_NS.ANILIST, cacheKey);
+  if (result != null) {
+    console.log(`  📁 Loaded from cache: ${cacheKey}`);
   }
-  return null;
+  return result;
 }
 
 function saveToCache<T>(cacheKey: string, data: T): void {
-  ensureCacheDir();
-  const cachePath = path.join(CACHE_DIR, cacheKey);
-  fs.writeFileSync(cachePath, JSON.stringify(data, null, 2));
+  setCacheJson(CACHE_NS.ANILIST, cacheKey, data);
   console.log(`  💾 Saved to cache: ${cacheKey}`);
 }
 
