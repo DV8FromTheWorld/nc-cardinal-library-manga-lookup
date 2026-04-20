@@ -10,6 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
     "script:opensearch": "tsx src/scripts/opensearch-client.ts",
     "script:evergreen": "tsx src/scripts/evergreen-client.ts",
     "script:librarything": "tsx src/scripts/librarything-client.ts",
@@ -28,14 +31,18 @@
   "dependencies": {
     "@fastify/cors": "^11.2.0",
     "@repo/shared": "workspace:*",
+    "better-sqlite3": "^12.9.0",
     "cheerio": "^1",
+    "drizzle-orm": "^0.45.2",
     "fastify": "^5",
     "fastify-type-provider-zod": "^4",
     "nanoid": "^5.1.6",
     "zod": "^3"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22",
+    "drizzle-kit": "^0.31.10",
     "playwright": "^1.57.0",
     "tsx": "^4",
     "typescript": "^5",
