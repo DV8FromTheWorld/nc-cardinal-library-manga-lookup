@@ -1,36 +1,24 @@
 /**
- * Entity store - persists entities to a JSON file
+ * Entity store - persists entities to the database via Drizzle
+ *
+ * This module provides the data access layer for series, volumes, and editions.
+ * It translates between the DB schema (relational, normalized) and the API-layer
+ * types (denormalized, with embedded ID arrays like volumeIds/editionIds).
  */
 
-import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
+import { and, eq, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
+import { db } from '../db/index.js';
+import { editions, editionVolumes } from '../modules/editions/db/schema.js';
+import {
+  series,
+  seriesExternalIds,
+  seriesRelations,
+  titleIndex,
+} from '../modules/series/db/schema.js';
+import { volumes } from '../modules/volumes/db/schema.js';
 import type { Edition, EntityStore, Series, Volume } from './types.js';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = join(__dirname, '../../.data');
-const STORE_PATH = join(DATA_DIR, 'entities.json');
-
-// In-memory cache of the store
-let storeCache: EntityStore | null = null;
-
-/**
- * Create an empty store structure
- */
-function createEmptyStore(): EntityStore {
-  return {
-    series: {},
-    volumes: {},
-    editions: {},
-    isbnIndex: {},
-    wikipediaIndex: {},
-    titleIndex: {},
-  };
-}
 
 /**
  * Normalize a title for index lookup.
@@ -59,88 +47,106 @@ export function generateEditionId(): string {
   return `e_${nanoid(10)}`;
 }
 
+// ============================================================================
+// Internal helpers: reconstruct API types from DB rows
+// ============================================================================
+
 /**
- * Load the entity store from disk
+ * Reconstruct a Series API object from DB rows.
+ * Fetches external IDs, volume IDs, and related series IDs.
  */
-export async function loadStore(): Promise<EntityStore> {
-  if (storeCache) {
-    return storeCache;
+function reconstructSeries(row: typeof series.$inferSelect): Series {
+  // Get external IDs for this series
+  const extIds = db
+    .select({ source: seriesExternalIds.source, externalId: seriesExternalIds.externalId })
+    .from(seriesExternalIds)
+    .where(eq(seriesExternalIds.seriesId, row.id))
+    .all();
+
+  const externalIds: Series['externalIds'] = {};
+  for (const ext of extIds) {
+    if (ext.source === 'wikipedia') externalIds.wikipedia = Number(ext.externalId);
+    if (ext.source === 'myanimelist') externalIds.myanimelist = Number(ext.externalId);
+    if (ext.source === 'anilist') externalIds.anilist = Number(ext.externalId);
   }
 
-  try {
-    if (!existsSync(STORE_PATH)) {
-      storeCache = createEmptyStore();
-      return storeCache;
-    }
+  // Get ordered volume IDs
+  const volumeRows = db
+    .select({ id: volumes.id })
+    .from(volumes)
+    .where(eq(volumes.seriesId, row.id))
+    .orderBy(volumes.sortOrder)
+    .all();
 
-    const data = await readFile(STORE_PATH, 'utf-8');
-    const loaded = JSON.parse(data) as Record<string, unknown>;
+  // Get related series IDs
+  const relatedRows = db
+    .select({ relatedSeriesId: seriesRelations.relatedSeriesId })
+    .from(seriesRelations)
+    .where(eq(seriesRelations.seriesId, row.id))
+    .all();
 
-    // Check for old book-based store format and start fresh if detected
-    if ('books' in loaded && !('volumes' in loaded)) {
-      console.warn(
-        '[EntityStore] Old book-based store detected. Starting fresh with volume-based store.'
-      );
-      console.warn('[EntityStore] Delete .data/entities.json to clear this warning.');
-      storeCache = createEmptyStore();
-      return storeCache;
-    }
-
-    // Check for old embedded-editions format (volumes have 'editions' array instead of 'editionIds')
-    // If so, start fresh - the new format uses Edition entities
-    const sampleVolume = Object.values(loaded.volumes ?? {})[0] as
-      | Record<string, unknown>
-      | undefined;
-    if (sampleVolume && 'editions' in sampleVolume && !('editionIds' in sampleVolume)) {
-      console.warn(
-        '[EntityStore] Old embedded-editions format detected. Starting fresh with Edition entities.'
-      );
-      console.warn('[EntityStore] Delete .data/entities.json to clear this warning.');
-      storeCache = createEmptyStore();
-      return storeCache;
-    }
-
-    // Validate that loaded data has the required structure
-    if (loaded.series == null || loaded.volumes == null) {
-      console.warn('[EntityStore] Invalid store format detected. Starting fresh.');
-      storeCache = createEmptyStore();
-      return storeCache;
-    }
-
-    storeCache = loaded as unknown as EntityStore;
-
-    // Ensure all required fields exist (backwards compatibility)
-    storeCache.volumes = storeCache.volumes ?? {};
-    storeCache.editions = storeCache.editions ?? {};
-    storeCache.isbnIndex = storeCache.isbnIndex ?? {};
-
-    return storeCache;
-  } catch (error) {
-    console.error('[EntityStore] Failed to load store, creating empty:', error);
-    storeCache = createEmptyStore();
-    return storeCache;
-  }
+  return {
+    id: row.id,
+    title: row.title,
+    mediaType: row.mediaType as Series['mediaType'],
+    externalIds,
+    volumeIds: volumeRows.map((v) => v.id),
+    author: row.author ?? undefined,
+    artist: row.artist ?? undefined,
+    status: (row.status as Series['status']) ?? 'unknown',
+    relatedSeriesIds:
+      relatedRows.length > 0 ? relatedRows.map((r) => r.relatedSeriesId) : undefined,
+    parentSeriesId: row.parentSeriesId ?? undefined,
+    relationship: (row.relationship as Series['relationship']) ?? undefined,
+    description: row.description ?? undefined,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
 }
 
 /**
- * Save the entity store to disk
+ * Reconstruct a Volume API object from a DB row.
+ * Fetches edition IDs from the join table.
  */
-export async function saveStore(): Promise<void> {
-  if (!storeCache) {
-    return;
-  }
+function reconstructVolume(row: typeof volumes.$inferSelect): Volume {
+  const editionRows = db
+    .select({ editionId: editionVolumes.editionId })
+    .from(editionVolumes)
+    .where(eq(editionVolumes.volumeId, row.id))
+    .all();
 
-  try {
-    // Ensure directory exists
-    if (!existsSync(DATA_DIR)) {
-      await mkdir(DATA_DIR, { recursive: true });
-    }
+  return {
+    id: row.id,
+    seriesId: row.seriesId,
+    volumeNumber: row.volumeNumber,
+    title: row.title ?? undefined,
+    editionIds: editionRows.map((e) => e.editionId),
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
 
-    await writeFile(STORE_PATH, JSON.stringify(storeCache, null, 2), 'utf-8');
-  } catch (error) {
-    console.error('[EntityStore] Failed to save store:', error);
-    throw error;
-  }
+/**
+ * Reconstruct an Edition API object from a DB row.
+ * Fetches volume IDs from the join table.
+ */
+function reconstructEdition(row: typeof editions.$inferSelect): Edition {
+  const volumeRows = db
+    .select({ volumeId: editionVolumes.volumeId })
+    .from(editionVolumes)
+    .where(eq(editionVolumes.editionId, row.id))
+    .all();
+
+  return {
+    id: row.id,
+    isbn: row.isbn,
+    format: row.format as Edition['format'],
+    language: row.language as Edition['language'],
+    volumeIds: volumeRows.map((v) => v.volumeId),
+    releaseDate: row.releaseDate ?? undefined,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
 }
 
 // ============================================================================
@@ -151,51 +157,147 @@ export async function saveStore(): Promise<void> {
  * Get a series by ID
  */
 export async function getSeriesById(id: string): Promise<Series | null> {
-  const store = await loadStore();
-  return store.series[id] ?? null;
+  const row = db.select().from(series).where(eq(series.id, id)).get();
+  if (row == null) return null;
+  return reconstructSeries(row);
 }
 
 /**
  * Get a series by Wikipedia page ID
  */
 export async function getSeriesByWikipediaId(wikipediaId: number): Promise<Series | null> {
-  const store = await loadStore();
-  const seriesId = store.wikipediaIndex[wikipediaId];
-  if (seriesId == null) {
-    return null;
-  }
-  return store.series[seriesId] ?? null;
+  const extRow = db
+    .select({ seriesId: seriesExternalIds.seriesId })
+    .from(seriesExternalIds)
+    .where(
+      and(
+        eq(seriesExternalIds.source, 'wikipedia'),
+        eq(seriesExternalIds.externalId, String(wikipediaId))
+      )
+    )
+    .get();
+
+  if (extRow == null) return null;
+  return getSeriesById(extRow.seriesId);
 }
 
 /**
  * Get a series by title (normalized lookup)
  */
 export async function getSeriesByTitle(title: string): Promise<Series | null> {
-  const store = await loadStore();
   const normalized = normalizeTitle(title);
-  const seriesId = store.titleIndex[normalized];
-  if (seriesId == null) {
-    return null;
-  }
-  return store.series[seriesId] ?? null;
+  const indexRow = db
+    .select({ seriesId: titleIndex.seriesId })
+    .from(titleIndex)
+    .where(eq(titleIndex.normalizedTitle, normalized))
+    .get();
+
+  if (indexRow == null) return null;
+  return getSeriesById(indexRow.seriesId);
 }
 
 /**
- * Save a series (creates or updates)
+ * Save a series (creates or updates).
+ * Also updates title index and external ID indexes.
  */
-export async function saveSeries(series: Series): Promise<void> {
-  const store = await loadStore();
+export async function saveSeries(s: Series): Promise<void> {
+  const now = new Date().toISOString();
 
-  store.series[series.id] = series;
+  // Upsert the series row
+  db.insert(series)
+    .values({
+      id: s.id,
+      title: s.title,
+      mediaType: s.mediaType,
+      author: s.author ?? null,
+      artist: s.artist ?? null,
+      status: s.status,
+      description: s.description ?? null,
+      parentSeriesId: s.parentSeriesId ?? null,
+      relationship: s.relationship ?? null,
+      createdAt: s.createdAt,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: series.id,
+      set: {
+        title: s.title,
+        mediaType: s.mediaType,
+        author: s.author ?? null,
+        artist: s.artist ?? null,
+        status: s.status,
+        description: s.description ?? null,
+        parentSeriesId: s.parentSeriesId ?? null,
+        relationship: s.relationship ?? null,
+        updatedAt: now,
+      },
+    })
+    .run();
 
-  // Update indexes
-  store.titleIndex[normalizeTitle(series.title)] = series.id;
+  // Update title index
+  db.insert(titleIndex)
+    .values({
+      normalizedTitle: normalizeTitle(s.title),
+      seriesId: s.id,
+    })
+    .onConflictDoUpdate({
+      target: titleIndex.normalizedTitle,
+      set: { seriesId: s.id },
+    })
+    .run();
 
-  if (series.externalIds.wikipedia != null) {
-    store.wikipediaIndex[series.externalIds.wikipedia] = series.id;
+  // Update external IDs
+  if (s.externalIds.wikipedia != null) {
+    db.insert(seriesExternalIds)
+      .values({
+        seriesId: s.id,
+        source: 'wikipedia',
+        externalId: String(s.externalIds.wikipedia),
+      })
+      .onConflictDoUpdate({
+        target: [seriesExternalIds.seriesId, seriesExternalIds.source],
+        set: { externalId: String(s.externalIds.wikipedia) },
+      })
+      .run();
   }
 
-  await saveStore();
+  if (s.externalIds.anilist != null) {
+    db.insert(seriesExternalIds)
+      .values({
+        seriesId: s.id,
+        source: 'anilist',
+        externalId: String(s.externalIds.anilist),
+      })
+      .onConflictDoUpdate({
+        target: [seriesExternalIds.seriesId, seriesExternalIds.source],
+        set: { externalId: String(s.externalIds.anilist) },
+      })
+      .run();
+  }
+
+  if (s.externalIds.myanimelist != null) {
+    db.insert(seriesExternalIds)
+      .values({
+        seriesId: s.id,
+        source: 'myanimelist',
+        externalId: String(s.externalIds.myanimelist),
+      })
+      .onConflictDoUpdate({
+        target: [seriesExternalIds.seriesId, seriesExternalIds.source],
+        set: { externalId: String(s.externalIds.myanimelist) },
+      })
+      .run();
+  }
+
+  // Update related series
+  if (s.relatedSeriesIds != null && s.relatedSeriesIds.length > 0) {
+    for (const relatedId of s.relatedSeriesIds) {
+      db.insert(seriesRelations)
+        .values({ seriesId: s.id, relatedSeriesId: relatedId })
+        .onConflictDoNothing()
+        .run();
+    }
+  }
 }
 
 // ============================================================================
@@ -206,8 +308,9 @@ export async function saveSeries(series: Series): Promise<void> {
  * Get a volume by its ID
  */
 export async function getVolumeById(id: string): Promise<Volume | null> {
-  const store = await loadStore();
-  return store.volumes[id] ?? null;
+  const row = db.select().from(volumes).where(eq(volumes.id, id)).get();
+  if (row == null) return null;
+  return reconstructVolume(row);
 }
 
 /**
@@ -217,76 +320,113 @@ export async function getVolumeBySeriesAndNumber(
   seriesId: string,
   volumeNumber: number
 ): Promise<Volume | null> {
-  const store = await loadStore();
-  const series = store.series[seriesId];
+  const row = db
+    .select()
+    .from(volumes)
+    .where(and(eq(volumes.seriesId, seriesId), eq(volumes.volumeNumber, volumeNumber)))
+    .get();
 
-  if (!series) {
-    return null;
-  }
-
-  for (const volumeId of series.volumeIds) {
-    const volume = store.volumes[volumeId];
-    if (volume?.volumeNumber === volumeNumber) {
-      return volume;
-    }
-  }
-
-  return null;
+  if (row == null) return null;
+  return reconstructVolume(row);
 }
 
 /**
- * Get all volumes for a series
+ * Get all volumes for a series, ordered by sort order
  */
 export async function getVolumesBySeriesId(seriesId: string): Promise<Volume[]> {
-  const store = await loadStore();
-  const series = store.series[seriesId];
+  const rows = db
+    .select()
+    .from(volumes)
+    .where(eq(volumes.seriesId, seriesId))
+    .orderBy(volumes.sortOrder)
+    .all();
 
-  if (!series) {
-    return [];
-  }
-
-  // Return volumes in order from volumeIds
-  return series.volumeIds
-    .map((id) => store.volumes[id])
-    .filter((volume): volume is Volume => volume !== undefined);
+  return rows.map(reconstructVolume);
 }
 
 /**
- * Save a volume (no longer updates ISBN index - that's handled by editions now)
+ * Save a volume (creates or updates)
  */
 export async function saveVolume(volume: Volume): Promise<void> {
-  const store = await loadStore();
-  store.volumes[volume.id] = volume;
-  await saveStore();
-}
+  const now = new Date().toISOString();
 
-/**
- * Save multiple volumes at once (more efficient)
- */
-export async function saveVolumes(volumes: Volume[]): Promise<void> {
-  const store = await loadStore();
-  for (const volume of volumes) {
-    store.volumes[volume.id] = volume;
+  // Determine sort order: use volumeNumber as default
+  const existingRow = db
+    .select({ sortOrder: volumes.sortOrder })
+    .from(volumes)
+    .where(eq(volumes.id, volume.id))
+    .get();
+  const sortOrder = existingRow?.sortOrder ?? volume.volumeNumber;
+
+  db.insert(volumes)
+    .values({
+      id: volume.id,
+      seriesId: volume.seriesId,
+      volumeNumber: volume.volumeNumber,
+      title: volume.title ?? null,
+      sortOrder,
+      createdAt: volume.createdAt,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: volumes.id,
+      set: {
+        seriesId: volume.seriesId,
+        volumeNumber: volume.volumeNumber,
+        title: volume.title ?? null,
+        updatedAt: now,
+      },
+    })
+    .run();
+
+  // Sync edition links from the volume's editionIds array
+  if (volume.editionIds.length > 0) {
+    for (const editionId of volume.editionIds) {
+      db.insert(editionVolumes)
+        .values({ editionId, volumeId: volume.id })
+        .onConflictDoNothing()
+        .run();
+    }
   }
-  await saveStore();
 }
 
 /**
- * Add a volume to a series (updates volumeIds)
+ * Save multiple volumes at once
+ */
+export async function saveVolumes(vols: Volume[]): Promise<void> {
+  for (const volume of vols) {
+    await saveVolume(volume);
+  }
+}
+
+/**
+ * Add a volume to a series (updates the volume's seriesId and series updatedAt)
  */
 export async function addVolumeToSeries(seriesId: string, volumeId: string): Promise<void> {
-  const store = await loadStore();
-  const series = store.series[seriesId];
-
-  if (!series) {
+  const seriesRow = db.select().from(series).where(eq(series.id, seriesId)).get();
+  if (seriesRow == null) {
     throw new Error(`Series not found: ${seriesId}`);
   }
 
-  if (!series.volumeIds.includes(volumeId)) {
-    series.volumeIds.push(volumeId);
-    series.updatedAt = new Date().toISOString();
-    await saveStore();
+  // Verify volume exists
+  const volumeRow = db.select().from(volumes).where(eq(volumes.id, volumeId)).get();
+  if (volumeRow == null) {
+    throw new Error(`Volume not found: ${volumeId}`);
   }
+
+  // Update volume's seriesId if not already set
+  if (volumeRow.seriesId !== seriesId) {
+    db.update(volumes)
+      .set({ seriesId, updatedAt: new Date().toISOString() })
+      .where(eq(volumes.id, volumeId))
+      .run();
+  }
+
+  // Touch series updatedAt
+  db.update(series)
+    .set({ updatedAt: new Date().toISOString() })
+    .where(eq(series.id, seriesId))
+    .run();
 }
 
 // ============================================================================
@@ -297,101 +437,126 @@ export async function addVolumeToSeries(seriesId: string, volumeId: string): Pro
  * Get an edition by its ID
  */
 export async function getEditionById(id: string): Promise<Edition | null> {
-  const store = await loadStore();
-  return store.editions[id] ?? null;
+  const row = db.select().from(editions).where(eq(editions.id, id)).get();
+  if (row == null) return null;
+  return reconstructEdition(row);
 }
 
 /**
  * Get an edition by ISBN
  */
 export async function getEditionByIsbn(isbn: string): Promise<Edition | null> {
-  const store = await loadStore();
-  const editionId = store.isbnIndex[isbn];
-  if (editionId == null) return null;
-  return store.editions[editionId] ?? null;
+  const row = db.select().from(editions).where(eq(editions.isbn, isbn)).get();
+  if (row == null) return null;
+  return reconstructEdition(row);
 }
 
 /**
- * Get all editions for a volume
+ * Get all editions for a volume (via the join table)
  */
 export async function getEditionsByVolumeId(volumeId: string): Promise<Edition[]> {
-  const store = await loadStore();
-  const volume = store.volumes[volumeId];
+  const joinRows = db
+    .select({ editionId: editionVolumes.editionId })
+    .from(editionVolumes)
+    .where(eq(editionVolumes.volumeId, volumeId))
+    .all();
 
-  if (!volume) {
-    return [];
+  const results: Edition[] = [];
+  for (const { editionId } of joinRows) {
+    const row = db.select().from(editions).where(eq(editions.id, editionId)).get();
+    if (row != null) {
+      results.push(reconstructEdition(row));
+    }
   }
 
-  return volume.editionIds
-    .map((id) => store.editions[id])
-    .filter((edition): edition is Edition => edition !== undefined);
+  return results;
 }
 
 /**
  * Get all editions that contain a specific volume ID
- * (Useful for finding all editions that include a volume)
  */
 export async function getEditionsContainingVolume(volumeId: string): Promise<Edition[]> {
-  const store = await loadStore();
-  return Object.values(store.editions).filter((edition) => edition.volumeIds.includes(volumeId));
+  return getEditionsByVolumeId(volumeId);
 }
 
 /**
- * Save an edition and update ISBN index
+ * Save an edition (creates or updates). Also updates the edition_volumes join table.
  */
 export async function saveEdition(edition: Edition): Promise<void> {
-  const store = await loadStore();
-  store.editions[edition.id] = edition;
-  store.isbnIndex[edition.isbn] = edition.id;
-  await saveStore();
-}
+  const now = new Date().toISOString();
 
-/**
- * Save multiple editions at once (more efficient)
- */
-export async function saveEditions(editions: Edition[]): Promise<void> {
-  const store = await loadStore();
-  for (const edition of editions) {
-    store.editions[edition.id] = edition;
-    store.isbnIndex[edition.isbn] = edition.id;
+  db.insert(editions)
+    .values({
+      id: edition.id,
+      isbn: edition.isbn,
+      format: edition.format,
+      language: edition.language,
+      releaseDate: edition.releaseDate ?? null,
+      createdAt: edition.createdAt,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: editions.id,
+      set: {
+        isbn: edition.isbn,
+        format: edition.format,
+        language: edition.language,
+        releaseDate: edition.releaseDate ?? null,
+        updatedAt: now,
+      },
+    })
+    .run();
+
+  // Sync volume links
+  for (const volumeId of edition.volumeIds) {
+    db.insert(editionVolumes)
+      .values({ editionId: edition.id, volumeId })
+      .onConflictDoNothing()
+      .run();
   }
-  await saveStore();
 }
 
 /**
- * Add a volume to an edition (updates edition's volumeIds)
+ * Save multiple editions at once
+ */
+export async function saveEditions(editionsList: Edition[]): Promise<void> {
+  for (const edition of editionsList) {
+    await saveEdition(edition);
+  }
+}
+
+/**
+ * Add a volume to an edition (updates the join table)
  */
 export async function addVolumeToEdition(editionId: string, volumeId: string): Promise<void> {
-  const store = await loadStore();
-  const edition = store.editions[editionId];
-
-  if (!edition) {
+  const editionRow = db.select().from(editions).where(eq(editions.id, editionId)).get();
+  if (editionRow == null) {
     throw new Error(`Edition not found: ${editionId}`);
   }
 
-  if (!edition.volumeIds.includes(volumeId)) {
-    edition.volumeIds.push(volumeId);
-    edition.updatedAt = new Date().toISOString();
-    await saveStore();
-  }
+  db.insert(editionVolumes).values({ editionId, volumeId }).onConflictDoNothing().run();
+
+  db.update(editions)
+    .set({ updatedAt: new Date().toISOString() })
+    .where(eq(editions.id, editionId))
+    .run();
 }
 
 /**
- * Add an edition to a volume (updates volume's editionIds)
+ * Add an edition to a volume (updates the join table)
  */
 export async function addEditionToVolume(volumeId: string, editionId: string): Promise<void> {
-  const store = await loadStore();
-  const volume = store.volumes[volumeId];
-
-  if (!volume) {
+  const volumeRow = db.select().from(volumes).where(eq(volumes.id, volumeId)).get();
+  if (volumeRow == null) {
     throw new Error(`Volume not found: ${volumeId}`);
   }
 
-  if (!volume.editionIds.includes(editionId)) {
-    volume.editionIds.push(editionId);
-    volume.updatedAt = new Date().toISOString();
-    await saveStore();
-  }
+  db.insert(editionVolumes).values({ editionId, volumeId }).onConflictDoNothing().run();
+
+  db.update(volumes)
+    .set({ updatedAt: new Date().toISOString() })
+    .where(eq(volumes.id, volumeId))
+    .run();
 }
 
 // ============================================================================
@@ -402,8 +567,8 @@ export async function addEditionToVolume(volumeId: string, editionId: string): P
  * Get all series (for debugging/admin)
  */
 export async function getAllSeries(): Promise<Series[]> {
-  const store = await loadStore();
-  return Object.values(store.series);
+  const rows = db.select().from(series).all();
+  return rows.map(reconstructSeries);
 }
 
 /**
@@ -417,20 +582,94 @@ export async function getStoreStats(): Promise<{
   wikipediaIndexCount: number;
   titleIndexCount: number;
 }> {
-  const store = await loadStore();
+  const seriesCount =
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(series)
+      .get()?.count ?? 0;
+  const volumeCount =
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(volumes)
+      .get()?.count ?? 0;
+  const editionCount =
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(editions)
+      .get()?.count ?? 0;
+  const isbnCount = editionCount; // ISBN is now just a column on editions, not a separate index
+  const wikipediaCount =
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(seriesExternalIds)
+      .where(eq(seriesExternalIds.source, 'wikipedia'))
+      .get()?.count ?? 0;
+  const titleCount =
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(titleIndex)
+      .get()?.count ?? 0;
+
   return {
-    seriesCount: Object.keys(store.series).length,
-    volumeCount: Object.keys(store.volumes).length,
-    editionCount: Object.keys(store.editions).length,
-    isbnIndexCount: Object.keys(store.isbnIndex).length,
-    wikipediaIndexCount: Object.keys(store.wikipediaIndex).length,
-    titleIndexCount: Object.keys(store.titleIndex).length,
+    seriesCount,
+    volumeCount,
+    editionCount,
+    isbnIndexCount: isbnCount,
+    wikipediaIndexCount: wikipediaCount,
+    titleIndexCount: titleCount,
   };
 }
 
 /**
- * Clear the in-memory cache (for testing)
+ * Clear the in-memory cache (no-op now that we use the database)
  */
 export function clearCache(): void {
-  storeCache = null;
+  // No-op: database is always the source of truth
+}
+
+/**
+ * Load the entity store from the database.
+ * Returns a denormalized EntityStore object for backwards compatibility.
+ * Prefer using individual get* functions for new code.
+ */
+export async function loadStore(): Promise<EntityStore> {
+  const allSeries = await getAllSeries();
+  const allVolumes = db.select().from(volumes).all().map(reconstructVolume);
+  const allEditions = db.select().from(editions).all().map(reconstructEdition);
+
+  const store: EntityStore = {
+    series: {},
+    volumes: {},
+    editions: {},
+    isbnIndex: {},
+    wikipediaIndex: {},
+    titleIndex: {},
+  };
+
+  for (const s of allSeries) {
+    store.series[s.id] = s;
+    if (s.externalIds.wikipedia != null) {
+      store.wikipediaIndex[s.externalIds.wikipedia] = s.id;
+    }
+    store.titleIndex[normalizeTitle(s.title)] = s.id;
+  }
+
+  for (const v of allVolumes) {
+    store.volumes[v.id] = v;
+  }
+
+  for (const e of allEditions) {
+    store.editions[e.id] = e;
+    store.isbnIndex[e.isbn] = e.id;
+  }
+
+  return store;
+}
+
+/**
+ * Save the entity store to the database.
+ * Provided for backwards compatibility — prefer using individual save* functions.
+ */
+export async function saveStore(): Promise<void> {
+  // No-op: individual save* functions write directly to the database
 }
