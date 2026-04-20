@@ -127,6 +127,16 @@ export default tseslint.config(
     files: ['**/*.tsx'],
     ...jsxA11y.flatConfigs.recommended,
   },
+  // Relax strict type rules in test files — res.json() returns `any`
+  {
+    files: ['**/*.test.ts', '**/*.test.tsx', '**/tests/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+    },
+  },
   {
     ignores: [
       '**/dist/**',
