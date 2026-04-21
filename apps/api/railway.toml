@@ -1,0 +1,7 @@
+[build]
+buildCommand = "cd ../.. && pnpm install && pnpm build"
+
+[deploy]
+startCommand = "node dist/index.js"
+# Run migrations before the new deployment goes live
+preDeployCommand = "pnpm db:migrate"

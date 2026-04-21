@@ -1,0 +1,23 @@
+{
+  // Schema version — the deploy action checks this for compatibility
+  "version": 1,
+
+  "project": {
+    "name": "nc-cardinal-manga"
+  },
+
+  "databases": [
+    { "name": "postgres", "type": "postgres" }
+  ],
+
+  "services": [
+    {
+      "name": "api",
+      "root": "apps/api",
+      "variables": {
+        "DATABASE_URL": "${{postgres.DATABASE_URL}}",
+        "NODE_ENV": "production"
+      }
+    }
+  ]
+}
