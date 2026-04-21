@@ -1,5 +1,5 @@
 {
-  // Schema version — the deploy action checks this for compatibility
+  "$schema": "https://raw.githubusercontent.com/Slopshop-Tools/slopshop-railway-deploy-action/main/dist/schema.json",
   "version": 1,
 
   "project": {
