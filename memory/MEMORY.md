@@ -1,0 +1,8 @@
+- [Deployment plan](project_deployment_plan.md) — Frontend to slopshop/Workers, API to Railway + Postgres, Drizzle ORM, SQLite local dev
+- [User background](user_background.md) — Austin's experience, vibecoding approach, preference for simplicity
+- [Preserve comments](feedback_preserve_comments.md) — Don't drop comments when refactoring; make targeted edits instead of wholesale rewrites
+- [Slopshop relationship](project_slopshop_relationship.md) — This project proves out Railway deployment patterns, then feeds them back into slopshop-template
+- [Don't suggest stopping](feedback_dont_suggest_stopping.md) — Never suggest wrapping up; finish task, move to next. Austin will say when to stop.
+- [Railway deploy action](project_railway_action.md) — Technical details of the slopshop-railway-deploy-action repo, config format, architecture
+- [DB architecture](project_db_architecture.md) — Drizzle dual-driver setup, module structure, cache/entity/session store details
+- [Next steps](project_next_steps.md) — Integrate container support into slopshop-template, then migrate this project to it
